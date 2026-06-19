@@ -642,7 +642,7 @@ function App() {
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shifts.setItem(log.id, log); setShiftLogs(prev => [log, ...prev]); }} />;
       case 'dashboard':
       case 'reports':
-        return <DashboardAnalytics inventory={inventory} appointments={appointments} records={records} invoices={invoices} onTriggerSync={async () => { }} isOnline={isOnline} syncQueueLength={syncQueue.length} systemConfig={systemConfig} currentUser={currentUser} />;
+        return <DashboardAnalytics inventory={inventory} appointments={appointments} activeShift={activeShift} onNavigate={(tab) => { setViewPayload(null); setActiveView(tab); setHistoryStack(prev => [...prev, tab]); }} />;
       case 'examinations': return <MedicalRecordsManager records={records} inventory={inventory} appointments={appointments} isOnline={isOnline} onAddRecord={handleAddRecord} onUpdateRecord={handleUpdateRecord} onDeleteRecord={handleDeleteRecord} onUpdateStock={handleUpdateStock} onAddAppointment={handleAddAppointment} onUpdateAppointmentStatus={handleUpdateAppointmentStatus} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
