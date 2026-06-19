@@ -46,16 +46,16 @@ export class ClinicErrorBoundary extends React.Component<Props, State> {
 }
 
 import { db, initializeDatabaseVault } from './lib/localDb';
-import { 
-  Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe, 
-  Stethoscope, TestTube, BriefcaseMedical, Package, FileText, 
-  BarChart3, Settings, LogOut, CloudLightning, Printer, Lock, 
+import {
+  Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
+  Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
+  BarChart3, Settings, LogOut, CloudLightning, Printer, Lock,
   ChevronLeft, PenTool, Home, Scissors, Activity
 } from 'lucide-react';
 
-import { 
-  InventoryItem, Appointment, MedicalRecord, ClientNotification, 
-  SystemAlert, Invoice, AppointmentStatus, OfflineSyncItem, 
+import {
+  InventoryItem, Appointment, MedicalRecord, ClientNotification,
+  SystemAlert, Invoice, AppointmentStatus, OfflineSyncItem,
   ShiftReconciliation, ActiveShift, ClinicQueueItem
 } from './types';
 
@@ -65,6 +65,7 @@ import AppointmentsManager from './components/AppointmentsManager';
 import MedicalRecordsManager from './components/MedicalRecordsManager';
 import InventoryManager from './components/InventoryManager';
 import PatientPortal from './components/PatientPortal';
+import InvoicesManager from './components/InvoicesManager';
 import SystemSettings, { SystemConfig } from './components/SystemSettings';
 import ToastContainer, { showToast } from './components/Toast';
 import CustomersManager from './components/CustomersManager';
@@ -74,9 +75,9 @@ import BoardingManager from './components/BoardingManager';
 import GroomingManager from './components/GroomingManager';
 import ShiftManager from './components/ShiftManager';
 
-import { 
+import {
   fetchClients, upsertClient, reconstituteSystemState,
-  upsertInventoryItem, upsertAppointment, upsertMedicalRecord, 
+  upsertInventoryItem, upsertAppointment, upsertMedicalRecord,
   deleteMedicalRecord, upsertInvoice, upsertAlert,
   fetchInventory, fetchAppointments, fetchMedicalRecords,
   fetchInvoices, fetchNotifications, fetchAlerts,
@@ -114,7 +115,7 @@ function App() {
   const [syncQueue, setSyncQueue] = useState<OfflineSyncItem[]>([]);
   const [pinCache, setPinCache] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<any[]>([]);
-  
+
   // THE LIVING FLOOR: Real-time clinic queue state
   const [clinicQueue, setClinicQueue] = useState<ClinicQueueItem[]>([]);
 
@@ -160,7 +161,7 @@ function App() {
           console.log('[Bootloader] Initiating DB sequence...');
         }
         await initializeDatabaseVault();
-        
+
         // Phase 1: Check for Legacy Migration
         const isMigrated = await db.system.getItem('indexeddb_migration_v1');
         if (!isMigrated) {
@@ -189,7 +190,7 @@ function App() {
               }
             }
           };
-          
+
           await migrateItem('ceylon_inventory_v2', db.inventory);
           await migrateItem('ceylon_appointments_v2', db.appointments);
           await migrateItem('ceylon_records_v2', db.records);
@@ -199,7 +200,7 @@ function App() {
           await migrateItem('ceylon_notifications_v2', db.notifications);
           await migrateItem('ceylon_alerts_v2', db.alerts);
           await migrateItem('ceylon_users_v3', db.users);
-          
+
           const legacyShift = localStorage.getItem('ceylon_active_shift_v1');
           if (legacyShift) await db.system.setItem('active_shift', JSON.parse(legacyShift));
 
@@ -218,7 +219,7 @@ function App() {
           if (import.meta.env.DEV) {
             console.log('[Bootloader] Migrating single-key data arrays to flat ID-based collections...');
           }
-          
+
           const migrateStore = async (dbInstance: any, idField: string = 'id') => {
             const dataArray = await dbInstance.getItem('data');
             if (Array.isArray(dataArray)) {
@@ -259,7 +260,7 @@ function App() {
           const hAppointments = await fetchAppointments();
           const hRecords = await fetchMedicalRecords();
           const hInvoices = await fetchInvoices();
-          
+
           const hShifts: any[] = [];
           await db.shifts.iterate((value: any) => { if (value) hShifts.push(value); });
 
@@ -296,7 +297,7 @@ function App() {
               if (u && u.pin) cache[u.username] = u.pin;
             });
             setPinCache(cache);
-            
+
             if (hConfig) {
               setSystemConfig(prev => {
                 const merged = { ...prev, ...(hConfig as any) };
@@ -310,7 +311,7 @@ function App() {
                 return merged;
               });
             }
-            
+
             // Allow 500ms for UI painting to stabilize
             setTimeout(() => setIsBooting(false), 500);
           }
@@ -365,13 +366,13 @@ function App() {
     const currentItem = inventory.find(i => i.id === itemId);
     if (!currentItem) return;
     const newStock = Math.max(0, currentItem.stock + qtyDelta);
-    
+
     // DB Update
     await upsertInventoryItem({ ...currentItem, stock: newStock });
-    
+
     // UI Update
     setInventory(prev => prev.map(item => item.id === itemId ? { ...item, stock: newStock } : item));
-    
+
     if (newStock <= currentItem.minStock && currentItem.category !== 'service') {
       const alert: SystemAlert = { id: crypto.randomUUID(), severity: 'urgent', category: 'inventory', message: `LOW STOCK: ${currentItem.name} (${newStock} left).`, timestamp: new Date().toISOString(), read: false };
       await upsertAlert(alert);
@@ -407,7 +408,7 @@ function App() {
       const updated = { ...apt, status, updated_at: new Date().toISOString() };
       await upsertAppointment(updated);
       setAppointments(prev => prev.map(a => a.id === id ? updated : a));
-      
+
       // LIVING FLOOR: When appointment is checked-in (in-progress), add to clinic queue
       if (status === 'in-progress') {
         const queueItem: ClinicQueueItem = {
@@ -425,27 +426,27 @@ function App() {
         await addToClinicQueue(queueItem);
         setClinicQueue(prev => [queueItem, ...prev]);
       }
-      
+
       showToast(`Appointment status updated to ${status}.`);
     }
   };
 
-  const handleAddRecord = async (newRec: MedicalRecord) => { 
+  const handleAddRecord = async (newRec: MedicalRecord) => {
     await upsertMedicalRecord(newRec);
-    setRecords(prev => [newRec, ...prev]); 
-    showToast(`Medical record added for ${newRec.petName}.`); 
+    setRecords(prev => [newRec, ...prev]);
+    showToast(`Medical record added for ${newRec.petName}.`);
   };
-  
-  const handleUpdateRecord = async (updated: MedicalRecord) => { 
+
+  const handleUpdateRecord = async (updated: MedicalRecord) => {
     await upsertMedicalRecord(updated);
-    setRecords(prev => prev.map(r => r.id === updated.id ? updated : r)); 
-    showToast(`Medical record updated for ${updated.petName}.`); 
+    setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+    showToast(`Medical record updated for ${updated.petName}.`);
   };
-  
-  const handleDeleteRecord = async (id: string) => { 
+
+  const handleDeleteRecord = async (id: string) => {
     await deleteMedicalRecord(id);
-    setRecords(prev => prev.filter(r => r.id !== id)); 
-    showToast('Medical record permanently deleted.', 'success'); 
+    setRecords(prev => prev.filter(r => r.id !== id));
+    showToast('Medical record permanently deleted.', 'success');
   };
 
   const handleUpdateCustomer = async (oldPhone: string, newPhone: string, newName: string, newEmail: string) => {
@@ -498,7 +499,7 @@ function App() {
   const handleAddInvoice = async (invoice: Invoice) => {
     await upsertInvoice(invoice);
     setInvoices(prev => [invoice, ...prev]);
-    
+
     // LIVING FLOOR VANISH LOGIC: When payment is complete, remove from clinic queue
     if (invoice.paymentStatus === 'paid' && invoice.appointmentId) {
       // Find and remove the queue item for this appointment
@@ -517,11 +518,11 @@ function App() {
   const handleVoidInvoice = async (invoiceId: string) => {
     const targetInvoice = invoices.find(inv => inv.id === invoiceId);
     if (!targetInvoice || targetInvoice.paymentStatus === 'void') return;
-    
-    targetInvoice.items.forEach(async (item) => { 
-      if (item.category !== 'service') await handleUpdateStock(item.itemId, item.quantity); 
+
+    targetInvoice.items.forEach(async (item) => {
+      if (item.category !== 'service') await handleUpdateStock(item.itemId, item.quantity);
     });
-    
+
     const voided = { ...targetInvoice, paymentStatus: 'void' as const };
     await upsertInvoice(voided);
     setInvoices(prev => prev.map(inv => inv.id === invoiceId ? voided : inv));
@@ -603,7 +604,7 @@ function App() {
 
   const navItems = [
     { id: 'pos', label: 'POS', icon: Calculator, isLive: true },
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, isLive: true }, 
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, isLive: true },
     { id: 'appointments', label: 'Appointments', icon: Calendar, isLive: true },
     { id: 'pets', label: 'Pets', icon: PawPrint, isLive: true },
     { id: 'customers', label: 'Customers', icon: Users, isLive: true },
@@ -613,7 +614,7 @@ function App() {
     { id: 'boarding', label: 'Boarding/Hotel', icon: Home, isLive: true },
     { id: 'grooming', label: 'Grooming Salon', icon: Scissors, isLive: true },
     { id: 'inventory', label: 'Inventory', icon: Package, isLive: true },
-    { id: 'invoices', label: 'Invoices', icon: FileText, isLive: false },
+    { id: 'invoices', label: 'Invoices', icon: FileText, isLive: true }, // ACTIVATED
     { id: 'shift', label: 'Shift & Drawer', icon: Lock, isLive: true },
     { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true }
   ];
@@ -627,7 +628,7 @@ function App() {
             inventory={inventory} appointments={appointments} records={records} isOnline={isOnline}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
             onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
-            onVerifyMasterPin={handleVerifyMasterPin} onTriggerInventorySync={async()=>{}}
+            onVerifyMasterPin={handleVerifyMasterPin} onTriggerInventorySync={async () => { }}
             activeShift={activeShift} incomingClient={viewPayload?.client ? { phone: viewPayload.client.primary_phone || '', name: viewPayload.client.full_name || '', id: viewPayload.client.client_id || '' } : null}
             onUpdateRecord={handleUpdateRecord}
           />
@@ -637,23 +638,24 @@ function App() {
       case 'boarding': return <BoardingManager records={records} onUpdateRecord={handleUpdateRecord} />;
       case 'grooming': return <GroomingManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={setInventory} systemConfig={systemConfig} />;
+      case 'invoices': return <InvoicesManager />; // MOUNTED THE FINANCIAL HUB
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shifts.setItem(log.id, log); setShiftLogs(prev => [log, ...prev]); }} />;
       case 'dashboard':
       case 'reports':
-        return <DashboardAnalytics inventory={inventory} appointments={appointments} records={records} invoices={invoices} onTriggerSync={async()=>{}} isOnline={isOnline} syncQueueLength={syncQueue.length} systemConfig={systemConfig} currentUser={currentUser} />;
+        return <DashboardAnalytics inventory={inventory} appointments={appointments} records={records} invoices={invoices} onTriggerSync={async () => { }} isOnline={isOnline} syncQueueLength={syncQueue.length} systemConfig={systemConfig} currentUser={currentUser} />;
       case 'examinations': return <MedicalRecordsManager records={records} inventory={inventory} appointments={appointments} isOnline={isOnline} onAddRecord={handleAddRecord} onUpdateRecord={handleUpdateRecord} onDeleteRecord={handleDeleteRecord} onUpdateStock={handleUpdateStock} onAddAppointment={handleAddAppointment} onUpdateAppointmentStatus={handleUpdateAppointmentStatus} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
         return (
-          <SystemSettings 
-            config={safeSystemConfig} 
+          <SystemSettings
+            config={safeSystemConfig}
             onChangeConfig={async (config) => {
               await db.system.setItem('config', config);
               setSystemConfig(config);
-            }} 
-            users={users.map(({ pin, ...safeU }) => safeU)} 
-            onForceCloudSync={async()=>{}} 
-            onRefreshUsers={async()=>{}} 
+            }}
+            users={users.map(({ pin, ...safeU }) => safeU)}
+            onForceCloudSync={async () => { }}
+            onRefreshUsers={async () => { }}
             onAddUser={async (user) => {
               const { pin, ...safeUser } = user;
               if (pin) {
@@ -666,7 +668,7 @@ function App() {
               await db.users.setItem(userToSave.id, userToSave);
               setUsers(prev => [...prev, safeUser]);
               showToast(`User ${safeUser.name} added successfully.`);
-            }} 
+            }}
             onRemoveUser={async (id) => {
               const userToRemove = users.find(u => u.id === id);
               if (userToRemove) {
@@ -678,14 +680,14 @@ function App() {
               }
               await db.users.removeItem(id);
               setUsers(prev => prev.filter(u => u.id !== id));
-            }} 
-            inventory={inventory} 
-            invoices={invoices} 
-            currentUser={currentUser} 
-            onUpdateInventory={(newInv) => setInventory(newInv)} 
-            onRestoreSnapshot={async ()=>true} 
-            onPurgeDatabases={handlePurgeDatabases} 
-            onHardReboot={handleHardReboot} 
+            }}
+            inventory={inventory}
+            invoices={invoices}
+            currentUser={currentUser}
+            onUpdateInventory={(newInv) => setInventory(newInv)}
+            onRestoreSnapshot={async () => true}
+            onPurgeDatabases={handlePurgeDatabases}
+            onHardReboot={handleHardReboot}
           />
         );
       }
@@ -749,7 +751,7 @@ function App() {
                       <span className="text-sm select-none leading-none">{systemConfig.invoiceLogo}</span> {systemConfig.appName} Core Medical Suite
                     </span>
                     <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm border-2 border-white/30 border-dashed inline-block">
-                        <p className="text-white/70 font-bold text-xs uppercase tracking-widest text-center">Your Logo Here<br/><span className="text-[9px] font-medium opacity-75 capitalize mt-1 block">(Upload via System Settings)</span></p>
+                      <p className="text-white/70 font-bold text-xs uppercase tracking-widest text-center">Your Logo Here<br /><span className="text-[9px] font-medium opacity-75 capitalize mt-1 block">(Upload via System Settings)</span></p>
                     </div>
                     <p className="text-white/80 leading-relaxed font-semibold text-sm max-w-sm">Serving Pet parents cleanly and securely. Tablet-ready clinical charts, custom billing registers, and automated client alerts.</p>
                   </div>
@@ -796,31 +798,31 @@ function App() {
         ) : null}
 
         {currentUser && (
-            <div className="flex h-screen w-full bg-gray-50 overflow-hidden font-sans text-gray-900">
-              <aside className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20 shadow-sm">
-                <div className="h-16 flex items-center px-6 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
-                    <div>
-                      <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
-                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
-                    </div>
+          <div className="flex h-screen w-full bg-gray-50 overflow-hidden font-sans text-gray-900">
+            <aside className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20 shadow-sm">
+              <div className="h-16 flex items-center px-6 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
+                  <div>
+                    <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
                   </div>
                 </div>
-                <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-                  {navItems.map((item) => {
-                    const Icon = item.icon;
-                    if (!item.isLive) return <a key={item.id} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
-                    const permissionKey = item.id === 'reports' || item.id === 'dashboard' ? 'dashboard' : item.id;
-                    if (!isViewPermitted(permissionKey, currentUser)) return null;
-                    const isSelected = activeView === item.id || (activeView === 'reports' && item.id === 'dashboard');
-                    return (
-                      <button key={item.id} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
-                        <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />{item.label}
-                      </button>
-                    );
-                  })}
-                </nav>
+              </div>
+              <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  if (!item.isLive) return <a key={item.id} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
+                  const permissionKey = item.id === 'reports' || item.id === 'dashboard' ? 'dashboard' : item.id;
+                  if (!isViewPermitted(permissionKey, currentUser)) return null;
+                  const isSelected = activeView === item.id || (activeView === 'reports' && item.id === 'dashboard');
+                  return (
+                    <button key={item.id} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
+                      <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />{item.label}
+                    </button>
+                  );
+                })}
+              </nav>
               <div className="p-4 border-t border-gray-100 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <span className="block font-bold text-gray-800 text-xs truncate leading-tight">{currentUser.name}</span>
@@ -830,11 +832,10 @@ function App() {
               <div className="p-3 border-t border-gray-200 bg-gray-50/50 space-y-1">
                 {isViewPermitted('settings', currentUser) && (
                   <button onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      activeView === 'settings' 
-                        ? 'bg-blue-50 text-blue-700' 
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeView === 'settings'
+                        ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    }`}
+                      }`}
                   >
                     <Settings className={`w-5 h-5 ${activeView === 'settings' ? 'text-blue-600' : 'text-gray-500'}`} />
                     Settings
@@ -848,31 +849,31 @@ function App() {
                   Lock/Logout
                 </button>
               </div>
-              </aside>
+            </aside>
 
-              {/* MAIN CANVAS */}
-              <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
-                <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs">
-                  {historyStack.length > 1 && (
-                    <button 
-                      onClick={() => {
-                        const prev = historyStack[historyStack.length - 2];
-                        setHistoryStack(prev => prev.slice(0, -1));
-                        setActiveView(prev);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                    >
-                      <ChevronLeft className="w-3 h-3" /> Back
-                    </button>
-                  )}
-                  <span className="text-xs font-bold text-slate-500 capitalize">{activeView}</span>
-                </div>
-                <div className="flex-1 w-full h-full overflow-y-auto">
-                  {renderCanvas()}
-                </div>
-              </main>
-            </div>
-          )}
+            {/* MAIN CANVAS */}
+            <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
+              <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs">
+                {historyStack.length > 1 && (
+                  <button
+                    onClick={() => {
+                      const prev = historyStack[historyStack.length - 2];
+                      setHistoryStack(prev => prev.slice(0, -1));
+                      setActiveView(prev);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3 h-3" /> Back
+                  </button>
+                )}
+                <span className="text-xs font-bold text-slate-500 capitalize">{activeView}</span>
+              </div>
+              <div className="flex-1 w-full h-full overflow-y-auto">
+                {renderCanvas()}
+              </div>
+            </main>
+          </div>
+        )}
         <ToastContainer />
       </div>
     </>

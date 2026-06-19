@@ -36,15 +36,13 @@ export default function POSRegister({ inventory, appointments, records, currentU
   const recordsRef = useRef(records);
   useEffect(() => { recordsRef.current = records; }, [records]);
 
-  const [activeTab, setActiveTab] = useState<'queue' | 'quick' | 'search' | 'ledger'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'quick' | 'search'>('queue');
   const [isWalkIn, setIsWalkIn] = useState(!incomingClient);
   const [selectedClient, setSelectedClient] = useState<ActiveClient | null>(incomingClient ? { id: incomingClient.id, name: incomingClient.name, phone: incomingClient.phone } : null);
   const [cart, setCart] = useState<Array<{ item: InventoryItem; quantity: number }>>([]);
   const [discountVal, setDiscountVal] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
-  const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
-  const [ledgerStatusFilter, setLedgerStatusFilter] = useState<'all' | 'paid' | 'void'>('all');
   
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -304,8 +302,8 @@ export default function POSRegister({ inventory, appointments, records, currentU
       <div className="flex-1 flex flex-col border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden relative">
         <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-white shrink-0">
           <div className="flex bg-slate-100 p-1 rounded-xl">
-            {(['queue', 'quick', 'search', 'ledger'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${activeTab === tab ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>{tab === 'queue' ? 'Queue' : tab === 'quick' ? 'Quick Add' : tab}</button>
+            {(['queue', 'quick', 'search'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${activeTab === tab ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>{tab === 'queue' ? 'Queue' : tab === 'quick' ? 'Quick Add' : 'Search'}</button>
             ))}
           </div>
         </div>
@@ -359,29 +357,6 @@ export default function POSRegister({ inventory, appointments, records, currentU
               </div>
             </div>
           )}
-
-          {activeTab === 'ledger' && (
-            <div className="space-y-4 flex flex-col h-full">
-              <div className="flex gap-3 shrink-0">
-                <div className="relative flex-1"><Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" /><input type="text" placeholder="Search invoices..." value={ledgerSearchQuery} onChange={e => setLedgerSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-1 focus:ring-indigo-500 shadow-sm outline-none" /></div>
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                {invoices.filter(i => i.shiftId === activeShift.id && (ledgerStatusFilter === 'all' || i.paymentStatus === ledgerStatusFilter)).map(inv => (
-                  <div key={inv.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center">
-                    <div><div className="font-mono font-bold text-xs text-slate-800">{inv.id}</div><div className="text-[10px] font-semibold text-slate-500 mt-0.5">{inv.ownerName} • {inv.date}</div></div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right"><div className="font-mono font-black text-sm text-slate-800">{currencySign}{inv.sales_total.toFixed(2)}</div><div className={`text-[8px] font-extrabold uppercase mt-0.5 ${inv.paymentStatus === 'paid' ? 'text-emerald-500' : 'text-rose-500'}`}>{inv.paymentStatus}</div></div>
-                      <div className="flex gap-1 border-l border-slate-100 pl-3">
-                        <button onClick={() => setSelectedInvoiceDetails(inv)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg"><FileText className="w-4 h-4"/></button>
-                        <button onClick={() => handlePrintReceipt(inv)} className="p-1.5 hover:bg-emerald-50 text-emerald-600 rounded-lg"><Printer className="w-4 h-4"/></button>
-                        {inv.paymentStatus !== 'void' && <button onClick={() => handleInitiateVoid(inv.id)} className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg"><Trash2 className="w-4 h-4"/></button>}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -391,7 +366,7 @@ export default function POSRegister({ inventory, appointments, records, currentU
             <h3 className="text-base font-black text-slate-800 text-center">Confirm {total < 0 ? 'Refund' : paymentMethod.toUpperCase()}</h3>
             <div className="bg-slate-50 p-4 rounded-xl text-center space-y-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{total < 0 ? 'Client Refund Due' : 'Total Due'}</span>
-              <div className={`text-3xl font-black font-mono ${total < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{currencySign}{Math.abs(total).toFixed(2)}</div>
+              <div className={`text-3xl font-black font-mono ${total < 0 ? 'text-rose-600' : 'textemerald-600'}`}>{currencySign}{Math.abs(total).toFixed(2)}</div>
             </div>
             {paymentMethod === 'cash' && total >= 0 && (
               <div className="space-y-2">
