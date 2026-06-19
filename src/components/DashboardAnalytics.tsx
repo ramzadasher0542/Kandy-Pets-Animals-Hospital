@@ -1,156 +1,179 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import React from 'react';
+import { Activity, Clock, Users, AlertTriangle, PackageX, Calendar, CreditCard, ChevronRight } from 'lucide-react';
+import { Appointment, InventoryItem, ActiveShift } from '../types';
 
-import React, { useMemo } from 'react';
-import { 
-  BarChart3, DollarSign, Calendar, Package, 
-  TrendingUp, TrendingDown, Users, Activity, Clock 
-} from 'lucide-react';
-import { InventoryItem, Appointment, MedicalRecord, Invoice } from '../types';
-
-interface AnalyticsProps {
-  inventory: InventoryItem[];
-  appointments: Appointment[];
-  records: MedicalRecord[];
-  invoices: Invoice[];
-  onTriggerSync: () => void;
-  isOnline: boolean;
-  syncQueueLength: number;
-  systemConfig: any;
-  currentUser: any;
+interface DashboardProps {
+  appointments?: Appointment[];
+  inventory?: InventoryItem[];
+  activeShift?: ActiveShift | null;
+  onNavigate?: (tab: string) => void;
 }
 
 export default function DashboardAnalytics({ 
-  inventory, appointments, records, invoices, 
-  systemConfig, currentUser 
-}: AnalyticsProps) {
-
-  // Existing Metrics Calculation
-  const totalRevenue = useMemo(() => {
-    return invoices.reduce((sum, inv) => sum + (inv.paymentStatus === 'paid' ? inv.sales_total : 0), 0);
-  }, [invoices]);
-
-  const totalAppointments = appointments.length;
+  appointments = [], 
+  inventory = [], 
+  activeShift = null, 
+  onNavigate = () => {} 
+}: DashboardProps) {
   
-  const uniquePatients = useMemo(() => {
-    const ids = new Set(records.map(r => r.patientId));
-    return ids.size;
-  }, [records]);
+  const todayStr = new Date().toISOString().split('T')[0];
 
-  // CHUNK 5: WIP Pending Revenue Calculation
-  const unbilledWipRevenue = useMemo(() => {
-    const unbilledWipCents = records.reduce((totalCents, record) => {
-      // Check if this record is billed by looking for an invoice with this appointmentId or matching patientId and visitDate
-      const isBilled = invoices.some(inv => 
-         (record.appointmentId && inv.appointmentId === record.appointmentId) || 
-         (inv.patientId === record.patientId && inv.date === record.visitDate)
-      );
-      
-      if (!isBilled && record.prescribedMeds && record.prescribedMeds.length > 0) {
-        const medsTotal = record.prescribedMeds.reduce((medSum, med) => {
-          if (med.itemId === 'boarding_deposit') {
-            return medSum + (-15000 * 100 * med.quantity); // Negative escrow trap
-          }
-          const invItem = inventory.find(i => i.id === med.itemId);
-          const price = invItem ? invItem.price : 0;
-          return medSum + (Math.round(price * 100) * med.quantity);
-        }, 0);
-        return totalCents + medsTotal;
-      }
-      return totalCents;
-    }, 0);
+  // Traffic Calculations
+  const todaysAppointments = appointments.filter(a => a.date.startsWith(todayStr));
+  const waiting = todaysAppointments.filter(a => a.status === 'scheduled');
+  const inSession = todaysAppointments.filter(a => a.status === 'in-progress');
+  const completed = todaysAppointments.filter(a => a.status === 'completed');
 
-    return unbilledWipCents / 100;
-  }, [records, invoices, inventory]);
-
-  const formatNumber = (num: number) => {
-    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const MetricCard = ({ title, value, icon: Icon, trend, trendUp, color = 'indigo' }: any) => (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden group">
-      <div className={`absolute top-0 right-0 w-24 h-24 bg-${color}-50 rounded-bl-[100px] -z-10 transition-transform group-hover:scale-110`} />
-      <div className="flex justify-between items-start mb-4">
-        <div className={`p-3 bg-${color}-100 text-${color}-600 rounded-xl`}>
-          <Icon className="w-6 h-6" />
-        </div>
-        <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-md ${trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-          {trendUp ? <TrendingUp className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-          {trend}
-        </div>
-      </div>
-      <div>
-        <h3 className="text-sm font-black text-slate-800 tracking-tight">{title}</h3>
-        <p className="text-2xl font-mono font-black mt-1 text-slate-900">{value}</p>
-      </div>
-    </div>
-  );
+  // Inventory SOS (Items at or below minimum stock threshold)
+  const lowStockItems = inventory.filter(i => i.stock <= (i.minStock || 5));
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col gap-6 overflow-y-auto custom-scrollbar pr-2 pb-6">
-      
-      {/* Top Action Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between shrink-0">
-        <div>
-          <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-indigo-600" /> Executive Dashboard
-          </h2>
-          <p className="text-xs text-slate-500 font-bold mt-0.5">Real-time financial and operational metrics</p>
+    <div className="flex flex-col h-[calc(100vh-80px)] bg-slate-50 w-full overflow-hidden font-sans relative">
+      {/* Header */}
+      <header className="flex-none px-8 py-6 bg-white border-b border-slate-200 shrink-0 z-10 shadow-sm">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900">Clinic Floor Ops</h1>
+            <p className="text-sm font-bold text-slate-500 mt-1">Real-time patient traffic & facility status</p>
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Primary Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-        <MetricCard 
-          title="Total Collected Revenue" 
-          value={`${systemConfig?.currencySymbol || 'Rs.'}${formatNumber(totalRevenue)}`} 
-          icon={DollarSign} 
-          trend="Real-time" 
-          trendUp={true} 
-          color="emerald" 
-        />
-        <MetricCard 
-          title="Unbilled WIP Revenue" 
-          value={`${systemConfig?.currencySymbol || 'Rs.'}${formatNumber(unbilledWipRevenue)}`} 
-          icon={Activity} 
-          trend="Floating" 
-          trendUp={false} 
-          color="amber" 
-        />
-        <MetricCard 
-          title="Total Appointments" 
-          value={totalAppointments} 
-          icon={Calendar} 
-          trend="All-time" 
-          trendUp={true} 
-          color="sky" 
-        />
-        <MetricCard 
-          title="Registered Patients" 
-          value={uniquePatients} 
-          icon={Users} 
-          trend="All-time" 
-          trendUp={true} 
-          color="indigo" 
-        />
-      </div>
+      <main className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
+        
+        {/* KPI Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Shift Status */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5 transition-all hover:shadow-md group">
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${activeShift ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+              <Activity className={`w-7 h-7 ${activeShift ? 'text-emerald-600' : 'text-rose-600'}`} />
+            </div>
+            <div>
+              <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Active Register</h3>
+              <div className={`text-xl font-black ${activeShift ? 'text-slate-800' : 'text-rose-600'}`}>
+                {activeShift ? activeShift.openedBy : 'REGISTER CLOSED'}
+              </div>
+            </div>
+          </div>
 
-      {/* Visual Charts Placeholder Space (Can be expanded with D3 or Recharts later) */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[300px]">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 flex flex-col items-center justify-center text-center opacity-60">
-          <BarChart3 className="w-16 h-16 text-slate-200 mb-4" />
-          <h4 className="text-sm font-black text-slate-800">Revenue Trends</h4>
-          <p className="text-xs font-bold text-slate-400 mt-1">Detailed visualization engine loading...</p>
+          {/* Patient Load */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5 transition-all hover:shadow-md group">
+            <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+              <Users className="w-7 h-7 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Today's Traffic</h3>
+              <div className="text-xl font-black text-slate-800 font-mono">
+                {todaysAppointments.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">Total Clients</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Critical Stock */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5 transition-all hover:shadow-md group">
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${lowStockItems.length > 0 ? 'bg-amber-100 animate-pulse' : 'bg-slate-100'}`}>
+              <AlertTriangle className={`w-7 h-7 ${lowStockItems.length > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
+            </div>
+            <div>
+              <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Inventory SOS</h3>
+              <div className="text-xl font-black text-slate-800 font-mono">
+                {lowStockItems.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">Items Low</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 flex flex-col items-center justify-center text-center opacity-60">
-          <Package className="w-16 h-16 text-slate-200 mb-4" />
-          <h4 className="text-sm font-black text-slate-800">Inventory Movement</h4>
-          <p className="text-xs font-bold text-slate-400 mt-1">Detailed visualization engine loading...</p>
-        </div>
-      </div>
 
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Patient Radar */}
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[400px]">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-slate-50 rounded-t-2xl">
+              <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2"><Clock className="w-4 h-4 text-indigo-500" /> Live Patient Radar</h2>
+              <div className="flex gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded shadow-xs">{waiting.length} Waiting</span>
+                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded shadow-xs">{inSession.length} In Session</span>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
+              {todaysAppointments.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-3">
+                  <Calendar className="w-10 h-10 opacity-50" />
+                  <div className="text-xs font-bold uppercase tracking-widest text-center">No appointments<br/>scheduled today.</div>
+                </div>
+              ) : (
+                todaysAppointments.map(apt => (
+                  <div key={apt.id} className="flex justify-between items-center p-4 border border-slate-100 rounded-xl bg-white hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer">
+                    <div>
+                      <div className="text-sm font-black text-slate-800">{apt.petName}</div>
+                      <div className="text-[10px] font-bold text-slate-500 mt-0.5">{apt.ownerName} • {apt.veterinarian}</div>
+                    </div>
+                    <div>
+                      {apt.status === 'scheduled' && <span className="px-3 py-1.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Waiting</span>}
+                      {apt.status === 'in-progress' && <span className="px-3 py-1.5 bg-sky-100 text-sky-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">In Session</span>}
+                      {apt.status === 'completed' && <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Completed</span>}
+                      {apt.status === 'cancelled' && <span className="px-3 py-1.5 bg-rose-100 text-rose-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Cancelled</span>}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Inventory SOS List */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[400px]">
+            <div className="p-5 border-b border-slate-100 shrink-0 bg-slate-50 rounded-t-2xl">
+              <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2"><PackageX className="w-4 h-4 text-rose-500" /> Stock SOS Alert</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
+              {lowStockItems.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-2"><span className="text-emerald-500 text-xl font-black">✓</span></div>
+                  <div className="text-[10px] uppercase tracking-widest font-black text-center text-slate-400">All critical stock levels<br/>are optimal.</div>
+                </div>
+              ) : (
+                lowStockItems.map(item => (
+                  <div key={item.id} className="flex justify-between items-center p-3 border border-rose-100 rounded-xl bg-rose-50/50 hover:bg-rose-50 transition-colors">
+                    <div className="overflow-hidden pr-2">
+                      <div className="text-[11px] font-black text-slate-800 truncate">{item.name}</div>
+                      <div className="text-[9px] font-bold text-rose-500 uppercase tracking-widest mt-0.5">Threshold: {item.minStock}</div>
+                    </div>
+                    <div className="text-xs font-black text-rose-700 bg-white px-2 py-1 rounded shadow-xs border border-rose-200 shrink-0 font-mono">{item.stock} Left</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <button onClick={() => onNavigate('pos')} className="p-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-md flex justify-between items-center transition-transform active:scale-[0.98] group cursor-pointer">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center shadow-inner"><CreditCard className="w-6 h-6 text-white" /></div>
+              <div className="text-left"><div className="text-sm font-black">Open Register (POS)</div><div className="text-[10px] font-bold text-indigo-200 mt-0.5 uppercase tracking-widest">Process payments & walk-ins</div></div>
+            </div>
+            <ChevronRight className="w-6 h-6 text-indigo-300 group-hover:text-white transition-colors" />
+          </button>
+          
+          <button onClick={() => onNavigate('appointments')} className="p-5 bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md text-slate-800 rounded-2xl flex justify-between items-center transition-all active:scale-[0.98] group cursor-pointer">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-colors"><Calendar className="w-6 h-6 text-slate-400 group-hover:text-indigo-600" /></div>
+              <div className="text-left"><div className="text-sm font-black">Manage Schedule</div><div className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">View & update appointments</div></div>
+            </div>
+            <ChevronRight className="w-6 h-6 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+          </button>
+        </div>
+
+      </main>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}</style>
     </div>
   );
 }
