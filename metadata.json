@@ -1,0 +1,6 @@
+{
+  "name": "CeylonPets",
+  "description": "CeylonPets is a custom-branded POS, Inventory, and EHR system with customizable client branding, printer selection, backup services, and role access levels. Powered by ASH POINT SOLUTIONS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
