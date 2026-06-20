@@ -25,7 +25,7 @@ export default function DashboardAnalytics({
   const completed = todaysAppointments.filter(a => a.status === 'completed');
 
   // Inventory SOS (Items at or below minimum stock threshold)
-  const lowStockItems = inventory.filter(i => i.stock <= (i.minStock || 5));
+  const lowStockItems = inventory.filter(item => !['service', 'lab_service'].includes(item.category) && item.stock <= item.minStock);
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-slate-50 w-full overflow-hidden font-sans relative">

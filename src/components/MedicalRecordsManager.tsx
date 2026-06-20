@@ -90,10 +90,7 @@ export default function MedicalRecordsManager({
     const med = medications.find(m => m.id === rxMedId);
     if (!med) return;
 
-    if (med.stock < Number(rxTotalQty)) {
-      showToast(`Not enough stock. Only ${med.stock} remaining.`, 'error');
-      return;
-    }
+    if (!['service', 'lab_service'].includes(med.category) && med.stock < Number(rxTotalQty)) { showToast('Not enough stock.', 'error'); return; }
 
     const compiledInstructions = `${rxDosage} | ${rxFreq} | For ${rxDuration} days | ${rxInstruct}`;
     

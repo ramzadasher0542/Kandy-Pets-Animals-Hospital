@@ -351,7 +351,7 @@ export default function POSRegister({ inventory, appointments, records, currentU
                   {filteredProducts.map(product => (
                     <div key={product.id} onClick={() => addToCart(product)} className="bg-white p-3 rounded-xl border border-slate-200 hover:border-indigo-300 cursor-pointer transition-all group flex flex-col justify-between active:scale-95">
                       <div><span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 block w-max mb-1">{product.sku}</span><h5 className="text-[11px] font-bold text-slate-800 leading-snug line-clamp-2">{product.name}</h5></div>
-                      <div className="mt-2 flex justify-between items-center border-t border-slate-100 pt-2"><span className="text-xs font-black text-slate-800 font-mono">{currencySign}{product.price.toFixed(2)}</span><span className="text-[9px] font-bold text-slate-400">Stock: {product.stock}</span></div>
+                      <div className="mt-2 flex justify-between items-center border-t border-slate-100 pt-2"><span className="text-xs font-black text-slate-800 font-mono">{currencySign}{product.price.toFixed(2)}</span><span className="text-[9px] font-bold text-slate-400">Stock: {['service', 'lab_service'].includes(product.category) ? '∞' : product.stock}</span></div>
                     </div>
                   ))}
                 </div>
