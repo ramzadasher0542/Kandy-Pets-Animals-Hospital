@@ -9,7 +9,20 @@ export interface User { id: string; name: string; username: string; role: UserRo
 
 export type ItemCategory = 'retail' | 'prescription' | 'lab_service' | 'service' | 'vaccine';
 
-export interface InventoryItem { id: string; sku: string; name: string; category: ItemCategory; price: number; cost: number; stock: number; minStock: number; unit: string; location?: string; }
+// PHASE 2 PREP: Added labParameters to support Dynamic Test Categories
+export interface InventoryItem { 
+  id: string; 
+  sku: string; 
+  name: string; 
+  category: ItemCategory; 
+  price: number; 
+  cost: number; 
+  stock: number; 
+  minStock: number; 
+  unit: string; 
+  location?: string;
+  labParameters?: Array<{ name: string; referenceRange: string; unit: string }>;
+}
 
 export type AppointmentStatus = 'booked' | 'in-progress' | 'completed' | 'cancelled';
 export type QueueStatus = 'scheduled' | 'active' | 'completed';
@@ -29,7 +42,29 @@ export interface ClinicQueueItem {
   prescribedMeds?: Array<{ itemId: string; name: string; quantity: number }>;
 }
 
-export interface Appointment { id: string; aptNumber?: string; petName: string; petType: PetClassification; breed: string; ownerName: string; ownerPhone: string; ownerEmail?: string; date: string; time: string; veterinarian: string; reason: string; status: AppointmentStatus; admissionType?: 'OPD' | 'Pet Boarding' | 'Hospital Admission' | 'Vaccination'; assignedVet?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+// PHASE 1: Added weight and sex as native first-class citizens
+export interface Appointment { 
+  id: string; 
+  aptNumber?: string; 
+  petName: string; 
+  petType: PetClassification; 
+  breed: string; 
+  weight?: number;
+  sex?: string;
+  ownerName: string; 
+  ownerPhone: string; 
+  ownerEmail?: string; 
+  date: string; 
+  time: string; 
+  veterinarian: string; 
+  reason: string; 
+  status: AppointmentStatus; 
+  admissionType?: 'OPD' | 'Pet Boarding' | 'Hospital Admission' | 'Vaccination'; 
+  assignedVet?: string; 
+  created_at?: string; 
+  updated_at?: string; 
+  is_deleted?: boolean; 
+}
 
 export interface Vaccination { itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; }
 export interface LabResult { id: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; }
@@ -38,22 +73,22 @@ export interface GroomingLog { id: string; date: string; services: string[]; tot
 export interface BoardingRecord { id: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; }
 
 // ============================================================================
-// PHASE 1: ENTERPRISE EHR MATRIX (THE 1-CLICK TRIAGE SCHEMA)
+// PHASE 1: ENTERPRISE EHR MATRIX
 // ============================================================================
 
 export interface Vitals {
   temperature?: number;
   pulse?: number;
   respiration?: number;
-  crt?: string; // Capillary Refill Time (e.g., '< 2s')
-  mucousMembrane?: string; // Pink, Pale, Cyanotic, Icteric
-  hydration?: string; // Normal, 5%, 10%, etc.
-  bcs?: number; // Body Condition Score (1-9)
+  crt?: string;
+  mucousMembrane?: string;
+  hydration?: string;
+  bcs?: number;
 }
 
 export interface PatientHistory {
-  duration?: string; // '< 24 hours', '1-3 days', etc.
-  progression?: string; // 'Acute', 'Chronic', 'Improving', etc.
+  duration?: string;
+  progression?: string;
   diet?: string[];
   vaccinationStatus?: string;
   dewormingStatus?: string;
@@ -64,7 +99,7 @@ export interface PatientHistory {
 export interface SystemicExam {
   isNormal: boolean;
   notes?: string;
-  abnormalities?: string[]; // Array of selected symptoms from the Excel matrix
+  abnormalities?: string[];
 }
 
 export interface PhysicalExamination {
@@ -88,8 +123,7 @@ export interface ClinicalAssessment {
   notes?: string;
 }
 
-// ============================================================================
-
+// PHASE 1: Added native sex property alongside weight
 export interface MedicalRecord { 
   id: string; 
   patientId: string; 
@@ -98,21 +132,19 @@ export interface MedicalRecord {
   breed: string; 
   age: string; 
   weight: number; 
+  sex?: string;
   ownerName: string; 
   ownerPhone: string; 
   ownerEmail: string; 
   visitDate: string; 
   
-  // --- NEW EHR MATRIX FIELDS ---
   vitals?: Vitals;
   patientHistory?: PatientHistory;
   physicalExam?: PhysicalExamination;
   assessment?: ClinicalAssessment;
   diagnosticPlan?: string[]; 
   monitoringPlan?: string[];
-  // -----------------------------
 
-  // Legacy fields retained for backwards compatibility
   subjectiveTags?: string[]; 
   symptoms: string; 
   objectiveFindings?: Record<string, { isNormal: boolean; notes: string }>; 
@@ -137,7 +169,6 @@ export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'e_wallet' | 'de
 export interface ActiveShift { id: string; openedAt: string; openedBy: string; openedByName: string; openingFloat: number; }
 export interface ShiftReconciliation { id: string; timestamp: string; userId: string; userName: string; openingFloat: number; cashSales: number; expectedClosing: number; actualClosing: number; discrepancy: number; status: 'balanced' | 'discrepancy'; }
 
-// Legacy Shift for backwards compatibility
 export interface Shift { id: string; openedBy: string; startTime: string; endTime?: string; openingFloatCents: number; cashCollectedCents: number; cardCollectedCents: number; bankTransferCollectedCents: number; expectedCashCents?: number; actualCashCents?: number; discrepancyCents?: number; notes?: string; isOpen: boolean; opening_float: number; actual_cash: number | null; discrepancy_reason: string; created_at: string; updated_at: string; is_deleted: boolean; }
 
 export interface Invoice { id: string; appointmentId?: string; patientId: string; petName: string; ownerName: string; ownerPhone: string; date: string; items: InvoiceItem[]; subtotal: number; tax: number; discount: number; sales_total: number; cogs?: number; profit?: number; paymentMethod?: PaymentMethod; paymentStatus: 'unpaid' | 'paid' | 'void'; depositHeld?: number; createdBy: string; shiftId?: string; notes?: string; }

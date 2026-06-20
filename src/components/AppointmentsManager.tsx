@@ -91,6 +91,8 @@ export default function AppointmentsManager({
   const [petName, setPetName] = useState('');
   const [petType, setPetType] = useState<PetClassification>('Canine');
   const [breed, setBreed] = useState('');
+  const [weight, setWeight] = useState<number | ''>(''); // PHASE 1 NATIVE
+  const [sex, setSex] = useState('Unknown'); // PHASE 1 NATIVE
   const [ownerName, setOwnerName] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('+94 ');
   const [ownerEmail, setOwnerEmail] = useState('');
@@ -102,7 +104,6 @@ export default function AppointmentsManager({
   const [admissionType, setAdmissionType] = useState('OPD');
   const [phone2, setPhone2] = useState('');
   const [address, setAddress] = useState('');
-  const [sex, setSex] = useState('Unknown');
 
   // Identity Scanner State
   const [identitySearch, setIdentitySearch] = useState('');
@@ -124,7 +125,6 @@ export default function AppointmentsManager({
   }, [appointments]);
 
   useEffect(() => {
-    // Dynamic Vet DB Sync
     const fetchVets = async () => {
       try {
         const users = await db.users.getItem<AppUser[]>('users_list') || [];
@@ -174,7 +174,7 @@ export default function AppointmentsManager({
   }, [showAddModal, selectedPopoverApt, overflowPopover]);
 
   // ---------------------------------------------------------
-  // IDENTITY SCANNER ENGINE
+  // IDENTITY SCANNER ENGINE (SUPERCHARGED)
   // ---------------------------------------------------------
   const handleIdentityScan = (query: string) => {
     setIdentitySearch(query);
@@ -182,7 +182,7 @@ export default function AppointmentsManager({
     if (target.length >= 7) {
       const matches = records.filter(r => normalizeSearchPhone(r.ownerPhone) === target);
       if (matches.length > 0) {
-        const latest = matches[matches.length - 1]; // Assume last record has most up to date owner info
+        const latest = matches[matches.length - 1]; 
         setOwnerName(latest.ownerName);
         setOwnerPhone(enforcePhoneFormat(latest.ownerPhone));
         setOwnerEmail(latest.ownerEmail || '');
@@ -190,7 +190,13 @@ export default function AppointmentsManager({
         const uniquePetsMap = new Map();
         matches.forEach(m => {
           if (!uniquePetsMap.has(m.petName.toLowerCase())) {
-            uniquePetsMap.set(m.petName.toLowerCase(), { name: m.petName, type: m.petType, breed: m.breed });
+            uniquePetsMap.set(m.petName.toLowerCase(), { 
+              name: m.petName, 
+              type: m.petType, 
+              breed: m.breed,
+              weight: m.weight || '',
+              sex: m.sex || 'Unknown'
+            });
           }
         });
         setKnownPets(Array.from(uniquePetsMap.values()));
@@ -206,6 +212,8 @@ export default function AppointmentsManager({
     setPetName(pet.name);
     setPetType(pet.type);
     setBreed(pet.breed);
+    if (pet.weight) setWeight(pet.weight);
+    if (pet.sex) setSex(pet.sex);
   };
 
   // ---------------------------------------------------------
@@ -213,9 +221,10 @@ export default function AppointmentsManager({
   // ---------------------------------------------------------
   const resetForm = () => {
     setEditingAptId(null);
-    setPetName(''); setBreed(''); setOwnerName(''); setOwnerPhone('+94 '); setOwnerEmail('');
+    setPetName(''); setBreed(''); setWeight(''); setSex('Unknown');
+    setOwnerName(''); setOwnerPhone('+94 '); setOwnerEmail('');
     setReason(''); setFormError(''); setAdmissionType('OPD'); setPhone2(''); setAddress('');
-    setSex('Unknown'); setDate(formatDisplayDate(new Date())); setTime(formatDisplayTime(new Date()));
+    setDate(formatDisplayDate(new Date())); setTime(formatDisplayTime(new Date()));
     setIdentitySearch(''); setKnownPets([]);
     if (liveVets.length > 0) setVeterinarian(liveVets[0].name);
   };
@@ -226,6 +235,8 @@ export default function AppointmentsManager({
     setPetName(apt.petName);
     setPetType(apt.petType);
     setBreed(apt.breed);
+    setWeight(apt.weight || '');
+    setSex(apt.sex || 'Unknown');
     setOwnerName(apt.ownerName);
     setOwnerPhone(enforcePhoneFormat(apt.ownerPhone));
     setOwnerEmail(apt.ownerEmail || '');
@@ -241,11 +252,10 @@ export default function AppointmentsManager({
         const meta = JSON.parse(match[1]);
         setPhone2(meta.phone2 || '');
         setAddress(meta.address || '');
-        setSex(meta.sex || 'Unknown');
         displayReason = apt.reason.replace(match[0], '').trim();
       } catch(e){}
     } else {
-      setPhone2(''); setAddress(''); setSex('Unknown');
+      setPhone2(''); setAddress('');
     }
     
     setReason(displayReason);
@@ -260,7 +270,6 @@ export default function AppointmentsManager({
       return;
     }
 
-    // CRM Sync
     try {
       const clientPayload = {
         client_id: `CLI-${normalizeSearchPhone(ownerPhone)}`,
@@ -279,10 +288,11 @@ export default function AppointmentsManager({
       console.error('[Enterprise OS] CRM Sync Failed:', err);
     }
 
-    const metadata = JSON.stringify({ phone2, address, sex });
+    const metadata = JSON.stringify({ phone2, address });
     const tokenBlock = `:::METADATA${metadata}:::`;
     const packedReason = `${tokenBlock}\n${reason}`;
     const now = new Date().toISOString();
+    const currentWeight = typeof weight === 'number' ? weight : parseFloat(weight as string) || 0;
 
     if (editingAptId) {
       const existingApt = allAppointments.find(a => a.id === editingAptId);
@@ -292,6 +302,8 @@ export default function AppointmentsManager({
         petName: petName.trim(),
         petType,
         breed: breed || 'Mixed breed',
+        weight: currentWeight,
+        sex,
         ownerName: ownerName.trim(),
         ownerPhone: enforcePhoneFormat(ownerPhone),
         ownerEmail: ownerEmail || 'not-provided@example.com',
@@ -312,6 +324,8 @@ export default function AppointmentsManager({
         petName: petName.trim(),
         petType,
         breed: breed || 'Mixed breed',
+        weight: currentWeight,
+        sex,
         ownerName: ownerName.trim(),
         ownerPhone: enforcePhoneFormat(ownerPhone),
         ownerEmail: ownerEmail || 'not-provided@example.com',
@@ -352,7 +366,8 @@ export default function AppointmentsManager({
         petType: apt.petType,
         breed: apt.breed || 'Mixed breed',
         age: 'Unknown',
-        weight: 0,
+        weight: apt.weight || 0,
+        sex: apt.sex || 'Unknown',
         ownerName: apt.ownerName.trim(),
         ownerPhone: enforcePhoneFormat(apt.ownerPhone),
         ownerEmail: apt.ownerEmail || 'not-provided@example.com',
@@ -406,7 +421,6 @@ export default function AppointmentsManager({
 
   const todayStr = toLocalISODate(new Date());
   
-  // Segmenting List View Data
   const todaysListApts = listFilteredApts.filter(a => a.date === todayStr);
   const futureListApts = listFilteredApts.filter(a => new Date(a.date) > new Date(todayStr));
   const pastListApts = listFilteredApts.filter(a => new Date(a.date) < new Date(todayStr));
@@ -933,7 +947,7 @@ export default function AppointmentsManager({
                 
                 {formError && <div className="text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200 font-black shadow-sm">{formError}</div>}
 
-                {/* THE IDENTITY SCANNER BAR (Only on New) */}
+                {/* THE IDENTITY SCANNER BAR (SUPERCHARGED: Auto-fills Weight and Sex too) */}
                 {!editingAptId && !preFilledClient && (
                   <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center gap-4">
                     <div className="bg-indigo-600 p-2 rounded-xl text-white"><SearchCode className="w-5 h-5"/></div>
@@ -1005,6 +1019,24 @@ export default function AppointmentsManager({
                         <div>
                           <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Breed</label>
                           <input type="text" value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="e.g. Labrador" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                        </div>
+                      </div>
+
+                      {/* PHASE 1: Native Weight and Sex Inputs */}
+                      <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                        <div>
+                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Weight (kg)</label>
+                          <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 15.5" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Sex</label>
+                          <select value={sex} onChange={(e) => setSex(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                            <option value="Unknown">Unknown</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Neutered Male">Neutered Male</option>
+                            <option value="Spayed Female">Spayed Female</option>
+                          </select>
                         </div>
                       </div>
                     </div>

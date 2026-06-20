@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, Plus, Edit2, Trash2, AlertTriangle, 
-  Package, Activity, X, CheckCircle2, RefreshCw, Layers, DollarSign
+  Package, Activity, X, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
 } from 'lucide-react';
 import { InventoryItem, ItemCategory } from '../types';
 import { fetchInventory, upsertInventoryItem } from '../lib/db';
@@ -46,7 +46,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
   const [adjustAmount, setAdjustAmount] = useState<number | string>('');
 
   const [formData, setFormData] = useState<Partial<InventoryItem>>({
-    sku: '', name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit'
+    sku: '', name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', labParameters: []
   });
 
   useEffect(() => {
@@ -68,6 +68,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
     }
 
     const isPhysical = !['service', 'lab_service'].includes(formData.category as string);
+    const isLab = formData.category === 'lab_service';
 
     const payload: InventoryItem = {
       id: editingItem ? editingItem.id : crypto.randomUUID(),
@@ -79,7 +80,8 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
       stock: isPhysical ? (Number(formData.stock) || 0) : 0,
       minStock: isPhysical ? (Number(formData.minStock) || 0) : 0,
       unit: formData.unit || 'unit',
-      location: formData.location || ''
+      location: formData.location || '',
+      labParameters: isLab ? (formData.labParameters || []) : undefined
     };
 
     await upsertInventoryItem(payload);
@@ -115,14 +117,34 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
 
   const openEdit = (item: InventoryItem) => {
     setEditingItem(item);
-    setFormData({ ...item });
+    setFormData({ ...item, labParameters: item.labParameters || [] });
     setShowAddModal(true);
   };
 
   const openNew = () => {
     setEditingItem(null);
-    setFormData({ sku: `SKU-${Date.now().toString().slice(-6)}`, name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', location: '' });
+    setFormData({ sku: `SKU-${Date.now().toString().slice(-6)}`, name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', location: '', labParameters: [] });
     setShowAddModal(true);
+  };
+
+  // Lab Parameters Builder Functions
+  const handleAddLabParameter = () => {
+    setFormData({
+      ...formData,
+      labParameters: [...(formData.labParameters || []), { name: '', referenceRange: '', unit: '' }]
+    });
+  };
+
+  const handleUpdateLabParameter = (index: number, field: 'name' | 'referenceRange' | 'unit', value: string) => {
+    const newParams = [...(formData.labParameters || [])];
+    newParams[index] = { ...newParams[index], [field]: value };
+    setFormData({ ...formData, labParameters: newParams });
+  };
+
+  const handleRemoveLabParameter = (index: number) => {
+    const newParams = [...(formData.labParameters || [])];
+    newParams.splice(index, 1);
+    setFormData({ ...formData, labParameters: newParams });
   };
 
   // Compute filtering and stats
@@ -139,6 +161,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
   const lowStockCount = physicalItems.filter(i => i.stock <= i.minStock).length;
   const totalValue = physicalItems.reduce((sum, item) => sum + (item.cost * item.stock), 0);
   const isFormPhysical = !['service', 'lab_service'].includes(formData.category as string);
+  const isFormLab = formData.category === 'lab_service';
 
   return (
     <div className="flex flex-col h-full bg-slate-50 w-full overflow-hidden p-6 gap-6">
@@ -234,7 +257,12 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                 return (
                   <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <div className="font-black text-slate-800 text-sm">{item.name}</div>
+                      <div className="font-black text-slate-800 text-sm flex items-center gap-2">
+                        {item.name}
+                        {item.category === 'lab_service' && item.labParameters && item.labParameters.length > 0 && (
+                          <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[8px] px-1.5 py-0.5 rounded flex items-center gap-1"><TestTube className="w-2 h-2"/> {item.labParameters.length} Params</span>
+                        )}
+                      </div>
                       <div className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">{item.sku}</div>
                     </td>
                     <td className="px-6 py-4">
@@ -284,7 +312,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
       {/* MODAL: Full Add/Edit Form */}
       {showAddModal && createPortal(
         <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[90vh]">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh]">
             <div className="p-6 border-b border-slate-100 shrink-0 flex justify-between items-start bg-slate-50/50">
               <div>
                 <h2 className="text-lg font-black text-slate-800">{editingItem ? 'Edit Registry Item' : 'New Inventory Record'}</h2>
@@ -294,10 +322,10 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
             </div>
 
             <form onSubmit={handleSaveItem} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+              <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 bg-white">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item Name *</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item / Test Name *</label>
                     <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
                   </div>
                   <div>
@@ -311,7 +339,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                       <option value="prescription">Pharmacy Rx</option>
                       <option value="vaccine">Vaccine</option>
                       <option value="service">Clinical Service</option>
-                      <option value="lab_service">Lab Test</option>
+                      <option value="lab_service">Lab Test (Diagnostic)</option>
                     </select>
                   </div>
                 </div>
@@ -328,7 +356,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                 </div>
 
                 {isFormPhysical ? (
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-3 gap-4 animate-fade-in">
                     <div>
                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Current Stock</label>
                       <input type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
@@ -342,20 +370,76 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                       <input type="text" placeholder="e.g. tablet, box" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
                     </div>
                   </div>
+                ) : isFormLab ? (
+                  /* PHASE 2: DYNAMIC LAB PARAMETER BUILDER */
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 animate-fade-in shadow-inner">
+                    <div className="flex items-center justify-between border-b border-indigo-200 pb-3 mb-4">
+                      <div>
+                        <h4 className="text-xs font-black text-indigo-900 flex items-center gap-2"><TestTube className="w-4 h-4"/> Diagnostic Parameter Matrix</h4>
+                        <p className="text-[9px] font-bold text-indigo-600 mt-1 uppercase tracking-widest">Define the reference ranges & units for this specific test.</p>
+                      </div>
+                      <button type="button" onClick={handleAddLabParameter} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors cursor-pointer flex items-center gap-1">
+                        <Plus className="w-3 h-3"/> Add Parameter
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {formData.labParameters && formData.labParameters.length === 0 ? (
+                        <div className="text-center py-6 text-indigo-400 font-bold text-xs border border-dashed border-indigo-200 rounded-xl">
+                          No parameters defined. The lab module will only show a general notes box for this test.
+                        </div>
+                      ) : (
+                        formData.labParameters?.map((param, index) => (
+                          <div key={index} className="flex gap-2 items-center bg-white p-2 rounded-xl border border-indigo-100 shadow-sm animate-fade-in">
+                            <input 
+                              type="text" 
+                              placeholder="Name (e.g. WBC, RBC)" 
+                              value={param.name} 
+                              onChange={(e) => handleUpdateLabParameter(index, 'name', e.target.value)}
+                              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                            />
+                            <input 
+                              type="text" 
+                              placeholder="Range (e.g. 6.0 - 17.0)" 
+                              value={param.referenceRange} 
+                              onChange={(e) => handleUpdateLabParameter(index, 'referenceRange', e.target.value)}
+                              className="w-1/3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                            />
+                            <input 
+                              type="text" 
+                              placeholder="Unit (e.g. 10^9/L)" 
+                              value={param.unit} 
+                              onChange={(e) => handleUpdateLabParameter(index, 'unit', e.target.value)}
+                              className="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                            />
+                            <button 
+                              type="button" 
+                              onClick={() => handleRemoveLabParameter(index)}
+                              className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Remove Parameter"
+                            >
+                              <MinusCircle className="w-5 h-5"/>
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 ) : (
-                  <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-start gap-3">
+                  <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-start gap-3 animate-fade-in">
                     <Activity className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-xs font-black text-indigo-900">Infinite Capacity Item</h4>
-                      <p className="text-[10px] font-semibold text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Service or Lab Test, physical stock tracking is disabled.</p>
+                      <h4 className="text-xs font-black text-indigo-900">Infinite Capacity Service</h4>
+                      <p className="text-[10px] font-semibold text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Clinical Service, physical stock tracking is disabled.</p>
                     </div>
                   </div>
                 )}
+
               </div>
-              <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3">
+              <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3 z-10">
                 <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
                 <button type="submit" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <CheckCircle2 className="w-4 h-4"/> Save Item
+                  <CheckCircle2 className="w-4 h-4"/> Save Record
                 </button>
               </div>
             </form>
