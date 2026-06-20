@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, FileText, Printer, ShieldAlert, X, DollarSign, 
@@ -12,17 +12,33 @@ import {
 import { Invoice } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
+import { fetchInvoices, upsertInvoice } from '../lib/db'; // <-- SECURED: Direct DB Link
 
 interface InvoicesProps {
-  invoices: Invoice[];
-  onVoidInvoice?: (id: string) => void;
+  invoices?: Invoice[]; // Kept as optional to prevent App.tsx type errors
+  onVoidInvoice?: any;  // Kept as optional to prevent App.tsx type errors
   systemConfig?: any;
 }
 
-export default function InvoicesManager({ invoices = [], onVoidInvoice, systemConfig }: InvoicesProps) {
+export default function InvoicesManager({ systemConfig }: InvoicesProps) {
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'paid' | 'void'>('All');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  // BOOT SEQUENCE: Direct DB Fetch bypasses App.tsx state failures
+  useEffect(() => {
+    loadFinancialArchive();
+  }, []);
+
+  const loadFinancialArchive = async () => {
+    try {
+      const data = await fetchInvoices();
+      setInvoices(data);
+    } catch (err) {
+      console.error('[Enterprise OS] Failed to load archive:', err);
+    }
+  };
 
   // High-Speed Filtering Engine
   const filteredInvoices = useMemo(() => {
@@ -37,7 +53,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
         );
       }
       return true;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }); // Sorting is handled natively by the fetchInvoices DB driver
   }, [invoices, searchQuery, statusFilter]);
 
   // KPI Calculations
@@ -46,20 +62,21 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
   const voidedCount = invoices.filter(i => i.paymentStatus === 'void').length;
   const currencySign = systemConfig?.currencySymbol || 'Rs.';
 
-  const handleVoid = () => {
+  const handleVoid = async () => {
     if (!selectedInvoice) return;
     if (selectedInvoice.paymentStatus === 'void') {
       showToast('This invoice is already voided.', 'error');
       return;
     }
     if (window.confirm(`CRITICAL ACTION: Are you sure you want to VOID Invoice ${selectedInvoice.invoiceNumber}? This will mark the revenue as zero.`)) {
-      if (onVoidInvoice) {
-        onVoidInvoice(selectedInvoice.id);
-        showToast(`Invoice ${selectedInvoice.invoiceNumber} successfully voided.`, 'success');
-        setSelectedInvoice(null);
-      } else {
-        showToast('Void protocol is not connected to the master database.', 'error');
-      }
+      
+      // DIRECT DB MUTATION: Safely voids without relying on App.tsx
+      const target = { ...selectedInvoice, paymentStatus: 'void' as const };
+      await upsertInvoice(target);
+      await loadFinancialArchive(); // Instantly refresh the grid
+      
+      showToast(`Invoice ${selectedInvoice.invoiceNumber} successfully voided.`, 'success');
+      setSelectedInvoice(null);
     }
   };
 

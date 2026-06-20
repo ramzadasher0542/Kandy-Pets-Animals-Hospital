@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ShoppingBag, Search, Tag, Trash2, Plus, Minus, UserPlus, CreditCard, Coins, FileText, Printer, ArrowRight, Lock, Activity, Sparkles, QrCode } from 'lucide-react';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, PaymentMethod, User as StaffUser, MedicalRecord, ActiveShift } from '../types';
 import { showToast } from './Toast';
-import { addRevenueToActiveShift } from '../lib/db';
+import { addRevenueToActiveShift, upsertInvoice } from '../lib/db';
 
 interface POSProps {
   inventory: InventoryItem[]; appointments: Appointment[]; records: MedicalRecord[];
@@ -183,6 +183,7 @@ export default function POSRegister({ inventory, appointments, records, currentU
         }
       }
 
+      await upsertInvoice(invoiceObj);
       await onAddInvoice(invoiceObj);
       setCheckoutSuccess(invoiceObj);
       handleResetActiveRegisterCartAtomic();
