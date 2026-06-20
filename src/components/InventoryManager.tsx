@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { InventoryItem, ItemCategory } from '../types';
 import { fetchInventory, upsertInventoryItem } from '../lib/db';
-import { db } from '../lib/localDb'; // For direct deletion
+import { db } from '../lib/localDb'; 
 import { showToast } from './Toast';
 
 const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] = [
@@ -23,7 +23,14 @@ const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] =
   { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' }
 ];
 
-interface InventoryProps { inventory?: InventoryItem[]; onAddProduct?: any; onUpdateStock?: any; onUpdatePrice?: any; onUpdateInventory?: (items: InventoryItem[]) => void; systemConfig?: any; }
+interface InventoryProps {
+  inventory?: InventoryItem[];
+  onAddProduct?: any;
+  onUpdateStock?: any;
+  onUpdatePrice?: any;
+  onUpdateInventory?: (items: InventoryItem[]) => void;
+  systemConfig?: any;
+}
 
 export default function InventoryManager({ onUpdateInventory }: InventoryProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -50,7 +57,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
     const data = await fetchInventory();
     const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
     setItems(sorted);
-    if (onUpdateInventory) onUpdateInventory(sorted);
+    if (onUpdateInventory) onUpdateInventory(sorted); // Global Sync Cable active
   };
 
   const handleSaveItem = async (e: React.FormEvent) => {
@@ -131,7 +138,6 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
   const physicalItems = items.filter(i => !['service', 'lab_service'].includes(i.category));
   const lowStockCount = physicalItems.filter(i => i.stock <= i.minStock).length;
   const totalValue = physicalItems.reduce((sum, item) => sum + (item.cost * item.stock), 0);
-
   const isFormPhysical = !['service', 'lab_service'].includes(formData.category as string);
 
   return (
@@ -139,8 +145,6 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
       
       {/* Top Action & Stats Bar */}
       <div className="flex flex-wrap lg:flex-nowrap gap-6 shrink-0">
-        
-        {/* KPI Cards */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
             <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600"><Layers className="w-6 h-6" /></div>
@@ -149,43 +153,34 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
               <div className="text-xl font-black text-slate-800">{items.length} <span className="text-xs text-slate-500 font-bold ml-1">Items</span></div>
             </div>
           </div>
-          
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
             <div className={`${lowStockCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'} p-3 rounded-xl`}>
               {lowStockCount > 0 ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
             </div>
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Alerts</div>
-              <div className={`text-xl font-black ${lowStockCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {lowStockCount} <span className="text-xs font-bold ml-1">Critical</span>
-              </div>
+              <div className={`text-xl font-black ${lowStockCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{lowStockCount} <span className="text-xs font-bold ml-1">Critical</span></div>
             </div>
           </div>
-
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
             <div className="bg-emerald-50 p-3 rounded-xl text-emerald-600"><DollarSign className="w-6 h-6" /></div>
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Physical Asset Value</div>
-              <div className="text-xl font-black font-mono text-slate-800">
-                {(totalValue).toFixed(2)}
-              </div>
+              <div className="text-xl font-black font-mono text-slate-800">{(totalValue).toFixed(2)}</div>
             </div>
           </div>
         </div>
-
       </div>
 
       {/* Control Panel */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 custom-scrollbar">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-2 overflow-x-auto w-full xl:w-auto pb-2 xl:pb-0 custom-scrollbar">
           {CATEGORIES.map(cat => (
             <button 
               key={cat.id} 
               onClick={() => setActiveCategory(cat.id as any)}
               className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                activeCategory === cat.id 
-                  ? 'bg-slate-800 text-white shadow-md' 
-                  : `bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200`
+                activeCategory === cat.id ? 'bg-slate-800 text-white shadow-md' : `bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200`
               }`}
             >
               {cat.label}
@@ -193,8 +188,8 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
           ))}
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-          <div className="relative w-full md:w-64">
+        <div className="flex items-center gap-3 w-full xl:w-auto justify-end flex-wrap">
+          <div className="relative flex-1 xl:w-64 min-w-[200px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input 
               type="text" 
@@ -300,8 +295,6 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
 
             <form onSubmit={handleSaveItem} className="flex flex-col flex-1 overflow-hidden">
               <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                
-                {/* Primary Info */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item Name *</label>
@@ -323,7 +316,6 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                   </div>
                 </div>
 
-                {/* Financials */}
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1"><DollarSign className="w-3 h-3"/> Cost Price (Buying)</label>
@@ -335,7 +327,6 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                   </div>
                 </div>
 
-                {/* Stock Logistics (Hides if abstract service) */}
                 {isFormPhysical ? (
                   <div className="grid grid-cols-3 gap-4">
                     <div>
@@ -348,11 +339,7 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Unit Metric</label>
-                      <input type="text" placeholder="e.g. tablet, vial, box" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
-                    </div>
-                    <div className="col-span-3">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Storage Location (Optional)</label>
-                      <input type="text" placeholder="e.g. Shelf A, Fridge 2" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
+                      <input type="text" placeholder="e.g. tablet, box" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
                     </div>
                   </div>
                 ) : (
@@ -360,16 +347,15 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
                     <Activity className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="text-xs font-black text-indigo-900">Infinite Capacity Item</h4>
-                      <p className="text-[10px] font-semibold text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Service or Lab Test, physical stock tracking is disabled. It will always be available in the POS and Exam Room.</p>
+                      <p className="text-[10px] font-semibold text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Service or Lab Test, physical stock tracking is disabled.</p>
                     </div>
                   </div>
                 )}
-
               </div>
               <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3">
                 <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
                 <button type="submit" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <CheckCircle2 className="w-4 h-4"/> {editingItem ? 'Save Updates' : 'Add to Registry'}
+                  <CheckCircle2 className="w-4 h-4"/> Save Item
                 </button>
               </div>
             </form>

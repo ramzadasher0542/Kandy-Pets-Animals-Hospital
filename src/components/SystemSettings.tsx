@@ -3,13 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Building2, Printer, Users, ShieldAlert, Save, Plus, 
-  Trash2, Database, Cloud, RefreshCw, Power, X, Lock, CheckCircle2, User
+  Trash2, Database, Power, X, Lock, CheckCircle2, User,
+  FileText, Download, Upload, Layers, AlertTriangle
 } from 'lucide-react';
 import { showToast } from './Toast';
+import { fetchInventory, upsertInventoryItem } from '../lib/db';
+import { ItemCategory, InventoryItem } from '../types';
 
 export interface SystemConfig {
   appName: string;
@@ -62,16 +65,21 @@ interface SettingsProps {
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onHardReboot
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onHardReboot, onUpdateInventory
 }: SettingsProps) {
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'danger'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'database'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
   const [hasChanges, setHasChanges] = useState(false);
   
   // Modal States
   const [showAddStaff, setShowAddStaff] = useState(false);
   const [newStaff, setNewStaff] = useState({ name: '', username: '', role: 'veterinarian', pin: '' });
+
+  // Bulk CSV States
+  const [stagedImports, setStagedImports] = useState<any[]>([]);
+  const [showStagingModal, setShowStagingModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalConfig(config);
@@ -114,11 +122,131 @@ export default function SystemSettings({
     setNewStaff({ name: '', username: '', role: 'veterinarian', pin: '' });
   };
 
+  // ==========================================
+  // CSV BULK LOGISTICS ENGINE
+  // ==========================================
+
+  const downloadCSV = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportTemplate = () => {
+    const headers = "sku,name,category,price,cost,stock,minStock,unit,location\n";
+    const sample = "SKU-SAMPLE-01,Premium Dog Food,retail,45.00,25.00,50,10,bag,Shelf A\n";
+    downloadCSV('ceylonpets_inventory_template.csv', headers + sample);
+    showToast('Template downloaded.', 'success');
+  };
+
+  const exportCurrentInventory = async () => {
+    const liveItems = await fetchInventory();
+    if (liveItems.length === 0) {
+      showToast('Inventory database is currently empty.', 'error');
+      return;
+    }
+    const headers = "sku,name,category,price,cost,stock,minStock,unit,location\n";
+    const rows = liveItems.map(i => {
+      const name = `"${i.name.replace(/"/g, '""')}"`;
+      const loc = `"${(i.location || '').replace(/"/g, '""')}"`;
+      return `${i.sku},${name},${i.category},${i.price},${i.cost},${i.stock},${i.minStock},${i.unit},${loc}`;
+    }).join('\n');
+    downloadCSV(`master_inventory_export_${new Date().toISOString().split('T')[0]}.csv`, headers + rows);
+    showToast('Registry exported successfully.', 'success');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      
+      const lines = text.split('\n').filter(l => l.trim() !== '');
+      if (lines.length < 2) {
+        showToast('CSV is empty or missing headers.', 'error');
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const parsedData = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        // Regex to split by comma, ignoring commas inside quotes
+        const match = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/^"|"$/g, '').trim());
+        
+        const obj: any = {};
+        headers.forEach((h, index) => {
+          obj[h] = values[index] || '';
+        });
+
+        obj._isValid = !!obj.sku && !!obj.name;
+        obj._validationMessage = obj._isValid ? 'Ready to sync' : 'Missing SKU or Name';
+        
+        const validCategories = ['retail', 'prescription', 'vaccine', 'service', 'lab_service'];
+        if (!validCategories.includes(obj.category)) {
+          obj.category = 'retail';
+        }
+        parsedData.push(obj);
+      }
+
+      setStagedImports(parsedData);
+      setShowStagingModal(true);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const approveAndCommitImports = async () => {
+    const validItems = stagedImports.filter(i => i._isValid);
+    if (validItems.length === 0) return;
+
+    // Fetch the live database to check for existing SKUs to overwrite
+    const currentLiveInventory = await fetchInventory();
+
+    for (const raw of validItems) {
+      const existing = currentLiveInventory.find(i => i.sku === raw.sku);
+      const isPhysical = !['service', 'lab_service'].includes(raw.category);
+
+      const payload: InventoryItem = {
+        id: existing ? existing.id : crypto.randomUUID(),
+        sku: raw.sku,
+        name: raw.name,
+        category: raw.category as ItemCategory,
+        price: Number(raw.price) || 0,
+        cost: Number(raw.cost) || 0,
+        stock: isPhysical ? (Number(raw.stock) || 0) : 0,
+        minStock: isPhysical ? (Number(raw.minstock || raw.minStock) || 0) : 0,
+        unit: raw.unit || 'unit',
+        location: raw.location || ''
+      };
+
+      await upsertInventoryItem(payload);
+    }
+
+    // Force Global Sync so POS and Dashboard update instantly
+    const updatedInventory = await fetchInventory();
+    if (onUpdateInventory) onUpdateInventory(updatedInventory);
+    
+    setStagedImports([]);
+    setShowStagingModal(false);
+    showToast(`Successfully synced ${validItems.length} items to the database.`, 'success');
+  };
+
   const TABS = [
     { id: 'profile', label: 'Hospital Profile', icon: Building2 },
     { id: 'pos', label: 'Hardware & POS', icon: Printer },
     { id: 'staff', label: 'Staff & Security', icon: Users },
-    { id: 'danger', label: 'Danger Zone', icon: ShieldAlert, danger: true }
+    { id: 'database', label: 'Data & Operations', icon: Database, danger: true }
   ];
 
   return (
@@ -296,9 +424,40 @@ export default function SystemSettings({
             </div>
           )}
 
-          {/* TAB 4: THE DANGER ZONE */}
-          {activeTab === 'danger' && (
+          {/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
+          {activeTab === 'database' && (
             <div className="space-y-6 animate-fade-in">
+              
+              {/* SECTION: Bulk Inventory Logistics */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Mass Inventory Import / Export</h3>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Safely backup the live registry or stage bulk CSV uploads to update stock quantities.</p>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button onClick={exportTemplate} className="p-4 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                    <div className="w-10 h-10 bg-white text-indigo-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5"/></div>
+                    <span className="text-xs font-black text-slate-800">Download Template</span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
+                  </button>
+                  
+                  <button onClick={exportCurrentInventory} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                    <div className="w-10 h-10 bg-white text-emerald-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Download className="w-5 h-5"/></div>
+                    <span className="text-xs font-black text-slate-800">Export Registry</span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
+                  </button>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative overflow-hidden group">
+                    <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                    <div className="w-10 h-10 bg-white text-sky-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Upload className="w-5 h-5"/></div>
+                    <span className="text-xs font-black text-slate-800">Upload CSV</span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: The Danger Zone */}
               <div className="bg-rose-50 p-6 rounded-2xl border border-rose-200 shadow-sm space-y-6 relative overflow-hidden">
                 <div className="absolute -right-12 -top-12 opacity-10"><ShieldAlert className="w-64 h-64 text-rose-500" /></div>
                 <div className="relative z-10">
@@ -328,11 +487,78 @@ export default function SystemSettings({
                   </div>
                 </div>
               </div>
+
             </div>
           )}
 
         </div>
       </main>
+
+      {/* MODAL: CSV Import Staging Area */}
+      {showStagingModal && createPortal(
+        <div className="fixed inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[90vh]">
+            
+            <div className="p-6 border-b border-slate-100 shrink-0 flex justify-between items-start bg-slate-50/50">
+              <div>
+                <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-600" /> Pre-Sync Staging Area</h2>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Verify parsed data before overwriting the master registry</p>
+              </div>
+              <button onClick={() => { setShowStagingModal(false); setStagedImports([]); }} className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col p-6 bg-slate-100/50">
+              <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden flex flex-col h-full">
+                <div className="bg-slate-800 p-3 flex justify-between items-center shrink-0">
+                  <h4 className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2"><Database className="w-4 h-4 text-sky-400" /> Parsed CSV Data</h4>
+                  <span className="text-[10px] font-black bg-white/20 text-white px-2 py-0.5 rounded shadow-sm">{stagedImports.length} Rows Detected</span>
+                </div>
+                <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
+                  <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">SKU</th>
+                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Name</th>
+                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Stock/Min</th>
+                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Cost/Price</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {stagedImports.map((row, idx) => (
+                        <tr key={idx} className={row._isValid ? 'hover:bg-slate-50' : 'bg-rose-50'}>
+                          <td className="px-4 py-2">
+                            {row._isValid ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <AlertTriangle className="w-4 h-4 text-rose-500" title={row._validationMessage} />}
+                          </td>
+                          <td className="px-4 py-2 font-mono font-bold text-slate-600">{row.sku || 'MISSING'}</td>
+                          <td className="px-4 py-2 font-bold text-slate-800">{row.name || 'MISSING'}</td>
+                          <td className="px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-indigo-600">{row.category}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-right">{row.stock}/{row.minstock || row.minStock}</td>
+                          <td className="px-4 py-2 font-mono font-bold text-right">{row.cost}/{row.price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white border-t border-slate-200 shrink-0 flex justify-between items-center z-10">
+              <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">
+                {stagedImports.filter(i => !i._isValid).length} Errors detected. Invalid rows will be ignored during sync.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => { setShowStagingModal(false); setStagedImports([]); }} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel Import</button>
+                <button onClick={approveAndCommitImports} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                  <Database className="w-4 h-4"/> Overwrite Master Registry
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* MODAL: Issue ID Card (Add Staff) */}
       {showAddStaff && createPortal(
