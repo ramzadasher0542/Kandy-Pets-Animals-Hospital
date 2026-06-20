@@ -8,11 +8,12 @@ import { createPortal } from 'react-dom';
 import { 
   Calendar as CalendarIcon, Clock, Search, Plus, User, CheckCircle2, 
   Activity, X, ChevronLeft, ChevronRight, List as ListIcon, 
-  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool
+  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, PawPrint
 } from 'lucide-react';
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
+import { upsertClient } from '../lib/db'; // <-- PHASE 1: CRM Sync Link Established
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -26,6 +27,16 @@ interface AppointmentsProps {
   preFilledPet?: any;
   onGenerateConsent?: (clientName: string, petName: string) => void;
 }
+
+// BULLETPROOF TELECOM NORMALIZER
+const normalizePhone = (p: string) => {
+  if (!p) return '';
+  let digits = p.replace(/\D/g, '');
+  if (digits.startsWith('94')) {
+    digits = '0' + digits.slice(2);
+  }
+  return digits;
+};
 
 export default function AppointmentsManager({ 
   appointments,
@@ -51,14 +62,11 @@ export default function AppointmentsManager({
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
 
   useEffect(() => {
-    // Bug #6 Fix: Removed legacy localStorage.getItem('ceylon_history_v2') read.
-    // The appointments prop (hydrated from IndexedDB vault) is the single source of truth.
     const sorted = [...appointments].sort((a, b) => {
       const dateA = new Date(`${a.date}T${a.time}`);
       const dateB = new Date(`${b.date}T${b.time}`);
       return dateB.getTime() - dateA.getTime();
     });
-
     setAllAppointments(sorted);
   }, [appointments]);
 
@@ -154,12 +162,34 @@ export default function AppointmentsManager({
     setShowAddModal(true);
   };
 
-  const handleCreateAppointment = (e: React.FormEvent | React.KeyboardEvent) => {
+  const handleCreateAppointment = async (e: React.FormEvent | React.KeyboardEvent) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!petName || !date || !time) {
       setFormError('Patient Name, Visit Date, and Time are required.');
       return;
     }
+
+    // --- PHASE 1: ENTERPRISE CRM DUAL-WRITE ENGINE ---
+    if (ownerName && ownerPhone) {
+      try {
+        const clientPayload = {
+          client_id: `CLI-${normalizePhone(ownerPhone)}`,
+          full_name: ownerName.trim(),
+          primary_phone: ownerPhone.trim(),
+          alternate_phone: phone2 || '',
+          email_address: ownerEmail || '',
+          physical_address: address || '',
+          communication_preference: 'sms' as any,
+          account_balance: 0,
+          lifetime_value: 0,
+          client_status: 'active' as any
+        };
+        await upsertClient(clientPayload);
+      } catch (err) {
+        console.error('[Enterprise OS] CRM Sync Failed:', err);
+      }
+    }
+    // -------------------------------------------------
 
     const metadata = JSON.stringify({ phone2, address, sex });
     const tokenBlock = `:::METADATA${metadata}:::`;
@@ -171,11 +201,11 @@ export default function AppointmentsManager({
       const updatedApt = {
         ...existingApt,
         id: editingAptId,
-        petName,
+        petName: petName.trim(),
         petType,
         breed: breed || 'Mixed breed',
-        ownerName,
-        ownerPhone,
+        ownerName: ownerName.trim(),
+        ownerPhone: ownerPhone.trim(),
         ownerEmail: ownerEmail || 'not-provided@example.com',
         date: formatDisplayDate(date),
         time: formatDisplayTime(time),
@@ -194,11 +224,11 @@ export default function AppointmentsManager({
       const newApt = {
         id: crypto.randomUUID(),
         aptNumber,
-        petName,
+        petName: petName.trim(),
         petType,
         breed: breed || 'Mixed breed',
-        ownerName,
-        ownerPhone,
+        ownerName: ownerName.trim(),
+        ownerPhone: ownerPhone.trim(),
         ownerEmail: ownerEmail || 'not-provided@example.com',
         date: formatDisplayDate(date),
         time: formatDisplayTime(time),
@@ -220,20 +250,26 @@ export default function AppointmentsManager({
 
   const handleCheckIn = (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
-    const normalizedPhone = apt.ownerPhone.replace(/\D/g, '');
-    const patientExists = records.some(r => r.ownerPhone.replace(/\D/g, '') === normalizedPhone && r.petName.toLowerCase() === apt.petName.toLowerCase());
+    
+    const targetPhone = normalizePhone(apt.ownerPhone);
+    const targetPetName = (apt.petName || '').trim().toLowerCase();
+
+    const patientExists = records.some(r => 
+      normalizePhone(r.ownerPhone) === targetPhone && 
+      (r.petName || '').trim().toLowerCase() === targetPetName
+    );
     
     if (!patientExists) {
       const newRecord: MedicalRecord = {
-        id: crypto.randomUUID(), // Bug #4 Fix: Use UUID instead of Date.now() to prevent multi-terminal collisions
-        patientId: `${apt.petName}_${normalizedPhone}`,
-        petName: apt.petName,
+        id: crypto.randomUUID(),
+        patientId: `${targetPetName}_${targetPhone}`,
+        petName: apt.petName.trim(),
         petType: apt.petType,
         breed: apt.breed || 'Mixed breed',
         age: 'Unknown',
         weight: 0,
-        ownerName: apt.ownerName,
-        ownerPhone: apt.ownerPhone,
+        ownerName: apt.ownerName.trim(),
+        ownerPhone: apt.ownerPhone.trim(),
         ownerEmail: apt.ownerEmail || 'not-provided@example.com',
         visitDate: apt.date,
         attendingVet: apt.veterinarian,
@@ -735,125 +771,151 @@ export default function AppointmentsManager({
         document.body
       )}
 
-      {/* Main Appointment Form Modal */}
+      {/* Main Appointment Form Modal - NEW UI OVERHAUL */}
       {showAddModal && createPortal(
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-sky-100 max-w-xl w-full text-[10px] shadow-xl animate-fade-in flex flex-col overflow-hidden max-h-[calc(100vh-40px)]">
-            <div className="flex justify-between items-start shrink-0 p-6 pb-4 border-b border-slate-100">
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-sky-100 max-w-2xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]">
+            
+            <div className="flex justify-between items-start shrink-0 p-6 pb-4 border-b border-slate-100 bg-white z-10">
               <div>
-                <h4 className="text-sm font-extrabold text-slate-800 leading-none">{editingAptId ? 'Edit Appointment Details' : 'Schedule Veterinary Check-up'}</h4>
-                <p className="text-[10px] text-slate-400 mt-1">Update patient details and primary clinic complaint</p>
+                <h4 className="text-base font-black text-slate-800 leading-none">{editingAptId ? 'Edit Appointment Details' : 'Schedule Veterinary Check-up'}</h4>
+                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Central CRM & Schedule Link</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer">✕</button>
+              <button onClick={() => setShowAddModal(false)} className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer transition-colors"><X className="w-5 h-5"/></button>
             </div>
+            
             <form onSubmit={handleCreateAppointment} className="flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-4">
-                {formError && <div className="text-red-600 bg-red-50 p-2 rounded mb-4 border border-red-200">{formError}</div>}
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-100/50 space-y-4">
                 
-                <div className="grid grid-cols-3 gap-4 text-[11px]">
-                  <div className="col-span-3 pb-2 border-b border-slate-100 mb-2 flex items-center gap-4">
-                    <div className="flex-1 max-w-[150px]">
-                      <label className="font-bold text-slate-600 block text-[10px] mb-1">Appointment Number</label>
-                      <input type="text" readOnly value={currentDisplayAptNumber} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-mono font-bold cursor-not-allowed focus:outline-none text-xs" />
+                {formError && <div className="text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200 font-black shadow-sm">{formError}</div>}
+
+                {/* TIER 1: Administration */}
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                  <div className="flex-1 max-w-[200px]">
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Appointment ID</label>
+                    <input type="text" readOnly value={currentDisplayAptNumber} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-mono font-bold cursor-not-allowed outline-none text-xs" />
+                  </div>
+                  <div className="flex-1 max-w-[250px]">
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Admission Type</label>
+                    <select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                      <option value="OPD">OPD</option>
+                      <option value="Pet Boarding">Pet Boarding</option>
+                      <option value="Hospital Admission">Hospital Admission</option>
+                      <option value="Vaccination">Vaccination</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* TIER 2: Patient & Owner Split */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                  {/* Patient Block */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><PawPrint className="w-3.5 h-3.5"/> Patient Details</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name *</label>
+                        <input type="text" required value={petName} onChange={(e) => { setPetName(e.target.value); setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !petName ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs`} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Species</label>
+                          <select value={petType} onChange={(e) => setPetType(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                            <option value="Canine">Canine</option>
+                            <option value="Feline">Feline</option>
+                            <option value="Avian">Avian</option>
+                            <option value="Reptile">Reptile</option>
+                            <option value="Small Mammal">Small Mammal</option>
+                            <option value="Exotic">Exotic</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Breed</label>
+                          <input type="text" value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="e.g. Labrador" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 max-w-[200px]">
-                      <label className="font-bold text-slate-600 block text-[10px] mb-1" htmlFor="admission-type">Admission Type</label>
-                      <select name="admissionType" id="admission-type" value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs">
-                        <option value="OPD">OPD</option>
-                        <option value="Pet Boarding">Pet Boarding</option>
-                        <option value="Hospital Admission">Hospital Admission</option>
-                        <option value="Vaccination">Vaccination</option>
+                  </div>
+
+                  {/* Client Block */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col">
+                    <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2 shrink-0"><User className="w-3.5 h-3.5"/> Client Details</h3>
+
+                    {preFilledClient && !editingAptId ? (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between shadow-xs mt-auto mb-auto">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-emerald-600 text-white p-2 rounded-xl shadow-sm"><User className="w-4 h-4" /></div>
+                          <div>
+                            <div className="text-xs font-black text-emerald-900 leading-tight">{ownerName}</div>
+                            <div className="text-[10px] text-emerald-700 font-mono mt-0.5 font-bold">{ownerPhone}</div>
+                          </div>
+                        </div>
+                        <Lock className="w-4 h-4 text-emerald-400" />
+                      </div>
+                    ) : (
+                      <div className="space-y-3 flex-1">
+                        <div>
+                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Owner Name *</label>
+                          <input type="text" required value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Phone *</label>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-3 font-mono font-bold text-slate-400 text-[10px]">+94</span>
+                              <input type="text" required value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Email</label>
+                            <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+                {/* TIER 3: Visit Logistics */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><Clock className="w-3.5 h-3.5"/> Schedule & Logistics</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Visit Date</label>
+                      <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !date ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer`} />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Time Slot</label>
+                      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs cursor-pointer" />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Attending Vet</label>
+                      <select value={veterinarian} onChange={(e) => setVeterinarian(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                        <option value="Dr. Bandara">Dr. Bandara</option>
+                        <option value="Dr. Ismail">Dr. Ismail</option>
+                        <option value="Residential Doctor">Residential Doctor</option>
+                        <option value="OPD Doctor">OPD Doctor</option>
+                        <option value="Emergency Doctor">Emergency Doctor</option>
                       </select>
                     </div>
                   </div>
-
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="patient-name">Patient Name *</label>
-                    <input name="patientName" id="patient-name" type="text" required maxLength={100} value={petName} onChange={(e) => { setPetName(e.target.value); if (formError) setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !petName ? 'border-red-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs`} />
-                  </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="animal-classification">Animal Classification</label>
-                    <select name="animalClassification" id="animal-classification" value={petType} onChange={(e) => setPetType(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs">
-                      <option value="Canine">Canine (Dog)</option>
-                      <option value="Feline">Feline (Cat)</option>
-                      <option value="Avian">Avian (Bird)</option>
-                      <option value="Reptile">Reptile</option>
-                      <option value="Small Mammal">Small Mammal</option>
-                      <option value="Exotic">Exotic</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="breed-description">Breed / Description</label>
-                    <input name="breedDescription" id="breed-description" type="text" maxLength={100} value={breed} onChange={(e) => setBreed(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs" />
-                  </div>
-
-                  <div className="space-y-1 col-span-3 border-t border-slate-100 pt-3 mt-1" />
-                  
-                  {preFilledClient && !editingAptId ? (
-                    <div className="col-span-3 bg-indigo-50 border border-indigo-200 rounded-xl p-3 flex items-center justify-between shadow-xs">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-indigo-600 text-white p-2 rounded-lg shadow-sm"><User className="w-4 h-4" /></div>
-                        <div>
-                          <div className="text-xs font-black text-indigo-900 leading-tight">{ownerName}</div>
-                          <div className="text-[10px] text-indigo-700 font-mono mt-0.5">{ownerPhone}</div>
-                        </div>
-                      </div>
-                      <div className="px-2 py-1 bg-white rounded-md shadow-sm text-[9px] font-bold text-slate-500 flex items-center gap-1 uppercase tracking-widest border border-slate-100">
-                        <Lock className="w-3 h-3" /> Identity Locked
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-1 col-span-1">
-                        <label className="font-bold text-slate-600 block text-[10px]" htmlFor="owner-name">Owner Name *</label>
-                        <input name="ownerName" id="owner-name" type="text" required maxLength={100} value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs" />
-                      </div>
-                      <div className="space-y-1 col-span-1">
-                        <label className="font-bold text-slate-600 block text-[10px]" htmlFor="owner-phone">Owner Phone *</label>
-                        <div className="flex relative items-center">
-                          <span className="absolute left-3 font-mono font-bold text-slate-400 text-[10px]">+94</span>
-                          <input name="ownerPhone" id="owner-phone" type="text" required maxLength={15} value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold font-mono text-xs" />
-                        </div>
-                      </div>
-                      <div className="space-y-1 col-span-1">
-                        <label className="font-bold text-slate-600 block text-[10px]" htmlFor="owner-email">Owner Email</label>
-                        <input name="ownerEmail" id="owner-email" type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs" placeholder="email@example.com" />
-                      </div>
-                    </>
-                  )}
-
-                  <div className="space-y-1 col-span-3 border-t border-slate-100 pt-3 mt-1" />
-                  
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="visit-date">Visit Date</label>
-                    <input name="visitDate" id="visit-date" type="date" value={date} onChange={(e) => { setDate(e.target.value); if (formError) setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !date ? 'border-red-500' : 'border-slate-200'} rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs`} />
-                  </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="hour-slot">Hour Slot</label>
-                    <input name="hourSlot" id="hour-slot" type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs" />
-                  </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="assigned-doctor-vet">Assigned Doctor/Vet</label>
-                    <select name="assignedDoctorVet" id="assigned-doctor-vet" value={veterinarian} onChange={(e) => setVeterinarian(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs">
-                      <option value="Dr. Bandara">Dr. Bandara</option>
-                      <option value="Dr. Ismail">Dr. Ismail</option>
-                      <option value="Residential Doctor">Residential Doctor</option>
-                      <option value="OPD Doctor">OPD Doctor</option>
-                      <option value="Emergency Doctor">Emergency Doctor</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1 col-span-3">
-                    <label className="font-bold text-slate-600 block text-[10px]" htmlFor="reason-for-care">Chief Complaint / Notes *</label>
-                    <textarea name="reasonForCare" id="reason-for-care" required maxLength={1000} rows={2} placeholder="e.g. Coughing, rabies vaccines booster need..." value={reason} onChange={(e) => setReason(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 leading-normal focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-xs" />
+                  <div>
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Chief Complaint / Visit Notes *</label>
+                    <textarea required rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Annual vaccinations, limping on front right leg..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs resize-none" />
                   </div>
                 </div>
+
               </div>
-              <div className="shrink-0 flex gap-2 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-1.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-wide">Close</button>
-                <button type="submit" className="px-5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl cursor-pointer shadow-xs transition-colors text-[10px] uppercase tracking-wide">{editingAptId ? 'Save Changes' : 'Create Appointment Slot'}</button>
+              
+              <div className="shrink-0 flex gap-3 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Close</button>
+                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl cursor-pointer shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4"/> {editingAptId ? 'Save Changes' : 'Create Appointment Slot'}
+                </button>
               </div>
             </form>
+
           </div>
         </div>,
         document.body

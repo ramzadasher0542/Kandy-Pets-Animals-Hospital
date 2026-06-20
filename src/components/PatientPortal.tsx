@@ -377,10 +377,7 @@ export default function PatientPortal({
                     <label className="font-bold text-slate-600 block text-[10px]">Weight (kg)</label>
                     <input type="number" step="0.1" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
                   </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]">Microchip ID</label>
-                    <input type="text" value={formData.microchipId} onChange={e => setFormData({...formData, microchipId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
-                  </div>
+
                   <div className="space-y-1 col-span-2">
                     <label className="font-bold text-rose-600 block text-[10px]">Known Allergies</label>
                     <input type="text" value={formData.allergies} onChange={e => setFormData({...formData, allergies: e.target.value})} className="w-full px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-rose-500 font-semibold text-rose-800" />

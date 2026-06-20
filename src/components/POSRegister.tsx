@@ -226,7 +226,7 @@ export default function POSRegister({ inventory, appointments, records, currentU
     printWindow.document.close();
   };
 
-  const billedAptIds = new Set(invoices.map(i => i.appointmentId).filter(Boolean));
+  const billedAptIds = new Set(invoices.filter(i => i.paymentStatus === 'paid').map(i => i.appointmentId).filter(Boolean));
   const queueApts = appointments.filter(a => a.status === 'completed' && !billedAptIds.has(a.id));
   const quickAddItems = inventory.filter(i => ['retail', 'vaccine', 'prescription'].includes(i.category)).slice(0, 12);
   const filteredProducts = inventory.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()) || i.sku.toLowerCase().includes(searchQuery.toLowerCase()));

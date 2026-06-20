@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, UserPlus, Phone, Mail, MapPin, Calendar, 
-  ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity, Edit2, PenTool
+  ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity, Edit2, PenTool, User, X, CheckCircle2
 } from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment } from '../types';
 import { fetchClients, upsertClient } from '../lib/db';
@@ -23,6 +23,7 @@ interface CustomersManagerProps {
   onGoToRecords?: (patientId: string) => void;
   onUpdateCustomer?: (oldPhone: string, newPhone: string, newName: string, newEmail: string) => void;
   onGenerateConsent?: (clientName: string, petName: string) => void;
+  onAddRecord?: (record: MedicalRecord) => void; // SECURED: Database Write Authorization
 }
 
 export default function CustomersManager({ 
@@ -33,7 +34,8 @@ export default function CustomersManager({
   onGoToAppointments,
   onGoToRecords,
   onUpdateCustomer,
-  onGenerateConsent
+  onGenerateConsent,
+  onAddRecord
 }: CustomersManagerProps) {
   
   const [clients, setClients] = useState<Client[]>([]);
@@ -43,10 +45,16 @@ export default function CustomersManager({
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  
   const [formData, setFormData] = useState({
     full_name: '', primary_phone: '', alternate_phone: '',
     email_address: '', physical_address: '', communication_preference: 'sms',
     administrative_notes: ''
+  });
+
+  // NEW: Dual-Capture Pet State
+  const [newPetData, setNewPetData] = useState({
+    petName: '', petType: 'Canine', breed: ''
   });
 
   useEffect(() => {
@@ -87,6 +95,7 @@ export default function CustomersManager({
       return;
     }
 
+    // 1. Write to CRM
     const newClient: Client = {
       client_id: crypto.randomUUID(),
       ...formData,
@@ -97,15 +106,43 @@ export default function CustomersManager({
     };
 
     await upsertClient(newClient);
+
+    // 2. DUAL-WRITE: Spawn Master Identity in Medical Records
+    if (newPetData.petName && onAddRecord) {
+      const targetPhone = normalizePhone(formData.primary_phone);
+      const targetPetName = newPetData.petName.trim().toLowerCase();
+      
+      const newRecord: MedicalRecord = {
+        id: crypto.randomUUID(),
+        patientId: `${targetPetName}_${targetPhone}`,
+        petName: newPetData.petName.trim(),
+        petType: newPetData.petType as any,
+        breed: newPetData.breed || 'Mixed breed',
+        age: 'Unknown',
+        weight: 0,
+        ownerName: formData.full_name.trim(),
+        ownerPhone: formData.primary_phone.trim(),
+        ownerEmail: formData.email_address || 'not-provided@example.com',
+        visitDate: new Date().toISOString().split('T')[0],
+        attendingVet: 'System Admin',
+        symptoms: '',
+        diagnosis: 'Initial Registration',
+        treatmentNotes: 'Patient profile established via CRM Onboarding.',
+        prescribedMeds: [],
+        vaccinations: [],
+        labResults: [],
+        createdDate: new Date().toISOString().split('T')[0]
+      };
+      onAddRecord(newRecord);
+    }
+
     await loadClients();
     setShowAddModal(false);
     setSelectedClientId(newClient.client_id);
-    showToast('New client successfully registered.', 'success');
+    showToast('Client and Companion successfully registered.', 'success');
     
-    setFormData({
-      full_name: '', primary_phone: '', alternate_phone: '',
-      email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: ''
-    });
+    setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
+    setNewPetData({ petName: '', petType: 'Canine', breed: '' });
   };
 
   const handleUpdateExistingClient = async (e: React.FormEvent) => {
@@ -149,7 +186,7 @@ export default function CustomersManager({
     setShowEditModal(true);
   };
 
-  // ARMOR-PLATED DATA MERGE: Collapses duplicates and preserves Pet Type/Breed
+  // ARMOR-PLATED DATA MERGE
   const clientPets = selectedClient ? records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(selectedClient.primary_phone)) : [];
   const petMap = new Map<string, any>();
   
@@ -172,15 +209,13 @@ export default function CustomersManager({
   return (
     <div className="flex h-full w-full gap-4 overflow-hidden" id="customers-module-container">
       
-      {/* LEFT PANE: 30% Master Directory */}
+      {/* LEFT PANE: Master Directory */}
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
-        
         <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0 space-y-3">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-extrabold text-slate-800 tracking-tight">Client Directory</h2>
             <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{clients.length} Total</span>
           </div>
-          
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input 
@@ -195,7 +230,6 @@ export default function CustomersManager({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {filteredClients.map(c => {
-            // FIX: Accurately count UNIQUE pets, not total records
             const clientRecs = records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(c.primary_phone));
             const petCount = new Set(clientRecs.map(r => (r.petName || 'Unknown').trim().toLowerCase())).size;
             const isSelected = selectedClientId === c.client_id;
@@ -204,24 +238,14 @@ export default function CustomersManager({
               <div 
                 key={c.client_id}
                 onClick={() => setSelectedClientId(c.client_id)}
-                className={`p-3 rounded-xl cursor-pointer transition-all border ${
-                  isSelected 
-                    ? 'bg-indigo-50 border-indigo-200 shadow-xs' 
-                    : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'
-                }`}
+                className={`p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
               >
                 <div className="flex justify-between items-start mb-1">
-                  <div className={`font-extrabold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>
-                    {c.full_name}
-                  </div>
-                  {c.client_status === 'flagged_bad_debt' && (
-                    <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                  )}
+                  <div className={`font-extrabold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{c.full_name}</div>
+                  {c.client_status === 'flagged_bad_debt' && <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
                 </div>
                 <div className="flex justify-between items-center mt-2">
-                  <div className={`text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`}>
-                    {c.primary_phone}
-                  </div>
+                  <div className={`text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`}>{c.primary_phone}</div>
                   <div className="flex items-center gap-1 bg-white border border-slate-200 px-1.5 py-0.5 rounded flex-shrink-0">
                     <PawPrint className={`w-3 h-3 ${petCount > 0 ? 'text-indigo-500' : 'text-slate-300'}`} />
                     <span className="text-[10px] font-bold text-slate-600 leading-none pt-px">{petCount}</span>
@@ -230,25 +254,24 @@ export default function CustomersManager({
               </div>
             );
           })}
-          {filteredClients.length === 0 && (
-            <div className="text-center py-8 text-slate-400 font-medium text-xs">No clients match search.</div>
-          )}
+          {filteredClients.length === 0 && <div className="text-center py-8 text-slate-400 font-medium text-xs">No clients match search.</div>}
         </div>
 
         <div className="p-4 border-t border-slate-100 bg-white shrink-0">
           <button 
             onClick={() => {
               setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
+              setNewPetData({ petName: '', petType: 'Canine', breed: '' });
               setShowAddModal(true);
             }}
             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
           >
-            <UserPlus className="h-4 w-4" /> Add New Client
+            <UserPlus className="h-4 w-4" /> Register New Client
           </button>
         </div>
       </aside>
 
-      {/* RIGHT PANE: 70% Dashboard Details */}
+      {/* RIGHT PANE: Dashboard Details */}
       <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col overflow-hidden relative">
         {!selectedClient ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 border border-slate-200 rounded-2xl bg-white shadow-sm">
@@ -426,53 +449,91 @@ export default function CustomersManager({
         )}
       </main>
 
-      {/* Add Client Modal */}
+      {/* NEW: DUAL-CAPTURE ENTERPRISE ONBOARDING MODAL */}
       {showAddModal && createPortal(
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden">
-            <div className="flex justify-between items-start p-6 pb-4 border-b border-slate-100 shrink-0">
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-sky-100 max-w-2xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]">
+            
+            <div className="flex justify-between items-start shrink-0 p-6 pb-4 border-b border-slate-100 bg-white z-10">
               <div>
-                <h4 className="text-sm font-extrabold text-slate-800 leading-none">Register New Client</h4>
-                <p className="text-[10px] text-slate-400 mt-1">Add details into the central CRM directory</p>
+                <h4 className="text-base font-black text-slate-800 leading-none">Register New Client & Companion</h4>
+                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Central CRM Dual-Sync Onboarding</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer">✕</button>
+              <button onClick={() => setShowAddModal(false)} className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer transition-colors"><X className="w-5 h-5"/></button>
             </div>
             
-            <form onSubmit={handleSaveClient} className="flex flex-col min-h-0">
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 col-span-2">
-                    <label className="font-bold text-slate-600 block text-[10px]">Full Name *</label>
-                    <input type="text" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
+            <form onSubmit={handleSaveClient} className="flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-100/50 space-y-4">
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* TIER 1: Client Block */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><User className="w-3.5 h-3.5"/> Client Details</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Full Name *</label>
+                        <input type="text" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Primary Phone *</label>
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3 font-mono font-bold text-slate-400 text-[10px]">+94</span>
+                          <input type="text" required value={formData.primary_phone} onChange={e => setFormData({...formData, primary_phone: e.target.value})} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold font-mono text-xs" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Email Address</label>
+                        <input type="email" value={formData.email_address} onChange={e => setFormData({...formData, email_address: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Physical Address</label>
+                        <input type="text" value={formData.physical_address} onChange={e => setFormData({...formData, physical_address: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold text-xs" />
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]">Primary Phone *</label>
-                    <input type="text" required placeholder="077 123 4567" value={formData.primary_phone} onChange={e => setFormData({...formData, primary_phone: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
-                  </div>
-                  <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-600 block text-[10px]">Alternate Phone</label>
-                    <input type="text" value={formData.alternate_phone} onChange={e => setFormData({...formData, alternate_phone: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <label className="font-bold text-slate-600 block text-[10px]">Email Address</label>
-                    <input type="email" value={formData.email_address} onChange={e => setFormData({...formData, email_address: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <label className="font-bold text-slate-600 block text-[10px]">Physical Address</label>
-                    <input type="text" value={formData.physical_address} onChange={e => setFormData({...formData, physical_address: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold" />
-                  </div>
-                  <div className="space-y-1 col-span-2">
-                    <label className="font-bold text-slate-600 block text-[10px]">Administrative Notes</label>
-                    <textarea rows={2} value={formData.administrative_notes} onChange={e => setFormData({...formData, administrative_notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"></textarea>
+
+                  {/* TIER 2: Companion Block */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><PawPrint className="w-3.5 h-3.5"/> First Companion (Optional)</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name</label>
+                        <input type="text" value={newPetData.petName} onChange={(e) => setNewPetData({...newPetData, petName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Species</label>
+                        <select value={newPetData.petType} onChange={(e) => setNewPetData({...newPetData, petType: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                          <option value="Canine">Canine</option>
+                          <option value="Feline">Feline</option>
+                          <option value="Avian">Avian</option>
+                          <option value="Reptile">Reptile</option>
+                          <option value="Small Mammal">Small Mammal</option>
+                          <option value="Exotic">Exotic</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Breed</label>
+                        <input type="text" value={newPetData.breed} onChange={(e) => setNewPetData({...newPetData, breed: e.target.value})} placeholder="e.g. Labrador" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                  <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Administrative Notes</label>
+                  <textarea rows={2} value={formData.administrative_notes} onChange={e => setFormData({...formData, administrative_notes: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs resize-none"></textarea>
+                </div>
+
               </div>
               
-              <div className="shrink-0 flex gap-2 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer">Cancel</button>
-                <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl cursor-pointer shadow-xs">Save Client</button>
+              <div className="shrink-0 flex gap-3 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
+                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl cursor-pointer shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4"/> Register Client & Companion
+                </button>
               </div>
             </form>
+
           </div>
         </div>,
         document.body
@@ -487,7 +548,7 @@ export default function CustomersManager({
                 <h4 className="text-sm font-extrabold text-slate-800 leading-none">Edit Client Profile</h4>
                 <p className="text-[10px] text-slate-400 mt-1">Update details in the central CRM directory</p>
               </div>
-              <button onClick={() => setShowEditModal(false)} className="p-1 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer">✕</button>
+              <button onClick={() => setShowEditModal(false)} className="p-1 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer"><X className="w-4 h-4"/></button>
             </div>
             
             <form onSubmit={handleUpdateExistingClient} className="flex flex-col min-h-0">

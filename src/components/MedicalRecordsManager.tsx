@@ -139,10 +139,26 @@ export default function MedicalRecordsManager({
   const handleFinalizeExam = async () => {
     if (!activeApt) return;
 
+    // SECURED: Armor-Plated Identity Inheritance
+    const targetPhone = (activeApt.ownerPhone || '').replace(/\D/g, '');
+    const targetPetName = (activeApt.petName || '').trim().toLowerCase();
+    
+    // Scan the vault to find the pet's true, original master identity
+    const masterRecord = records.find(r => 
+      (r.petName || '').trim().toLowerCase() === targetPetName && 
+      (r.ownerPhone || '').replace(/\D/g, '') === targetPhone &&
+      r.patientId
+    );
+
+    // Lock onto the true identity. NEVER use the temporary Appointment ID.
+    const resolvedPatientId = masterRecord ? masterRecord.patientId : `${targetPetName}_${targetPhone}`;
+
     const newRecord: MedicalRecord = {
       id: `REC-${crypto.randomUUID().slice(0,8).toUpperCase()}`,
-      patientId: activeApt.id, // In production, tie to actual Patient ID
+      patientId: resolvedPatientId,
       petName: activeApt.petName,
+      petType: masterRecord?.petType || (activeApt as any).petType,
+      breed: masterRecord?.breed || (activeApt as any).breed,
       ownerName: activeApt.ownerName,
       ownerPhone: activeApt.ownerPhone,
       ownerEmail: activeApt.ownerEmail || '',
