@@ -616,7 +616,10 @@ function App() {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
         return (
           <POSRegister
-            inventory={inventory} appointments={appointments} records={records} isOnline={isOnline}
+            inventory={inventory} 
+            appointments={appointments} // ADD THIS LINE
+            records={records}           // ADD THIS LINE
+            isOnline={isOnline}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
             onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
             onVerifyMasterPin={handleVerifyMasterPin} onTriggerInventorySync={async () => { }}

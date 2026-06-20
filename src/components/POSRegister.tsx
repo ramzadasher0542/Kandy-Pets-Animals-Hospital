@@ -7,7 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, 
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
-  PenTool, CheckCircle2 // FIXED: Fatal ReferenceError imports added
+  PenTool, CheckCircle2 // FIXED: Added missing icons
 } from 'lucide-react';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord } from '../types';
 import { formatDisplayDate } from '../utils/time';
@@ -29,7 +29,16 @@ interface CartItem extends InventoryItem {
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function POSRegister({ inventory, appointments, records, onCheckout, activeShiftId, currentUser }: POSProps) {
+// FIXED: Default props added to prevent Uncaught TypeErrors if App.tsx fails to pass them
+export default function POSRegister({ 
+  inventory = [], 
+  appointments = [], 
+  records = [], 
+  onCheckout, 
+  activeShiftId, 
+  currentUser 
+}: POSProps) {
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
@@ -43,21 +52,19 @@ export default function POSRegister({ inventory, appointments, records, onChecko
   const todayStr = formatDisplayDate(new Date());
 
   // ---------------------------------------------------------
-  // INVENTORY & QUEUE LOGIC (ARMORED AGAINST UNDEFINED)
+  // INVENTORY & QUEUE LOGIC
   // ---------------------------------------------------------
   const filteredInventory = useMemo(() => {
-    const safeInventory = inventory || [];
-    if (!searchQuery) return safeInventory;
+    if (!searchQuery) return inventory;
     const q = searchQuery.toLowerCase();
-    return safeInventory.filter(i => 
+    return inventory.filter(i => 
       i.name.toLowerCase().includes(q) || 
       i.sku.toLowerCase().includes(q)
     );
   }, [inventory, searchQuery]);
 
   const activeQueue = useMemo(() => {
-    const safeAppointments = appointments || [];
-    return safeAppointments.filter(a => 
+    return appointments.filter(a => 
       a.date === todayStr && ['booked', 'in-progress', 'completed'].includes(a.status)
     ).sort((a, b) => {
       // Prioritize completed appointments waiting for payment
@@ -114,14 +121,12 @@ export default function POSRegister({ inventory, appointments, records, onChecko
     
     // Auto-Scrape Logic
     const targetPid = `${(apt.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(apt.ownerPhone)}`;
-    const safeRecords = records || [];
-    const safeInventory = inventory || [];
-    const activeRecord = safeRecords.find(r => r.patientId === targetPid && r.visitDate === todayStr);
+    const activeRecord = records.find(r => r.patientId === targetPid && r.visitDate === todayStr);
 
     let newCartItems: CartItem[] = [];
 
     // 1. Add Default Consultation Fee if exists in inventory
-    const consultFee = safeInventory.find(i => i.name.toLowerCase().includes('consultation') || i.category === 'service');
+    const consultFee = inventory.find(i => i.name.toLowerCase().includes('consultation') || i.category === 'service');
     if (consultFee && cart.length === 0) {
       newCartItems.push({ ...consultFee, cartQuantity: 1, cartId: crypto.randomUUID() });
     }
@@ -129,8 +134,9 @@ export default function POSRegister({ inventory, appointments, records, onChecko
     // 2. Scrape Prescribed Meds & Lab Tests
     if (activeRecord && activeRecord.prescribedMeds) {
       activeRecord.prescribedMeds.forEach(med => {
-        const invItem = safeInventory.find(i => i.id === med.itemId);
+        const invItem = inventory.find(i => i.id === med.itemId);
         if (invItem) {
+          // Check if it's already in the scrape list to aggregate quantities
           const existing = newCartItems.find(i => i.id === invItem.id);
           if (existing) {
             existing.cartQuantity += med.quantity;
@@ -145,7 +151,7 @@ export default function POSRegister({ inventory, appointments, records, onChecko
     if (activeRecord && activeRecord.vaccinations) {
       activeRecord.vaccinations.forEach(vax => {
         if (!vax.billed) {
-          const invItem = safeInventory.find(i => i.id === vax.itemId);
+          const invItem = inventory.find(i => i.id === vax.itemId);
           if (invItem) {
             newCartItems.push({ ...invItem, cartQuantity: 1, cartId: crypto.randomUUID() });
           }
@@ -212,7 +218,8 @@ export default function POSRegister({ inventory, appointments, records, onChecko
       shiftId: activeShiftId
     };
 
-    const updatedInventory = [...(inventory || [])];
+    // Prepare inventory deductions (Ignore infinite stock categories)
+    const updatedInventory = [...inventory];
     cart.forEach(cartItem => {
       if (!['service', 'lab_service'].includes(cartItem.category)) {
         const invIndex = updatedInventory.findIndex(i => i.id === cartItem.id);
@@ -227,6 +234,7 @@ export default function POSRegister({ inventory, appointments, records, onChecko
 
     onCheckout(invoice, updatedInventory);
     
+    // Reset
     setCart([]);
     setDiscount(0);
     setSelectedAppointment(null);
