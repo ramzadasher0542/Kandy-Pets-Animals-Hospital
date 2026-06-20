@@ -9,22 +9,21 @@ import {
   Search, FileText, Printer, ShieldAlert, X, DollarSign, 
   Calendar, CheckCircle2, AlertTriangle, ArrowRight
 } from 'lucide-react';
-import { Invoice } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { fetchInvoices, upsertInvoice } from '../lib/db'; // <-- SECURED: Direct DB Link
+import { fetchInvoices, upsertInvoice } from '../lib/db';
 
 interface InvoicesProps {
-  invoices?: Invoice[]; // Kept as optional to prevent App.tsx type errors
-  onVoidInvoice?: any;  // Kept as optional to prevent App.tsx type errors
+  invoices?: any[];
+  onVoidInvoice?: any;
   systemConfig?: any;
 }
 
 export default function InvoicesManager({ systemConfig }: InvoicesProps) {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'paid' | 'void'>('All');
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
 
   // BOOT SEQUENCE: Direct DB Fetch bypasses App.tsx state failures
   useEffect(() => {
@@ -46,19 +45,21 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
       if (statusFilter !== 'All' && inv.paymentStatus !== statusFilter) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
+        // ARMOR: Catch any variation of the invoice ID
+        const invNum = (inv.invoiceNumber || inv.invoice_number || inv.id || '').toLowerCase();
         return (
-          inv.invoiceNumber.toLowerCase().includes(q) ||
-          inv.ownerName.toLowerCase().includes(q) ||
-          (inv.petName && inv.petName.toLowerCase().includes(q))
+          invNum.includes(q) ||
+          (inv.ownerName || '').toLowerCase().includes(q) ||
+          (inv.petName || '').toLowerCase().includes(q)
         );
       }
       return true;
-    }); // Sorting is handled natively by the fetchInvoices DB driver
+    }); 
   }, [invoices, searchQuery, statusFilter]);
 
   // KPI Calculations
   const validInvoices = invoices.filter(i => i.paymentStatus === 'paid');
-  const totalRevenue = validInvoices.reduce((sum, inv) => sum + inv.sales_total, 0);
+  const totalRevenue = validInvoices.reduce((sum, inv) => sum + (inv.sales_total || 0), 0);
   const voidedCount = invoices.filter(i => i.paymentStatus === 'void').length;
   const currencySign = systemConfig?.currencySymbol || 'Rs.';
 
@@ -68,14 +69,18 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
       showToast('This invoice is already voided.', 'error');
       return;
     }
-    if (window.confirm(`CRITICAL ACTION: Are you sure you want to VOID Invoice ${selectedInvoice.invoiceNumber}? This will mark the revenue as zero.`)) {
+    
+    // ARMOR: Catch any variation of the invoice ID
+    const invId = selectedInvoice.invoiceNumber || selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
+    
+    if (window.confirm(`CRITICAL ACTION: Are you sure you want to VOID Invoice ${invId}? This will mark the revenue as zero.`)) {
       
       // DIRECT DB MUTATION: Safely voids without relying on App.tsx
       const target = { ...selectedInvoice, paymentStatus: 'void' as const };
       await upsertInvoice(target);
       await loadFinancialArchive(); // Instantly refresh the grid
       
-      showToast(`Invoice ${selectedInvoice.invoiceNumber} successfully voided.`, 'success');
+      showToast(`Invoice ${invId} successfully voided.`, 'success');
       setSelectedInvoice(null);
     }
   };
@@ -181,6 +186,9 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
               ) : filteredInvoices.map(inv => {
                 const isVoid = inv.paymentStatus === 'void';
                 const d = new Date(inv.date);
+                
+                // ARMOR: Extract ID safely
+                const displayId = inv.invoiceNumber || inv.invoice_number || inv.id.slice(0,8);
 
                 return (
                   <tr key={inv.id} className={`hover:bg-slate-50 transition-colors group ${isVoid ? 'opacity-60' : ''}`}>
@@ -192,16 +200,16 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
                     </td>
                     <td className="px-6 py-4">
                       <div className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block border border-indigo-100">
-                        {inv.invoiceNumber}
+                        {displayId}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-black text-slate-800 text-sm">{inv.ownerName}</div>
+                      <div className="font-black text-slate-800 text-sm">{inv.ownerName || 'Walk-in Client'}</div>
                       <div className="text-[10px] font-bold text-slate-500 mt-0.5">{inv.petName || 'Retail Customer'}</div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className={`font-mono text-sm font-black ${isVoid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                        {currencySign}{inv.sales_total.toFixed(2)}
+                        {currencySign}{(inv.sales_total || 0).toFixed(2)}
                       </div>
                       <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{inv.paymentMethod}</div>
                     </td>
@@ -233,7 +241,7 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
         <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 print:bg-white print:p-0">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh] print:shadow-none print:border-none print:w-full print:max-w-none print:h-auto">
             
-            {/* Modal Header (Hidden on Print) */}
+            {/* Modal Header */}
             <div className="p-4 border-b border-slate-100 shrink-0 flex justify-between items-center bg-slate-50/50 print:hidden">
               <div>
                 <h2 className="text-sm font-black text-slate-800">Receipt Inspector</h2>
@@ -246,7 +254,7 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
             </div>
 
             {/* Printable Receipt Body */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-white print:p-4 print:overflow-visible">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-white print:p-4 print:overflow-visible relative">
               
               {selectedInvoice.paymentStatus === 'void' && (
                 <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-12 border-4 border-rose-500 text-rose-500 text-5xl font-black uppercase tracking-widest px-8 py-4 opacity-20 pointer-events-none select-none z-50">
@@ -263,12 +271,12 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
               <div className="flex justify-between items-end mb-6 text-sm">
                 <div>
                   <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Billed To</p>
-                  <p className="font-black text-slate-800">{selectedInvoice.ownerName}</p>
+                  <p className="font-black text-slate-800">{selectedInvoice.ownerName || 'Walk-in Client'}</p>
                   {selectedInvoice.petName && <p className="font-semibold text-slate-600 text-xs mt-0.5">Patient: {selectedInvoice.petName}</p>}
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Invoice No.</p>
-                  <p className="font-mono font-black text-slate-800">{selectedInvoice.invoiceNumber}</p>
+                  <p className="font-mono font-black text-slate-800">{selectedInvoice.invoiceNumber || selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8)}</p>
                   <p className="font-mono font-semibold text-slate-500 text-xs mt-0.5">{new Date(selectedInvoice.date).toLocaleDateString()} {new Date(selectedInvoice.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                 </div>
               </div>
@@ -282,27 +290,33 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {selectedInvoice.items.map((item, idx) => (
+                  {/* ARMOR: Handle missing arrays and variant property names safely */}
+                  {(selectedInvoice.items || selectedInvoice.purchases || selectedInvoice.cart || []).map((item: any, idx: number) => {
+                    const price = item.price || item.unitPrice || 0;
+                    const qty = item.quantity || item.qty || 1;
+                    const total = item.total || item.lineTotal || (price * qty) || 0;
+                    
+                    return (
                     <tr key={idx}>
-                      <td className="py-3 pr-2 font-bold text-slate-700">{item.name} <div className="text-[10px] font-semibold text-slate-400">@ {currencySign}{item.price.toFixed(2)}</div></td>
-                      <td className="py-3 px-2 text-center font-mono font-bold text-slate-600">{item.quantity}</td>
-                      <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{item.total.toFixed(2)}</td>
+                      <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-semibold text-slate-400">@ {currencySign}{price.toFixed(2)}</div></td>
+                      <td className="py-3 px-2 text-center font-mono font-bold text-slate-600">{qty}</td>
+                      <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{total.toFixed(2)}</td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
 
               <div className="border-t-2 border-slate-800 pt-4 flex flex-col items-end gap-1">
                 <div className="flex justify-between w-48 text-sm">
                   <span className="font-bold text-slate-500">Subtotal:</span>
-                  <span className="font-mono font-black text-slate-700">{currencySign}{selectedInvoice.sales_total.toFixed(2)}</span>
+                  <span className="font-mono font-black text-slate-700">{currencySign}{(selectedInvoice.sales_total || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between w-48 text-lg mt-2 pt-2 border-t border-slate-200">
                   <span className="font-black text-slate-900 uppercase">Total Paid:</span>
-                  <span className="font-mono font-black text-slate-900">{currencySign}{selectedInvoice.sales_total.toFixed(2)}</span>
+                  <span className="font-mono font-black text-slate-900">{currencySign}{(selectedInvoice.sales_total || 0).toFixed(2)}</span>
                 </div>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
-                  Method: {selectedInvoice.paymentMethod}
+                  Method: {selectedInvoice.paymentMethod || 'CASH'}
                 </div>
               </div>
 
@@ -312,7 +326,7 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
 
             </div>
 
-            {/* Modal Footer (Hidden on Print) */}
+            {/* Modal Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-between items-center print:hidden">
               {selectedInvoice.paymentStatus !== 'void' ? (
                 <button onClick={handleVoid} className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ShoppingBag, Search, Tag, Trash2, Plus, Minus, UserPlus, CreditCard, Coins, FileText, Printer, ArrowRight, Lock, Activity, Sparkles, QrCode } from 'lucide-react';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, PaymentMethod, User as StaffUser, MedicalRecord, ActiveShift } from '../types';
 import { showToast } from './Toast';
-import { addRevenueToActiveShift, upsertInvoice } from '../lib/db';
+import { addRevenueToActiveShift, upsertInvoice, fetchInvoices } from '../lib/db';
 
 interface POSProps {
   inventory: InventoryItem[]; appointments: Appointment[]; records: MedicalRecord[];
@@ -162,9 +162,20 @@ export default function POSRegister({ inventory, appointments, records, currentU
       const totalCogs = totalCogsCents / 100;
       const profit = Math.round((total - totalCogs) * 100) / 100;
       
+      const currentLiveInvoices = await fetchInvoices();
+      let maxNum = 999;
+      currentLiveInvoices.forEach(inv => {
+        const numMatch = ((inv as any).invoiceNumber || (inv as any).invoice_number || inv.id || '').match(/INV-(\d+)/);
+        if (numMatch && numMatch[1]) {
+          const num = parseInt(numMatch[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      });
+      const generatedSequence = `INV-${maxNum + 1}`;
+
       // Bug #5 Fix: Use crypto.randomUUID() for collision-safe invoice IDs
       const invoiceObj: Invoice = {
-        id: `INV-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, appointmentId: selectedClient?.appointmentId, patientId: selectedClient?.id || '0', petName: selectedClient?.petName || 'Walk-in Pet', ownerName: selectedClient?.name || 'Walk-In Customer', ownerPhone: selectedClient?.phone || '0000000000', date: new Date().toISOString().split('T')[0], items: newInvItems, subtotal, tax, discount, sales_total: total, cogs: totalCogs, profit, shiftId: activeShift.id, paymentMethod, paymentStatus: 'paid', createdBy: currentUser?.name || 'Unknown'
+        id: generatedSequence, appointmentId: selectedClient?.appointmentId, patientId: selectedClient?.id || '0', petName: selectedClient?.petName || 'Walk-in Pet', ownerName: selectedClient?.name || 'Walk-In Customer', ownerPhone: selectedClient?.phone || '0000000000', date: new Date().toISOString().split('T')[0], items: newInvItems, subtotal, tax, discount, sales_total: total, cogs: totalCogs, profit, shiftId: activeShift.id, paymentMethod, paymentStatus: 'paid', createdBy: currentUser?.name || 'Unknown'
       };
 
       const stockPromises = cart.filter(c => c.item.category !== 'service' && c.item.category !== 'lab_service').map(c => onUpdateStock(c.item.id, -c.quantity, c.item.stock));
