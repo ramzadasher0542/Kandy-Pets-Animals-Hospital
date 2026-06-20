@@ -23,7 +23,9 @@ const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] =
   { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' }
 ];
 
-export default function InventoryManager() {
+interface InventoryProps { inventory?: InventoryItem[]; onAddProduct?: any; onUpdateStock?: any; onUpdatePrice?: any; onUpdateInventory?: (items: InventoryItem[]) => void; systemConfig?: any; }
+
+export default function InventoryManager({ onUpdateInventory }: InventoryProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<ItemCategory | 'All'>('All');
@@ -46,7 +48,9 @@ export default function InventoryManager() {
 
   const loadInventory = async () => {
     const data = await fetchInventory();
-    setItems(data.sort((a, b) => a.name.localeCompare(b.name)));
+    const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+    setItems(sorted);
+    if (onUpdateInventory) onUpdateInventory(sorted);
   };
 
   const handleSaveItem = async (e: React.FormEvent) => {
