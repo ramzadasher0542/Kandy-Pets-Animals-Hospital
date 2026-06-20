@@ -3,17 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Calendar as CalendarIcon, Clock, Search, Plus, User, CheckCircle2, 
   Activity, X, ChevronLeft, ChevronRight, List as ListIcon, 
-  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, PawPrint
+  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, PawPrint, History, SearchCode
 } from 'lucide-react';
-import { Appointment, AppointmentStatus, MedicalRecord, PetClassification } from '../types';
+import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
-import { upsertClient } from '../lib/db'; // <-- PHASE 1: CRM Sync Link Established
+import { upsertClient } from '../lib/db'; 
+import { db } from '../lib/localDb'; 
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -28,39 +29,91 @@ interface AppointmentsProps {
   onGenerateConsent?: (clientName: string, petName: string) => void;
 }
 
-// BULLETPROOF TELECOM NORMALIZER
-const normalizePhone = (p: string) => {
-  if (!p) return '';
+// ---------------------------------------------------------
+// CORE UTILITIES
+// ---------------------------------------------------------
+const enforcePhoneFormat = (p: string) => {
+  if (!p) return '+94 ';
   let digits = p.replace(/\D/g, '');
-  if (digits.startsWith('94')) {
-    digits = '0' + digits.slice(2);
-  }
-  return digits;
+  if (digits.startsWith('94')) return '+94 ' + digits.slice(2);
+  if (digits.startsWith('0')) return '+94 ' + digits.slice(1);
+  return '+94 ' + digits;
+};
+
+const normalizeSearchPhone = (p: string) => p.replace(/\D/g, '').slice(-9);
+
+const toLocalISODate = (d: Date) => {
+  const z = (n: number) => ('0' + n).slice(-2);
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+};
+
+const getNextAptNumber = (apts: Appointment[]) => {
+  let max = 999;
+  apts.forEach(a => {
+    if (a.aptNumber) {
+      const match = a.aptNumber.match(/APT-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max) max = num;
+      }
+    }
+  });
+  return `APT-${max + 1}`;
 };
 
 export default function AppointmentsManager({ 
-  appointments,
-  records,
-  isOnline, 
-  onAddAppointment, 
-  onUpdateStatus,
-  onAddRecord,
-  onUpdateAppointment,
-  preFilledClient,
-  preFilledPet,
-  onGenerateConsent
+  appointments, records, isOnline, onAddAppointment, onUpdateStatus,
+  onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent
 }: AppointmentsProps) {
   
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  // ---------------------------------------------------------
+  // CONSTANTS
+  // ---------------------------------------------------------
+  const listFilters = ['All', 'Pending', 'Confirmed', 'Completed', 'Cancelled', 'No show'];
+
+  // ---------------------------------------------------------
+  // STATE MANAGEMENT
+  // ---------------------------------------------------------
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('list'); // DEFAULT TO LIST
   const [currentDate, setCurrentDate] = useState(new Date());
   const [timeframe, setTimeframe] = useState<'day' | 'week' | 'month'>('week');
   const [doctorFilter, setDoctorFilter] = useState('All Doctors');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
-  const listFilters = ['All', 'Pending', 'Confirmed', 'Completed', 'Cancelled', 'No show'];
-
+  const [showArchive, setShowArchive] = useState(false);
+  
+  const [liveVets, setLiveVets] = useState<{name: string, id: string}[]>([]);
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingAptId, setEditingAptId] = useState<string | null>(null);
 
+  // Form State
+  const [petName, setPetName] = useState('');
+  const [petType, setPetType] = useState<PetClassification>('Canine');
+  const [breed, setBreed] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('+94 ');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [date, setDate] = useState(formatDisplayDate(new Date()));
+  const [time, setTime] = useState(formatDisplayTime(new Date()));
+  const [veterinarian, setVeterinarian] = useState('');
+  const [reason, setReason] = useState('');
+  const [formError, setFormError] = useState('');
+  const [admissionType, setAdmissionType] = useState('OPD');
+  const [phone2, setPhone2] = useState('');
+  const [address, setAddress] = useState('');
+  const [sex, setSex] = useState('Unknown');
+
+  // Identity Scanner State
+  const [identitySearch, setIdentitySearch] = useState('');
+  const [knownPets, setKnownPets] = useState<any[]>([]);
+
+  const [selectedPopoverApt, setSelectedPopoverApt] = useState<Appointment | null>(null);
+  const [overflowPopover, setOverflowPopover] = useState<{date: string, apts: Appointment[]} | null>(null);
+
+  // ---------------------------------------------------------
+  // INITIALIZATION & EFFECTS
+  // ---------------------------------------------------------
   useEffect(() => {
     const sorted = [...appointments].sort((a, b) => {
       const dateA = new Date(`${a.date}T${a.time}`);
@@ -70,34 +123,32 @@ export default function AppointmentsManager({
     setAllAppointments(sorted);
   }, [appointments]);
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingAptId, setEditingAptId] = useState<string | null>(null);
-  
-  const [petName, setPetName] = useState('');
-  const [petType, setPetType] = useState<PetClassification>('Canine');
-  const [breed, setBreed] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [ownerPhone, setOwnerPhone] = useState('');
-  const [ownerEmail, setOwnerEmail] = useState('');
-  const [date, setDate] = useState(formatDisplayDate(new Date()));
-  const [time, setTime] = useState(formatDisplayTime(new Date()));
-  const [veterinarian, setVeterinarian] = useState('Dr. Bandara');
-  const [reason, setReason] = useState('');
-  const [formError, setFormError] = useState('');
-  
-  const [admissionType, setAdmissionType] = useState('OPD');
-  const [phone2, setPhone2] = useState('');
-  const [address, setAddress] = useState('');
-  const [sex, setSex] = useState('Unknown');
-
-  const [selectedPopoverApt, setSelectedPopoverApt] = useState<Appointment | null>(null);
-  const [overflowPopover, setOverflowPopover] = useState<{date: string, apts: Appointment[]} | null>(null);
+  useEffect(() => {
+    // Dynamic Vet DB Sync
+    const fetchVets = async () => {
+      try {
+        const users = await db.users.getItem<AppUser[]>('users_list') || [];
+        const vets = users.filter(u => u.role === 'veterinarian' || u.role === 'admin');
+        if (vets.length > 0) {
+          setLiveVets(vets.map(v => ({ name: v.name, id: v.id })));
+          if (!veterinarian) setVeterinarian(vets[0].name);
+        } else {
+          const fallback = { name: 'Attending Doctor', id: 'fallback' };
+          setLiveVets([fallback]);
+          if (!veterinarian) setVeterinarian(fallback.name);
+        }
+      } catch (e) {
+        console.error('Failed to fetch vets:', e);
+      }
+    };
+    fetchVets();
+  }, []);
 
   useEffect(() => {
     if (preFilledClient || preFilledPet) {
       if (preFilledClient) {
         setOwnerName(preFilledClient.full_name || preFilledClient.name || '');
-        setOwnerPhone(preFilledClient.primary_phone || preFilledClient.phone || '');
+        setOwnerPhone(enforcePhoneFormat(preFilledClient.primary_phone || preFilledClient.phone || ''));
         if (preFilledClient.email_address) setOwnerEmail(preFilledClient.email_address);
         if (preFilledClient.physical_address) setAddress(preFilledClient.physical_address);
       }
@@ -122,11 +173,51 @@ export default function AppointmentsManager({
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [showAddModal, selectedPopoverApt, overflowPopover]);
 
+  // ---------------------------------------------------------
+  // IDENTITY SCANNER ENGINE
+  // ---------------------------------------------------------
+  const handleIdentityScan = (query: string) => {
+    setIdentitySearch(query);
+    const target = normalizeSearchPhone(query);
+    if (target.length >= 7) {
+      const matches = records.filter(r => normalizeSearchPhone(r.ownerPhone) === target);
+      if (matches.length > 0) {
+        const latest = matches[matches.length - 1]; // Assume last record has most up to date owner info
+        setOwnerName(latest.ownerName);
+        setOwnerPhone(enforcePhoneFormat(latest.ownerPhone));
+        setOwnerEmail(latest.ownerEmail || '');
+        
+        const uniquePetsMap = new Map();
+        matches.forEach(m => {
+          if (!uniquePetsMap.has(m.petName.toLowerCase())) {
+            uniquePetsMap.set(m.petName.toLowerCase(), { name: m.petName, type: m.petType, breed: m.breed });
+          }
+        });
+        setKnownPets(Array.from(uniquePetsMap.values()));
+      } else {
+        setKnownPets([]);
+      }
+    } else {
+      setKnownPets([]);
+    }
+  };
+
+  const handleSelectKnownPet = (pet: any) => {
+    setPetName(pet.name);
+    setPetType(pet.type);
+    setBreed(pet.breed);
+  };
+
+  // ---------------------------------------------------------
+  // FORM & SUBMISSION
+  // ---------------------------------------------------------
   const resetForm = () => {
     setEditingAptId(null);
-    setPetName(''); setBreed(''); setOwnerName(''); setOwnerPhone(''); setOwnerEmail('');
+    setPetName(''); setBreed(''); setOwnerName(''); setOwnerPhone('+94 '); setOwnerEmail('');
     setReason(''); setFormError(''); setAdmissionType('OPD'); setPhone2(''); setAddress('');
     setSex('Unknown'); setDate(formatDisplayDate(new Date())); setTime(formatDisplayTime(new Date()));
+    setIdentitySearch(''); setKnownPets([]);
+    if (liveVets.length > 0) setVeterinarian(liveVets[0].name);
   };
 
   const handleEditClick = (apt: Appointment) => {
@@ -136,7 +227,7 @@ export default function AppointmentsManager({
     setPetType(apt.petType);
     setBreed(apt.breed);
     setOwnerName(apt.ownerName);
-    setOwnerPhone(apt.ownerPhone);
+    setOwnerPhone(enforcePhoneFormat(apt.ownerPhone));
     setOwnerEmail(apt.ownerEmail || '');
     setDate(apt.date);
     setTime(apt.time);
@@ -164,32 +255,29 @@ export default function AppointmentsManager({
 
   const handleCreateAppointment = async (e: React.FormEvent | React.KeyboardEvent) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    if (!petName || !date || !time) {
-      setFormError('Patient Name, Visit Date, and Time are required.');
+    if (!petName || !date || !time || !ownerName || ownerPhone.length < 10) {
+      setFormError('Patient Name, Visit Date, Time, Owner Name, and valid Phone are required.');
       return;
     }
 
-    // --- PHASE 1: ENTERPRISE CRM DUAL-WRITE ENGINE ---
-    if (ownerName && ownerPhone) {
-      try {
-        const clientPayload = {
-          client_id: `CLI-${normalizePhone(ownerPhone)}`,
-          full_name: ownerName.trim(),
-          primary_phone: ownerPhone.trim(),
-          alternate_phone: phone2 || '',
-          email_address: ownerEmail || '',
-          physical_address: address || '',
-          communication_preference: 'sms' as any,
-          account_balance: 0,
-          lifetime_value: 0,
-          client_status: 'active' as any
-        };
-        await upsertClient(clientPayload);
-      } catch (err) {
-        console.error('[Enterprise OS] CRM Sync Failed:', err);
-      }
+    // CRM Sync
+    try {
+      const clientPayload = {
+        client_id: `CLI-${normalizeSearchPhone(ownerPhone)}`,
+        full_name: ownerName.trim(),
+        primary_phone: enforcePhoneFormat(ownerPhone),
+        alternate_phone: phone2 || '',
+        email_address: ownerEmail || '',
+        physical_address: address || '',
+        communication_preference: 'sms' as any,
+        account_balance: 0,
+        lifetime_value: 0,
+        client_status: 'active' as any
+      };
+      await upsertClient(clientPayload);
+    } catch (err) {
+      console.error('[Enterprise OS] CRM Sync Failed:', err);
     }
-    // -------------------------------------------------
 
     const metadata = JSON.stringify({ phone2, address, sex });
     const tokenBlock = `:::METADATA${metadata}:::`;
@@ -205,7 +293,7 @@ export default function AppointmentsManager({
         petType,
         breed: breed || 'Mixed breed',
         ownerName: ownerName.trim(),
-        ownerPhone: ownerPhone.trim(),
+        ownerPhone: enforcePhoneFormat(ownerPhone),
         ownerEmail: ownerEmail || 'not-provided@example.com',
         date: formatDisplayDate(date),
         time: formatDisplayTime(time),
@@ -215,12 +303,9 @@ export default function AppointmentsManager({
         reason: packedReason,
         updated_at: now
       } as any;
-      
-      if (onUpdateAppointment) {
-        onUpdateAppointment(updatedApt);
-      }
+      if (onUpdateAppointment) onUpdateAppointment(updatedApt);
     } else {
-      const aptNumber = 'APT-' + Date.now().toString().slice(-4);
+      const aptNumber = getNextAptNumber(allAppointments);
       const newApt = {
         id: crypto.randomUUID(),
         aptNumber,
@@ -228,7 +313,7 @@ export default function AppointmentsManager({
         petType,
         breed: breed || 'Mixed breed',
         ownerName: ownerName.trim(),
-        ownerPhone: ownerPhone.trim(),
+        ownerPhone: enforcePhoneFormat(ownerPhone),
         ownerEmail: ownerEmail || 'not-provided@example.com',
         date: formatDisplayDate(date),
         time: formatDisplayTime(time),
@@ -251,11 +336,11 @@ export default function AppointmentsManager({
   const handleCheckIn = (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
     
-    const targetPhone = normalizePhone(apt.ownerPhone);
+    const targetPhone = normalizeSearchPhone(apt.ownerPhone);
     const targetPetName = (apt.petName || '').trim().toLowerCase();
 
     const patientExists = records.some(r => 
-      normalizePhone(r.ownerPhone) === targetPhone && 
+      normalizeSearchPhone(r.ownerPhone) === targetPhone && 
       (r.petName || '').trim().toLowerCase() === targetPetName
     );
     
@@ -269,7 +354,7 @@ export default function AppointmentsManager({
         age: 'Unknown',
         weight: 0,
         ownerName: apt.ownerName.trim(),
-        ownerPhone: apt.ownerPhone.trim(),
+        ownerPhone: enforcePhoneFormat(apt.ownerPhone),
         ownerEmail: apt.ownerEmail || 'not-provided@example.com',
         visitDate: apt.date,
         attendingVet: apt.veterinarian,
@@ -293,40 +378,9 @@ export default function AppointmentsManager({
     setSelectedPopoverApt(null);
   };
 
-  const toLocalISODate = (d: Date) => {
-    const z = (n: number) => ('0' + n).slice(-2);
-    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
-  };
-
-  const getWeekDays = (baseDate: Date) => {
-    const d = new Date(baseDate);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      days.push(new Date(d));
-      d.setDate(d.getDate() + 1);
-    }
-    return days;
-  };
-
-  const nextPeriod = () => {
-    const d = new Date(currentDate);
-    if (timeframe === 'week') d.setDate(d.getDate() + 7);
-    else if (timeframe === 'day') d.setDate(d.getDate() + 1);
-    else d.setMonth(d.getMonth() + 1);
-    setCurrentDate(d);
-  };
-
-  const prevPeriod = () => {
-    const d = new Date(currentDate);
-    if (timeframe === 'week') d.setDate(d.getDate() - 7);
-    else if (timeframe === 'day') d.setDate(d.getDate() - 1);
-    else d.setMonth(d.getMonth() - 1);
-    setCurrentDate(d);
-  };
-
+  // ---------------------------------------------------------
+  // FILTERING & DERIVATIONS
+  // ---------------------------------------------------------
   const baseFilteredApts = allAppointments.filter(apt => {
     if (doctorFilter !== 'All Doctors' && apt.veterinarian !== doctorFilter) return false;
     if (searchQuery.trim() !== '') {
@@ -350,12 +404,25 @@ export default function AppointmentsManager({
     return true;
   });
 
-  const todayStr = toLocalISODate(currentDate);
-  const todaysApts = allAppointments.filter(a => a.date === todayStr);
-  const todayVolume = todaysApts.length;
-  const awaitingTriage = todaysApts.filter(a => a.status === 'booked').length;
-  const inTreatment = todaysApts.filter(a => a.status === 'in-progress').length;
+  const todayStr = toLocalISODate(new Date());
+  
+  // Segmenting List View Data
+  const todaysListApts = listFilteredApts.filter(a => a.date === todayStr);
+  const futureListApts = listFilteredApts.filter(a => new Date(a.date) > new Date(todayStr));
+  const pastListApts = listFilteredApts.filter(a => new Date(a.date) < new Date(todayStr));
 
+  const todaysStats = allAppointments.filter(a => a.date === todayStr);
+  const todayVolume = todaysStats.length;
+  const awaitingTriage = todaysStats.filter(a => a.status === 'booked').length;
+  const inTreatment = todaysStats.filter(a => a.status === 'in-progress').length;
+
+  const currentDisplayAptNumber = editingAptId 
+    ? allAppointments.find(a => a.id === editingAptId)?.aptNumber || 'N/A'
+    : getNextAptNumber(allAppointments);
+
+  // ---------------------------------------------------------
+  // UI HELPERS
+  // ---------------------------------------------------------
   const getStatusPill = (status: string) => {
     const s = status.toLowerCase();
     if (s === 'booked') return <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-md text-[10px] font-bold uppercase border border-amber-100">Pending</span>;
@@ -375,10 +442,9 @@ export default function AppointmentsManager({
     return <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border inline-block ${colors}`}>{type}</span>;
   };
 
-  const currentDisplayAptNumber = editingAptId 
-    ? allAppointments.find(a => a.id === editingAptId)?.aptNumber || 'N/A'
-    : 'APT-' + Date.now().toString().slice(-4);
-
+  // ---------------------------------------------------------
+  // VIEWS
+  // ---------------------------------------------------------
   const renderCalendarView = () => {
     if (timeframe === 'month') {
       const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -406,7 +472,7 @@ export default function AppointmentsManager({
                   className="bg-white p-2 min-h-[100px] h-full hover:bg-slate-50 transition-colors cursor-pointer flex flex-col relative"
                   onClick={() => { setCurrentDate(d); setTimeframe('day'); }}
                 >
-                  <div className={`text-xs font-bold mb-1.5 z-10 ${d.toDateString() === new Date().toDateString() ? 'text-indigo-600 bg-indigo-50 w-6 h-6 flex items-center justify-center rounded-full' : 'text-slate-600'}`}>{d.getDate()}</div>
+                  <div className={`text-xs font-bold mb-1.5 z-10 ${d.toDateString() === new Date().toDateString() ? 'text-indigo-600 bg-indigo-50 w-6 h-6 flex items-center justify-center rounded-full shadow-sm border border-indigo-100' : 'text-slate-600'}`}>{d.getDate()}</div>
                   <div className="space-y-1 flex-1 z-10 overflow-hidden">
                     {apts.length === 0 ? (
                       <div className="absolute inset-0 opacity-[0.03] bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#000_10px,#000_20px)] pointer-events-none"></div>
@@ -450,6 +516,19 @@ export default function AppointmentsManager({
       );
     }
 
+    const getWeekDays = (baseDate: Date) => {
+      const d = new Date(baseDate);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      d.setDate(diff);
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        days.push(new Date(d));
+        d.setDate(d.getDate() + 1);
+      }
+      return days;
+    };
+
     const days = timeframe === 'day' ? [currentDate] : getWeekDays(currentDate);
     const hours = Array.from({ length: 24 }, (_, i) => i);
 
@@ -460,10 +539,10 @@ export default function AppointmentsManager({
           {days.map(d => (
             <div 
               key={d.toISOString()} 
-              className="p-3 text-center border-r border-slate-200 last:border-r-0 cursor-pointer hover:bg-slate-100 transition-colors"
+              className={`p-3 text-center border-r border-slate-200 last:border-r-0 cursor-pointer hover:bg-slate-100 transition-colors ${d.toDateString() === new Date().toDateString() ? 'bg-indigo-50/50' : ''}`}
               onClick={() => { setCurrentDate(d); setTimeframe('day'); }}
             >
-              <div className="text-[10px] uppercase font-bold text-slate-400">{d.toLocaleDateString('en-US', {weekday:'short'})}</div>
+              <div className={`text-[10px] uppercase font-bold ${d.toDateString() === new Date().toDateString() ? 'text-indigo-500' : 'text-slate-400'}`}>{d.toLocaleDateString('en-US', {weekday:'short'})}</div>
               <div className={`text-sm font-extrabold mt-0.5 ${d.toDateString()===new Date().toDateString() ? 'text-indigo-600':'text-slate-700'}`}>{d.getDate()}</div>
             </div>
           ))}
@@ -477,9 +556,10 @@ export default function AppointmentsManager({
               {days.map(d => {
                 const dayStr = toLocalISODate(d);
                 const apts = baseFilteredApts.filter(a => a.date === dayStr && parseInt(a.time.split(':')[0], 10) === hour);
+                const isToday = d.toDateString() === new Date().toDateString();
                 
                 return (
-                  <div key={dayStr} className="p-1.5 border-r border-slate-100 last:border-r-0 relative hover:bg-slate-50/50 transition-colors z-10">
+                  <div key={dayStr} className={`p-1.5 border-r border-slate-100 last:border-r-0 relative hover:bg-slate-50/50 transition-colors z-10 ${isToday ? 'bg-indigo-50/10' : ''}`}>
                     {apts.length === 0 && (
                       <div className="absolute inset-0 opacity-[0.03] bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#000_10px,#000_20px)] pointer-events-none"></div>
                     )}
@@ -501,7 +581,7 @@ export default function AppointmentsManager({
                             </div>
                             {isLocked && <Lock className="w-2.5 h-2.5 ml-1 opacity-50 shrink-0" />}
                           </div>
-                          <div className="truncate opacity-80 mt-0.5 font-medium">{a.ownerName}</div>
+                          <div className="truncate opacity-80 mt-0.5 font-medium">{a.ownerName} - {a.aptNumber}</div>
                         </div>
                       )
                     })}
@@ -515,92 +595,143 @@ export default function AppointmentsManager({
     );
   };
 
+  const renderAptRow = (apt: Appointment) => {
+    const isLocked = ['completed', 'cancelled'].includes(apt.status);
+    return (
+      <tr key={apt.id} className="hover:bg-slate-50 transition-colors group">
+        <td className="py-4 px-4">
+          <div className="font-bold text-slate-800">{formatDisplayDate(apt.date)}</div>
+          <div className="text-[10px] text-slate-500 font-medium">{formatDisplayTime(apt.time)}</div>
+        </td>
+        <td className="py-4 px-4">
+          <div className="flex flex-col items-start gap-1">
+            <div className="font-bold text-slate-800">{apt.petName}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
+              <span className="text-[10px] text-slate-500 font-medium">{apt.petType} - {apt.breed || 'Mixed'}</span>
+            </div>
+          </div>
+        </td>
+        <td className="py-4 px-4">
+          <div className="font-bold text-slate-700">{apt.ownerName}</div>
+          <div className="text-[10px] text-slate-500 font-medium font-mono mt-0.5 flex items-center gap-1">
+            <Phone className="w-2.5 h-2.5" /> {apt.ownerPhone}
+          </div>
+        </td>
+        <td className="py-4 px-4">
+          <div className="flex flex-col items-start gap-1.5">
+            {getServicePill(apt)}
+            <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5">
+              <Stethoscope className="w-3 h-3 text-slate-400" /> {apt.assignedVet || apt.veterinarian}
+            </div>
+          </div>
+        </td>
+        <td className="py-4 px-4">
+          {getStatusPill(apt.status)}
+        </td>
+        <td className="py-4 px-4 text-right w-32">
+          <div className="flex items-center justify-end gap-1">
+            {apt.status === 'booked' && (
+              <button onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
+                <CheckCircle2 className="h-4 w-4" />
+              </button>
+            )}
+            <button onClick={() => !isLocked && handleEditClick(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Edit Details"} className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer'}`}>
+              {isLocked ? <Lock className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
+            </button>
+            <button onClick={() => !isLocked && handleCancelApt(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Cancel Appointment"} className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'}`}>
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   const renderListView = () => (
     <div className="flex-1 flex flex-col bg-white border border-slate-200 rounded-2xl shadow-sm h-full overflow-hidden">
-      <div className="p-4 border-b border-slate-100 flex items-center gap-4 overflow-x-auto custom-scrollbar">
-        {listFilters.map(filter => (
-          <button 
-            key={filter} 
-            onClick={() => setStatusFilter(filter)}
-            className={`px-4 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-colors ${statusFilter === filter ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-          >
-            {filter}
-          </button>
-        ))}
+      <div className="p-4 border-b border-slate-100 flex items-center gap-4 overflow-x-auto custom-scrollbar bg-slate-50/50">
+        <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
+           {listFilters.map(filter => (
+            <button 
+              key={filter} 
+              onClick={() => setStatusFilter(filter)}
+              className={`px-4 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-colors ${statusFilter === filter ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+        <button 
+          onClick={() => setShowArchive(!showArchive)}
+          className={`px-4 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${showArchive ? 'bg-slate-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          <History className="w-3.5 h-3.5" /> Past / Archived
+        </button>
       </div>
-      <div className="flex-1 overflow-auto custom-scrollbar h-full">
-        <table className="w-full min-w-[1200px] text-left text-xs border-collapse">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-wider font-bold text-[10px]">
-              <th className="py-4 px-4 w-40">Time</th>
-              <th className="py-4 px-4">Pet Details</th>
-              <th className="py-4 px-4">Owner Info</th>
-              <th className="py-4 px-4">Service & Provider</th>
-              <th className="py-4 px-4">Status</th>
-              <th className="py-4 px-4 text-right w-32">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {listFilteredApts.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
-                  <CalendarIcon className="h-10 w-10 text-slate-200 mx-auto mb-3" />
-                  No appointments found.
-                </td>
-              </tr>
-            ) : listFilteredApts.map((apt) => {
-              const isLocked = ['completed', 'cancelled'].includes(apt.status);
-              return (
-              <tr key={apt.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="py-4 px-4">
-                  <div className="font-bold text-slate-800">{formatDisplayDate(apt.date)}</div>
-                  <div className="text-[10px] text-slate-500 font-medium">{formatDisplayTime(apt.time)}</div>
-                </td>
-                <td className="py-4 px-4">
-                  <div className="flex flex-col items-start gap-1">
-                    <div className="font-bold text-slate-800">{apt.petName}</div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
-                      <span className="text-[10px] text-slate-500 font-medium">{apt.petType} - {apt.breed || 'Mixed'}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 px-4">
-                  <div className="font-bold text-slate-700">{apt.ownerName}</div>
-                  <div className="text-[10px] text-slate-500 font-medium font-mono mt-0.5 flex items-center gap-1">
-                    <Phone className="w-2.5 h-2.5" /> {apt.ownerPhone}
-                  </div>
-                </td>
-                <td className="py-4 px-4">
-                  <div className="flex flex-col items-start gap-1.5">
-                    {getServicePill(apt)}
-                    <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5">
-                      <Stethoscope className="w-3 h-3 text-slate-400" /> {apt.assignedVet || apt.veterinarian}
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 px-4">
-                  {getStatusPill(apt.status)}
-                </td>
-                <td className="py-4 px-4 text-right w-32">
-                  <div className="flex items-center justify-end gap-1">
-                    {apt.status === 'booked' && (
-                      <button onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
-                        <CheckCircle2 className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button onClick={() => !isLocked && handleEditClick(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Edit Details"} className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer'}`}>
-                      {isLocked ? <Lock className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
-                    </button>
-                    <button onClick={() => !isLocked && handleCancelApt(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Cancel Appointment"} className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'}`}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            )})}
-          </tbody>
-        </table>
+
+      <div className="flex-1 overflow-auto custom-scrollbar h-full p-4 space-y-8 bg-slate-50/30">
+        
+        {/* TODAY SECTION - HIGH PRIORITY */}
+        <section>
+          <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
+            <span className="bg-indigo-600 w-2 h-6 rounded-full"></span> TODAY'S APPOINTMENTS ({todaysListApts.length})
+          </h3>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-wider font-bold text-[10px]">
+                  <th className="py-3 px-4 w-40">Time</th>
+                  <th className="py-3 px-4">Pet Details</th>
+                  <th className="py-3 px-4">Owner Info</th>
+                  <th className="py-3 px-4">Service & Provider</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right w-32">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {todaysListApts.length === 0 ? (
+                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-medium">No appointments scheduled for today.</td></tr>
+                ) : todaysListApts.map(renderAptRow)}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* UPCOMING SECTION */}
+        <section>
+          <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
+            <span className="bg-emerald-500 w-2 h-6 rounded-full"></span> UPCOMING ({futureListApts.length})
+          </h3>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden opacity-90">
+            <table className="w-full text-left text-xs border-collapse">
+              <tbody className="divide-y divide-slate-100">
+                {futureListApts.length === 0 ? (
+                  <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-medium">No upcoming appointments found.</td></tr>
+                ) : futureListApts.map(renderAptRow)}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* PAST / ARCHIVED SECTION */}
+        {showArchive && (
+          <section className="animate-fade-in opacity-75 grayscale hover:grayscale-0 transition-all">
+            <h3 className="text-sm font-black text-slate-600 mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
+              <span className="bg-slate-400 w-2 h-6 rounded-full"></span> PAST / ARCHIVED ({pastListApts.length})
+            </h3>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <table className="w-full text-left text-xs border-collapse">
+                <tbody className="divide-y divide-slate-100">
+                  {pastListApts.length === 0 ? (
+                    <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-medium">No past appointments found.</td></tr>
+                  ) : pastListApts.map(renderAptRow)}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
       </div>
     </div>
   );
@@ -611,14 +742,14 @@ export default function AppointmentsManager({
         
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto">
           <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-            Appointment Calendar
+            Appointments
           </h2>
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-            <button onClick={() => setViewMode('calendar')} className={`p-1.5 px-3 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
-              <CalendarIcon className="h-4 w-4" /> Calendar
-            </button>
             <button onClick={() => setViewMode('list')} className={`p-1.5 px-3 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
               <ListIcon className="h-4 w-4" /> List
+            </button>
+            <button onClick={() => setViewMode('calendar')} className={`p-1.5 px-3 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
+              <CalendarIcon className="h-4 w-4" /> Calendar
             </button>
           </div>
         </div>
@@ -635,27 +766,41 @@ export default function AppointmentsManager({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100 w-full md:w-auto justify-center">
-          <button onClick={prevPeriod} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-[10px] font-extrabold text-slate-700 shadow-xs transition-colors cursor-pointer">
-            Today
-          </button>
-          <button onClick={nextPeriod} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <div className="px-3 text-[11px] font-extrabold text-slate-800 min-w-[140px] text-center">
-            {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        {viewMode === 'calendar' && (
+          <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100 w-full md:w-auto justify-center">
+            <button onClick={() => {
+              const d = new Date(currentDate);
+              if (timeframe === 'week') d.setDate(d.getDate() - 7);
+              else if (timeframe === 'day') d.setDate(d.getDate() - 1);
+              else d.setMonth(d.getMonth() - 1);
+              setCurrentDate(d);
+            }} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button onClick={() => { setCurrentDate(new Date()); setTimeframe('day'); }} className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-[10px] font-extrabold text-slate-700 shadow-xs transition-colors cursor-pointer">
+              Today
+            </button>
+            <button onClick={() => {
+              const d = new Date(currentDate);
+              if (timeframe === 'week') d.setDate(d.getDate() + 7);
+              else if (timeframe === 'day') d.setDate(d.getDate() + 1);
+              else d.setMonth(d.getMonth() + 1);
+              setCurrentDate(d);
+            }} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <div className="px-3 text-[11px] font-extrabold text-slate-800 min-w-[140px] text-center">
+              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex items-center gap-4 w-full xl:w-auto justify-end flex-wrap">
           <div className="relative flex-1 min-w-[180px] max-w-[220px]">
             <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search apts, names..." 
+              placeholder="Search ID, pet, phone..." 
               value={searchQuery} 
               onChange={e => setSearchQuery(e.target.value)} 
               className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" 
@@ -673,9 +818,8 @@ export default function AppointmentsManager({
           )}
           
           <select value={doctorFilter} onChange={e => setDoctorFilter(e.target.value)} className="hidden md:block px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
-            <option>All Doctors</option>
-            <option>Dr. Bandara</option>
-            <option>Dr. Ismail</option>
+            <option value="All Doctors">All Doctors</option>
+            {liveVets.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
           </select>
 
           <button onClick={() => { resetForm(); setShowAddModal(true); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
@@ -708,7 +852,7 @@ export default function AppointmentsManager({
                     }`}
                   >
                     <div className="flex justify-between items-start mb-0.5">
-                      <div className="font-bold truncate">{a.petName}</div>
+                      <div className="font-bold truncate">{a.petName} <span className="text-[9px] text-slate-400 ml-1">{a.aptNumber}</span></div>
                       <div className="flex items-center gap-1">
                         <span className="text-[9px] font-mono bg-white px-1 py-0.5 rounded border border-slate-200">{a.time}</span>
                         {isLocked && <Lock className="w-3 h-3 opacity-50 shrink-0" />}
@@ -774,7 +918,7 @@ export default function AppointmentsManager({
       {/* Main Appointment Form Modal - NEW UI OVERHAUL */}
       {showAddModal && createPortal(
         <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-sky-100 max-w-2xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]">
+          <div className="bg-white rounded-3xl border border-sky-100 max-w-3xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]">
             
             <div className="flex justify-between items-start shrink-0 p-6 pb-4 border-b border-slate-100 bg-white z-10">
               <div>
@@ -784,30 +928,59 @@ export default function AppointmentsManager({
               <button onClick={() => setShowAddModal(false)} className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer transition-colors"><X className="w-5 h-5"/></button>
             </div>
             
-            <form onSubmit={handleCreateAppointment} className="flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-100/50 space-y-4">
+            <form onSubmit={handleCreateAppointment} className="flex flex-col min-h-0 overflow-hidden bg-slate-50/50">
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-5">
                 
                 {formError && <div className="text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200 font-black shadow-sm">{formError}</div>}
 
+                {/* THE IDENTITY SCANNER BAR (Only on New) */}
+                {!editingAptId && !preFilledClient && (
+                  <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center gap-4">
+                    <div className="bg-indigo-600 p-2 rounded-xl text-white"><SearchCode className="w-5 h-5"/></div>
+                    <div className="flex-1">
+                      <label className="font-bold text-indigo-900 block text-[9px] uppercase tracking-widest mb-1.5">Identity Scanner: Auto-fill Existing Client by Phone</label>
+                      <input 
+                        type="text" 
+                        placeholder="Type phone (e.g. 077 123 4567)" 
+                        value={identitySearch}
+                        onChange={(e) => handleIdentityScan(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs" 
+                      />
+                    </div>
+                    {knownPets.length > 0 && (
+                      <div className="flex-1">
+                        <label className="font-bold text-indigo-900 block text-[9px] uppercase tracking-widest mb-1.5">Detected Pets for {ownerName}</label>
+                        <select onChange={(e) => {
+                          const p = knownPets.find(k => k.name === e.target.value);
+                          if(p) handleSelectKnownPet(p);
+                        }} className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                          <option value="">Select a known pet...</option>
+                          {knownPets.map(p => <option key={p.name} value={p.name}>{p.name} ({p.breed})</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* TIER 1: Administration */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                  <div className="flex-1 max-w-[200px]">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Appointment ID</label>
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-4">
+                  <div className="flex-1 w-full">
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">System Appointment ID</label>
                     <input type="text" readOnly value={currentDisplayAptNumber} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-mono font-bold cursor-not-allowed outline-none text-xs" />
                   </div>
-                  <div className="flex-1 max-w-[250px]">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Admission Type</label>
+                  <div className="flex-1 w-full">
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Intake Tag (Admission Type)</label>
                     <select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
-                      <option value="OPD">OPD</option>
-                      <option value="Pet Boarding">Pet Boarding</option>
+                      <option value="OPD">OPD Consultation</option>
+                      <option value="Vaccination">Vaccination Drop-off</option>
                       <option value="Hospital Admission">Hospital Admission</option>
-                      <option value="Vaccination">Vaccination</option>
+                      <option value="Pet Boarding">Pet Boarding Intake</option>
                     </select>
                   </div>
                 </div>
 
                 {/* TIER 2: Patient & Owner Split */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
                   {/* Patient Block */}
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
@@ -860,11 +1033,16 @@ export default function AppointmentsManager({
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Phone *</label>
-                            <div className="relative flex items-center">
-                              <span className="absolute left-3 font-mono font-bold text-slate-400 text-[10px]">+94</span>
-                              <input type="text" required value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs" />
-                            </div>
+                            <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Phone (+94 Format) *</label>
+                            <input 
+                              type="text" 
+                              required 
+                              value={ownerPhone} 
+                              onChange={(e) => setOwnerPhone(e.target.value)} 
+                              onBlur={(e) => setOwnerPhone(enforcePhoneFormat(e.target.value))}
+                              placeholder="+94 77 123 4567"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs" 
+                            />
                           </div>
                           <div>
                             <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Email</label>
@@ -890,13 +1068,9 @@ export default function AppointmentsManager({
                       <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs cursor-pointer" />
                     </div>
                     <div>
-                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Attending Vet</label>
+                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Attending Vet (Live DB)</label>
                       <select value={veterinarian} onChange={(e) => setVeterinarian(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
-                        <option value="Dr. Bandara">Dr. Bandara</option>
-                        <option value="Dr. Ismail">Dr. Ismail</option>
-                        <option value="Residential Doctor">Residential Doctor</option>
-                        <option value="OPD Doctor">OPD Doctor</option>
-                        <option value="Emergency Doctor">Emergency Doctor</option>
+                        {liveVets.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -908,10 +1082,10 @@ export default function AppointmentsManager({
 
               </div>
               
-              <div className="shrink-0 flex gap-3 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Close</button>
+              <div className="shrink-0 flex gap-3 p-6 justify-end border-t border-slate-200 bg-white shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-10">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
                 <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl cursor-pointer shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4"/> {editingAptId ? 'Save Changes' : 'Create Appointment Slot'}
+                  <CheckCircle2 className="w-4 h-4"/> {editingAptId ? 'Save Changes' : 'Confirm Appointment'}
                 </button>
               </div>
             </form>
