@@ -3,24 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  FileText, Search, Plus, Activity, Edit2, CheckCircle2, X, 
-  Stethoscope, HeartPulse, ClipboardList, Pill, History, CalendarClock, ChevronRight, AlertCircle, Save
+  Search, Activity, Edit2, CheckCircle2, X, 
+  HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock
 } from 'lucide-react';
-import { MedicalRecord, InventoryItem, Vitals, PatientHistory, SystemicExam, PhysicalExamination, ClinicalAssessment } from '../types';
+import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment } from '../types';
 import { formatDisplayDate } from '../utils/time';
 
 interface RecordsProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
+  appointments?: Appointment[]; // PHASE 2: Added to detect lobby queue
   onAddRecord: (record: MedicalRecord) => void;
   onUpdateRecord: (record: MedicalRecord) => void;
 }
 
 // ============================================================================
-// CLINICAL DATA DICTIONARIES (From Excel Matrix)
+// CLINICAL DATA DICTIONARIES 
 // ============================================================================
 const CLINICAL_TAGS = {
   duration: ['< 24 hours', '1–3 days', '4–7 days', '1–3 weeks', '> 3 weeks'],
@@ -56,28 +57,24 @@ const SYSTEM_LABELS: Record<keyof PhysicalExamination, string> = {
   eyesAndEars: 'Eyes & Ears (ENT)'
 };
 
-// ============================================================================
+const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function MedicalRecordsManager({ records, inventory, onAddRecord, onUpdateRecord }: RecordsProps) {
+export default function MedicalRecordsManager({ records, inventory, appointments, onAddRecord, onUpdateRecord }: RecordsProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showQueueOnly, setShowQueueOnly] = useState(true); // Default to Queue
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'pharmacy' | 'followup'>('vitals');
+  const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'pharmacy'>('vitals');
 
-  // Form State (Flattened for reactivity)
+  // Form State
   const [vitals, setVitals] = useState<Vitals>({});
   const [history, setHistory] = useState<PatientHistory>({ diet: [], previousMedicalHistory: [], currentMedications: [] });
   const [exam, setExam] = useState<PhysicalExamination>({
-    general: { isNormal: true, abnormalities: [] },
-    gastrointestinal: { isNormal: true, abnormalities: [] },
-    respiratory: { isNormal: true, abnormalities: [] },
-    cardiovascular: { isNormal: true, abnormalities: [] },
-    urogenital: { isNormal: true, abnormalities: [] },
-    skin: { isNormal: true, abnormalities: [] },
-    musculoskeletal: { isNormal: true, abnormalities: [] },
-    neurological: { isNormal: true, abnormalities: [] },
-    reproductive: { isNormal: true, abnormalities: [] },
-    eyesAndEars: { isNormal: true, abnormalities: [] }
+    general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
+    respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
+    urogenital: { isNormal: true, abnormalities: [] }, skin: { isNormal: true, abnormalities: [] },
+    musculoskeletal: { isNormal: true, abnormalities: [] }, neurological: { isNormal: true, abnormalities: [] },
+    reproductive: { isNormal: true, abnormalities: [] }, eyesAndEars: { isNormal: true, abnormalities: [] }
   });
   const [assessment, setAssessment] = useState<ClinicalAssessment>({});
   
@@ -91,35 +88,117 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
   const [medInstructions, setMedInstructions] = useState('After Meal');
   const [medQty, setMedQty] = useState(1);
 
-  // Expanded Accordeon State
   const [expandedSystem, setExpandedSystem] = useState<keyof PhysicalExamination | null>('general');
 
-  const resetForm = () => {
-    setEditingRecord(null);
-    setVitals({});
-    setHistory({ diet: [], previousMedicalHistory: [], currentMedications: [] });
-    setExam({
-      general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
-      respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
-      urogenital: { isNormal: true, abnormalities: [] }, skin: { isNormal: true, abnormalities: [] },
-      musculoskeletal: { isNormal: true, abnormalities: [] }, neurological: { isNormal: true, abnormalities: [] },
-      reproductive: { isNormal: true, abnormalities: [] }, eyesAndEars: { isNormal: true, abnormalities: [] }
-    });
-    setAssessment({});
-    setPrescribedMeds([]);
-    setActiveTab('vitals');
-  };
+  const todayStr = formatDisplayDate(new Date());
 
-  const openRecord = (record: MedicalRecord) => {
-    setEditingRecord(record);
-    setVitals(record.vitals || {});
-    setHistory(record.patientHistory || { diet: [], previousMedicalHistory: [], currentMedications: [] });
+  // ============================================================================
+  // PHASE 2: DUAL-READ IDENTITY AGGREGATOR (THE TRUE QUEUE)
+  // ============================================================================
+  const displayPatients = useMemo(() => {
+    const patientMap = new Map<string, any>();
+
+    // Pass 1: Existing Medical Records
+    records.forEach(r => {
+      if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId).visitDate)) {
+        patientMap.set(r.patientId, {
+          id: r.id, // Store record ID if it exists
+          patientId: r.patientId,
+          petName: r.petName,
+          petType: r.petType,
+          breed: r.breed,
+          weight: r.weight,
+          sex: r.sex,
+          ownerName: r.ownerName,
+          ownerPhone: r.ownerPhone,
+          visitDate: r.visitDate,
+          assessment: r.assessment,
+          diagnosis: r.diagnosis,
+          hasRecordToday: r.visitDate === todayStr
+        });
+      }
+    });
+
+    // Pass 2: Active Appointments (Catching un-charted pets in lobby)
+    (appointments || []).forEach(a => {
+      const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
+      if (!patientMap.has(pid)) {
+        patientMap.set(pid, {
+          patientId: pid,
+          petName: a.petName,
+          petType: a.petType,
+          breed: a.breed,
+          weight: a.weight,
+          sex: a.sex,
+          ownerName: a.ownerName,
+          ownerPhone: a.ownerPhone,
+          visitDate: a.date,
+          assessment: null,
+          diagnosis: 'Pending Triage',
+          hasRecordToday: false, // It's only an appointment so far
+          apptStatus: a.status
+        });
+      } else {
+        // Update existing with appointment status if applicable
+        if (a.date === todayStr) {
+          patientMap.get(pid).apptStatus = a.status;
+        }
+      }
+    });
+
+    let activeList = Array.from(patientMap.values());
+
+    if (showQueueOnly) {
+      activeList = activeList.filter(p => p.hasRecordToday || ['booked', 'in-progress'].includes(p.apptStatus));
+    }
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      activeList = activeList.filter(p => p.petName.toLowerCase().includes(q) || p.ownerName.toLowerCase().includes(q) || p.ownerPhone.includes(q));
+    }
+
+    return activeList.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+  }, [records, appointments, showQueueOnly, searchQuery, todayStr]);
+
+  // ============================================================================
+
+  const openRecord = (patientStub: any) => {
+    let targetRecord = records.find(r => r.patientId === patientStub.patientId && r.visitDate === todayStr);
+
+    // If no record exists for today, AUTO-GENERATE phantom chart from the stub
+    if (!targetRecord) {
+      targetRecord = {
+        id: crypto.randomUUID(),
+        patientId: patientStub.patientId,
+        petName: patientStub.petName,
+        petType: patientStub.petType,
+        breed: patientStub.breed || 'Mixed breed',
+        age: 'Unknown',
+        weight: patientStub.weight || 0,
+        sex: patientStub.sex || 'Unknown',
+        ownerName: patientStub.ownerName,
+        ownerPhone: patientStub.ownerPhone,
+        ownerEmail: 'not-provided@example.com',
+        visitDate: todayStr,
+        attendingVet: 'Attending Doctor',
+        symptoms: '',
+        diagnosis: '',
+        treatmentNotes: '',
+        prescribedMeds: [],
+        vaccinations: [],
+        labResults: [],
+        createdDate: new Date().toISOString().split('T')[0]
+      };
+      onAddRecord(targetRecord);
+    }
+
+    setEditingRecord(targetRecord);
+    setVitals(targetRecord.vitals || {});
+    setHistory(targetRecord.patientHistory || { diet: [], previousMedicalHistory: [], currentMedications: [] });
     
-    // Merge existing exam or use default
-    if (record.physicalExam) {
-      setExam(record.physicalExam);
+    if (targetRecord.physicalExam) {
+      setExam(targetRecord.physicalExam);
     } else {
-      // Legacy conversion if needed, but we start clean
       setExam({
         general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
         respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
@@ -129,15 +208,14 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
       });
     }
     
-    setAssessment(record.assessment || {});
-    setPrescribedMeds(record.prescribedMeds || []);
+    setAssessment(targetRecord.assessment || {});
+    setPrescribedMeds(targetRecord.prescribedMeds || []);
     setShowModal(true);
   };
 
   const saveRecord = () => {
     if (!editingRecord) return;
     
-    // Compile legacy strings for backwards compatibility + New schema
     const compiledSymptoms = Object.values(exam).flatMap(sys => sys.abnormalities || []).join(', ');
     const compiledDiagnosis = `${assessment.diagnosisType || 'Diagnosis'}: ${assessment.notes || ''}`;
 
@@ -148,12 +226,13 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
       physicalExam: exam,
       assessment,
       prescribedMeds,
-      symptoms: compiledSymptoms, // Legacy map
-      diagnosis: compiledDiagnosis // Legacy map
+      symptoms: compiledSymptoms, 
+      diagnosis: compiledDiagnosis 
     };
 
     onUpdateRecord(updatedRecord);
     setShowModal(false);
+    showToast('Chart Locked & Saved successfully.', 'success');
   };
 
   const toggleArrayItem = (array: string[] | undefined, item: string) => {
@@ -244,7 +323,6 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
                   <span className={`text-xs font-black uppercase tracking-wider ${isNormal ? 'text-emerald-900' : 'text-rose-900'}`}>{SYSTEM_LABELS[systemKey]}</span>
                   {hasAbnormalities && <span className="bg-rose-100 text-rose-700 text-[9px] px-2 py-0.5 rounded-full font-bold">{sysData.abnormalities?.length} issues</span>}
                 </div>
-                <ChevronRight className={`w-4 h-4 transition-transform ${isNormal ? 'text-emerald-400' : 'text-rose-400'} ${isExpanded ? 'rotate-90' : ''}`} />
               </div>
 
               {isExpanded && (
@@ -371,7 +449,6 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
 
     return (
       <div className="space-y-6 animate-fade-in h-full flex flex-col">
-        {/* EXACT PRESERVED PHARMACY BLOCK */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
           <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Pill className="w-4 h-4"/> Pharmacy & Prescriptions</h3>
           
@@ -439,13 +516,12 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
                 disabled={!selectedMed}
                 className={`flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${selectedMed ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
               >
-                <Plus className="w-4 h-4"/> Add to Prescription & Deduct Stock
+                Add to Prescription & Deduct Stock
               </button>
             </div>
           </div>
         </div>
 
-        {/* ACTIVE PRESCRIPTIONS LIST */}
         <div className="flex-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Active Prescriptions List</h4>
           {prescribedMeds.length === 0 ? (
@@ -473,63 +549,69 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
     );
   };
 
-  // ============================================================================
-  // MAIN RENDER
-  // ============================================================================
-
-  const filteredRecords = records.filter(r => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return r.petName.toLowerCase().includes(q) || r.ownerName.toLowerCase().includes(q) || r.ownerPhone.includes(q);
-  });
-
   return (
     <div className="h-full flex flex-col gap-4">
-      {/* HEADER & SEARCH */}
+      {/* HEADER & CONTROLS */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between shrink-0">
-        <h2 className="text-lg font-extrabold text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-600"/> Patient Vault</h2>
-        <div className="relative w-64">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-          <input 
-            type="text" placeholder="Search pets, owners..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" 
-          />
+        <h2 className="text-lg font-extrabold text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-600"/> Charting Dashboard</h2>
+        <div className="flex items-center gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner">
+            <button onClick={() => setShowQueueOnly(true)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>In Clinic</button>
+            <button onClick={() => setShowQueueOnly(false)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${!showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>All History</button>
+          </div>
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            <input 
+              type="text" placeholder="Search pets, owners..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" 
+            />
+          </div>
         </div>
       </div>
 
-      {/* RECORD LIST */}
+      {/* PATIENT LISTING */}
       <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-y-auto custom-scrollbar flex-1">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-wider font-bold text-[10px]">
-                <th className="py-3 px-4">Visit Date</th>
-                <th className="py-3 px-4">Patient Info</th>
-                <th className="py-3 px-4">Owner Info</th>
-                <th className="py-3 px-4">Diagnosis summary</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-wider font-bold text-[10px] sticky top-0 z-10">
+                <th className="py-4 px-6 w-40">Status / Date</th>
+                <th className="py-4 px-6">Patient Info</th>
+                <th className="py-4 px-6">Owner Info</th>
+                <th className="py-4 px-6">Diagnosis summary</th>
+                <th className="py-4 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredRecords.map(record => (
-                <tr key={record.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="py-3 px-4 font-bold text-slate-800">{formatDisplayDate(record.visitDate)}</td>
-                  <td className="py-3 px-4">
-                    <div className="font-bold text-slate-800">{record.petName}</div>
-                    <div className="text-[10px] text-slate-500 font-medium">{record.petType} - {record.breed}</div>
+              {displayPatients.length === 0 ? (
+                <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold">No patients found in current view.</td></tr>
+              ) : displayPatients.map((patient: any) => (
+                <tr key={patient.patientId} className="hover:bg-slate-50 transition-colors group">
+                  <td className="py-4 px-6">
+                    <div className="font-bold text-slate-800">{formatDisplayDate(patient.visitDate)}</div>
+                    {patient.visitDate === todayStr && (
+                      <span className="mt-1 inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase tracking-widest rounded">Today</span>
+                    )}
+                    {patient.apptStatus === 'booked' && (
+                       <span className="mt-1 ml-1 inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest rounded">In Lobby</span>
+                    )}
                   </td>
-                  <td className="py-3 px-4">
-                    <div className="font-bold text-slate-700">{record.ownerName}</div>
-                    <div className="text-[10px] text-slate-500 font-medium font-mono">{record.ownerPhone}</div>
+                  <td className="py-4 px-6">
+                    <div className="font-black text-slate-800 text-sm">{patient.petName}</div>
+                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{patient.petType} • {patient.breed || 'Mixed'}</div>
                   </td>
-                  <td className="py-3 px-4">
-                    <div className="text-[10px] font-medium text-slate-600 truncate max-w-[200px]">
-                      {record.assessment?.diagnosisType ? `${record.assessment.diagnosisType}: ${record.assessment.notes?.substring(0,30)}...` : (record.diagnosis || 'Pending Assessment')}
+                  <td className="py-4 px-6">
+                    <div className="font-bold text-slate-700">{patient.ownerName}</div>
+                    <div className="text-[10px] text-slate-500 font-medium font-mono">{patient.ownerPhone}</div>
+                  </td>
+                  <td className="py-4 px-6">
+                    <div className="text-[10px] font-bold text-slate-600 truncate max-w-[250px]">
+                      {patient.assessment?.diagnosisType ? `${patient.assessment.diagnosisType}: ${patient.assessment.notes}` : (patient.diagnosis || 'Pending Assessment')}
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-right">
-                    <button onClick={() => openRecord(record)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold rounded-lg transition-colors text-[10px] flex items-center gap-1.5 ml-auto cursor-pointer">
-                      <Edit2 className="w-3 h-3"/> Open E.H.R
+                  <td className="py-4 px-6 text-right">
+                    <button onClick={() => openRecord(patient)} className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white font-black uppercase tracking-widest rounded-xl transition-all text-[10px] flex items-center gap-1.5 ml-auto cursor-pointer shadow-xs">
+                      <Edit2 className="w-3.5 h-3.5"/> Chart Patient
                     </button>
                   </td>
                 </tr>
@@ -547,7 +629,7 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
             {/* SIDEBAR NAVIGATION */}
             <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
               <div className="p-5 border-b border-slate-100">
-                <h2 className="text-base font-black text-slate-800">{editingRecord.petName}</h2>
+                <h2 className="text-xl font-black text-slate-800">{editingRecord.petName}</h2>
                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{editingRecord.petType} • {editingRecord.breed}</div>
               </div>
               <div className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
@@ -573,7 +655,7 @@ export default function MedicalRecordsManager({ records, inventory, onAddRecord,
                  <button onClick={saveRecord} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer">
                     <Save className="w-4 h-4"/> Lock Chart & Save
                  </button>
-                 <button onClick={() => setShowModal(false)} className="w-full mt-2 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer">
+                 <button onClick={() => setShowModal(false)} className="w-full mt-2 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer border border-slate-200">
                     Close Workspace
                  </button>
               </div>

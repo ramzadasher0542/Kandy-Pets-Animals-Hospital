@@ -7,22 +7,28 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, PawPrint, Activity, HeartPulse, TestTube, Syringe, 
-  Edit2, CheckCircle2, X, User, PenTool, Database, Clock
+  Edit2, CheckCircle2, X, User, PenTool, Database, Clock, AlertTriangle
 } from 'lucide-react';
-import { MedicalRecord, PetClassification } from '../types';
+import { MedicalRecord, PetClassification, Appointment } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 
 interface PatientPortalProps {
   records: MedicalRecord[];
+  appointments?: Appointment[]; 
   onUpdateRecord?: (record: MedicalRecord) => void;
+  onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
   onGoToRecords?: (patientId: string) => void;
   onGenerateConsent?: (clientName: string, petName: string) => void;
 }
 
+const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
+
 export default function PatientPortal({ 
   records, 
+  appointments,
   onUpdateRecord, 
+  onUpdateRecordsBulk,
   onGoToRecords, 
   onGenerateConsent 
 }: PatientPortalProps) {
@@ -30,32 +36,65 @@ export default function PatientPortal({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [passportTab, setPassportTab] = useState<'timeline' | 'exams' | 'labs' | 'vaccines'>('timeline');
-  const [showQueueOnly, setShowQueueOnly] = useState(false);
+  const [showQueueOnly, setShowQueueOnly] = useState(true); 
 
-  // Edit Master Identity State
   const [showEditPetModal, setShowEditPetModal] = useState(false);
   const [editPetData, setEditPetData] = useState({
     petName: '', petType: 'Canine' as PetClassification, breed: '', sex: 'Unknown', weight: 0, age: ''
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatDisplayDate(new Date());
 
-  // ---------------------------------------------------------
-  // SMART PET DIRECTORY LOGIC
-  // ---------------------------------------------------------
   const displayPets = useMemo(() => {
-    const petMap = new Map<string, MedicalRecord>();
+    const petMap = new Map<string, any>();
+
     records.forEach(r => {
-      // Find the most recent record for each patient identity
-      if (!petMap.has(r.patientId) || new Date(r.visitDate) > new Date(petMap.get(r.patientId)!.visitDate)) {
-        petMap.set(r.patientId, r);
+      if (!petMap.has(r.patientId) || new Date(r.visitDate) > new Date(petMap.get(r.patientId).visitDate)) {
+        petMap.set(r.patientId, {
+          patientId: r.patientId,
+          petName: r.petName,
+          petType: r.petType,
+          breed: r.breed,
+          weight: r.weight,
+          sex: r.sex,
+          ownerName: r.ownerName,
+          ownerPhone: r.ownerPhone,
+          visitDate: r.visitDate,
+          source: 'record'
+        });
+      }
+    });
+
+    (appointments || []).forEach(a => {
+      const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
+      if (!petMap.has(pid)) {
+        petMap.set(pid, {
+          patientId: pid,
+          petName: a.petName,
+          petType: a.petType,
+          breed: a.breed,
+          weight: a.weight,
+          sex: a.sex,
+          ownerName: a.ownerName,
+          ownerPhone: a.ownerPhone,
+          visitDate: a.date,
+          source: 'appointment'
+        });
       }
     });
 
     let activeList = Array.from(petMap.values());
 
     if (showQueueOnly) {
-      activeList = activeList.filter(p => records.some(r => r.patientId === p.patientId && r.visitDate === todayStr));
+      activeList = activeList.filter(p => {
+        const hasRecordToday = records.some(r => r.patientId === p.patientId && r.visitDate === todayStr);
+        const hasApptToday = (appointments || []).some(a => 
+          `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}` === p.patientId && 
+          a.date === todayStr && 
+          ['booked', 'in-progress'].includes(a.status)
+        );
+        return hasRecordToday || hasApptToday;
+      });
     }
 
     if (searchQuery) {
@@ -68,23 +107,17 @@ export default function PatientPortal({
     }
 
     return activeList.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
-  }, [records, showQueueOnly, searchQuery, todayStr]);
+  }, [records, appointments, showQueueOnly, searchQuery, todayStr]);
 
-  // ---------------------------------------------------------
-  // PASSPORT AGGREGATION LOGIC
-  // ---------------------------------------------------------
   const petRecords = selectedPatientId 
     ? records.filter(r => r.patientId === selectedPatientId).sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()) 
     : [];
   
-  const activePet = petRecords.length > 0 ? petRecords[0] : null;
+  const activePet = petRecords.length > 0 ? petRecords[0] : displayPets.find(p => p.patientId === selectedPatientId);
 
   const allPetLabs = petRecords.flatMap(r => (r.labResults || []).map(l => ({ ...l, visitDate: r.visitDate })));
   const allPetVax = petRecords.flatMap(r => (r.vaccinations || []).map(v => ({ ...v, visitDate: r.visitDate })));
 
-  // ---------------------------------------------------------
-  // IDENTITY MUTATION ENGINE
-  // ---------------------------------------------------------
   const handleOpenEditPet = () => {
     if (!activePet) return;
     setEditPetData({
@@ -98,38 +131,47 @@ export default function PatientPortal({
     setShowEditPetModal(true);
   };
 
-  const handleSavePetEdits = (e: React.FormEvent) => {
+  // PHASE 3: BULK SYNC RACE-CONDITION ARMOR
+  const handleSavePetEdits = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onUpdateRecord || !selectedPatientId) {
-      showToast('Record update engine unavailable.', 'error');
+    if (!selectedPatientId) return;
+
+    if (petRecords.length === 0) {
+      showToast('No medical records found to sync identity against.', 'warning');
+      setShowEditPetModal(false);
       return;
     }
 
-    // BULK MASTER-SYNC: Propagate changes across ALL historical E.H.R
-    petRecords.forEach(record => {
-      const updated = {
-        ...record,
-        petName: editPetData.petName,
-        petType: editPetData.petType,
-        breed: editPetData.breed,
-        sex: editPetData.sex,
-        weight: editPetData.weight,
-        age: editPetData.age
-      };
-      onUpdateRecord(updated);
-    });
+    const updatedRecords = petRecords.map(record => ({
+      ...record,
+      petName: editPetData.petName,
+      petType: editPetData.petType,
+      breed: editPetData.breed,
+      sex: editPetData.sex,
+      weight: editPetData.weight,
+      age: editPetData.age
+    }));
+
+    if (onUpdateRecordsBulk) {
+      onUpdateRecordsBulk(updatedRecords);
+    } else if (onUpdateRecord) {
+      // Fallback: Micro-throttled safe loop
+      for (const record of updatedRecords) {
+        onUpdateRecord(record);
+        await new Promise(resolve => setTimeout(resolve, 15));
+      }
+    } else {
+      showToast('Record update engine unavailable.', 'error');
+      return;
+    }
 
     setShowEditPetModal(false);
     showToast('Patient Identity synchronized across all medical records.', 'success');
   };
 
-  // ---------------------------------------------------------
-  // UI RENDERERS
-  // ---------------------------------------------------------
   return (
     <div className="flex h-full w-full gap-4 overflow-hidden" id="patient-portal-container">
       
-      {/* LEFT PANE: PET DIRECTORY & QUEUE */}
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
         <div className="p-5 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
           <div className="flex items-center justify-between">
@@ -174,7 +216,6 @@ export default function PatientPortal({
         </div>
       </aside>
 
-      {/* RIGHT PANE: THE PASSPORT DOSSIER */}
       <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
         {!activePet ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-50">
@@ -184,11 +225,10 @@ export default function PatientPortal({
         ) : (
           <div className="flex-1 flex flex-col relative overflow-hidden animate-fade-in">
             
-            {/* PASSPORT HEADER */}
             <div className="bg-white border-b border-slate-200 shrink-0 shadow-sm z-10">
               <div className="px-6 py-4 flex items-center justify-end border-b border-slate-100 bg-slate-50/50">
                 <div className="flex gap-2">
-                   {onGoToRecords && (
+                   {onGoToRecords && petRecords.length > 0 && (
                      <button onClick={() => onGoToRecords(activePet.id)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                        <Activity className="w-3.5 h-3.5"/> Open Current E.H.R
                      </button>
@@ -239,30 +279,28 @@ export default function PatientPortal({
                 </div>
               </div>
 
-              {/* PASSPORT NAVIGATION */}
-              <div className="flex px-6 gap-2 mt-2">
-                <button onClick={() => setPassportTab('timeline')} className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-colors flex items-center gap-2 border-b-0 ${passportTab === 'timeline' ? 'bg-slate-50 text-indigo-600 border border-slate-200' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>
+              {/* TABS */}
+              <div className="flex border-b border-slate-200 bg-white shrink-0 px-6 pt-2 gap-4">
+                <button onClick={() => setPassportTab('timeline')} className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 flex items-center gap-2 ${passportTab === 'timeline' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
                   <Activity className="w-3.5 h-3.5"/> Clinical Timeline
                 </button>
-                <button onClick={() => setPassportTab('exams')} className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-colors flex items-center gap-2 border-b-0 ${passportTab === 'exams' ? 'bg-slate-50 text-indigo-600 border border-slate-200' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>
+                <button onClick={() => setPassportTab('exams')} className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 flex items-center gap-2 ${passportTab === 'exams' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
                   <HeartPulse className="w-3.5 h-3.5"/> Systemic Exams
                 </button>
-                <button onClick={() => setPassportTab('labs')} className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-colors flex items-center gap-2 border-b-0 ${passportTab === 'labs' ? 'bg-slate-50 text-indigo-600 border border-slate-200' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>
+                <button onClick={() => setPassportTab('labs')} className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 flex items-center gap-2 ${passportTab === 'labs' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
                   <TestTube className="w-3.5 h-3.5"/> Laboratory
                 </button>
-                <button onClick={() => setPassportTab('vaccines')} className={`px-5 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-colors flex items-center gap-2 border-b-0 ${passportTab === 'vaccines' ? 'bg-slate-50 text-indigo-600 border border-slate-200' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>
+                <button onClick={() => setPassportTab('vaccines')} className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 flex items-center gap-2 ${passportTab === 'vaccines' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
                   <Syringe className="w-3.5 h-3.5"/> Vaccinations
                 </button>
               </div>
             </div>
 
-            {/* PASSPORT BODY */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-50/50">
               
-              {/* TAB: TIMELINE */}
               {passportTab === 'timeline' && (
                 <div className="space-y-4 max-w-4xl animate-fade-in mx-auto">
-                  {petRecords.length === 0 && <div className="text-center py-10 text-slate-400 font-bold text-xs border border-dashed border-slate-200 rounded-2xl">No clinical history found.</div>}
+                  {petRecords.length === 0 && <div className="text-center py-10 text-slate-400 font-bold text-xs border border-dashed border-slate-200 rounded-2xl">Patient is in queue but has no official clinical history yet.</div>}
                   {petRecords.map((record, idx) => (
                     <div key={record.id} className="relative pl-8 pb-8 group">
                       {idx !== petRecords.length - 1 && <div className="absolute left-3.5 top-8 bottom-0 w-0.5 bg-slate-200 group-hover:bg-indigo-200 transition-colors"></div>}
@@ -309,7 +347,6 @@ export default function PatientPortal({
                 </div>
               )}
 
-              {/* TAB: SYSTEMIC EXAMS */}
               {passportTab === 'exams' && (
                 <div className="space-y-4 max-w-4xl animate-fade-in mx-auto">
                   {petRecords.filter(r => r.physicalExam).length === 0 && <div className="text-center py-10 text-slate-400 font-bold text-xs border border-dashed border-slate-200 rounded-2xl">No systemic examinations recorded.</div>}
@@ -348,7 +385,6 @@ export default function PatientPortal({
                 </div>
               )}
 
-              {/* TAB: LABS */}
               {passportTab === 'labs' && (
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in max-w-4xl mx-auto">
                   <table className="w-full text-left text-xs border-collapse">
@@ -390,7 +426,6 @@ export default function PatientPortal({
                 </div>
               )}
 
-              {/* TAB: VACCINES */}
               {passportTab === 'vaccines' && (
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in max-w-4xl mx-auto">
                   <table className="w-full text-left text-xs border-collapse">
@@ -431,7 +466,7 @@ export default function PatientPortal({
         )}
       </main>
 
-      {/* PHASE 4: EDIT PET MASTER IDENTITY MODAL */}
+      {/* PHASE 3 & 4: EDIT PET MASTER IDENTITY MODAL WITH BULK SYNC */}
       {showEditPetModal && createPortal(
         <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden">

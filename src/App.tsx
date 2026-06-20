@@ -445,6 +445,23 @@ function App() {
     showToast(`Medical record updated for ${updated.petName}.`);
   };
 
+  const handleBulkUpdateRecords = async (updatedRecords: MedicalRecord[]) => {
+    try {
+      // 1. Fire a single batch transaction to the database
+      await Promise.all(updatedRecords.map(record => upsertMedicalRecord(record)));
+      
+      // 2. Perform exactly ONE React state render
+      setRecords(prev => {
+        const newMap = new Map(prev.map(r => [r.id, r]));
+        updatedRecords.forEach(ur => newMap.set(ur.id, ur));
+        return Array.from(newMap.values());
+      });
+      
+    } catch (error) {
+      console.error("Bulk sync failed:", error);
+    }
+  };
+
   const handleDeleteRecord = async (id: string) => {
     await deleteMedicalRecord(id);
     setRecords(prev => prev.filter(r => r.id !== id));
@@ -666,10 +683,10 @@ function App() {
           />
         );
       }
-      case 'pets': return <PatientPortal records={records} appointments={appointments} isOnline={isOnline} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} />;
+      case 'pets': return <PatientPortal records={records} appointments={appointments} isOnline={isOnline} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'vaccinations': return <VaccinationsManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
       case 'laboratory': return <LaboratoryManager records={records} inventory={inventory as any} onUpdateRecord={handleUpdateRecord} />;
-      case 'customers': return <CustomersManager records={records} invoices={invoices} appointments={appointments} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} />;
+      case 'customers': return <CustomersManager records={records} invoices={invoices} appointments={appointments} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       default: return null;
     }
   };

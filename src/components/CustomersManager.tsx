@@ -25,7 +25,8 @@ interface CustomersManagerProps {
   onUpdateCustomer?: (oldPhone: string, newPhone: string, newName: string, newEmail: string) => void;
   onGenerateConsent?: (clientName: string, petName: string) => void;
   onAddRecord?: (record: MedicalRecord) => void; 
-  onUpdateRecord?: (record: MedicalRecord) => void; // PHASE 3/4: Needed for bulk Pet updates
+  onUpdateRecord?: (record: MedicalRecord) => void; 
+  onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
 }
 
 export default function CustomersManager({ 
@@ -38,12 +39,13 @@ export default function CustomersManager({
   onUpdateCustomer,
   onGenerateConsent,
   onAddRecord,
-  onUpdateRecord
+  onUpdateRecord,
+  onUpdateRecordsBulk
 }: CustomersManagerProps) {
   
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [selectedPetId, setSelectedPetId] = useState<string | null>(null); // PHASE 3: Pet Passport State
+  const [selectedPetId, setSelectedPetId] = useState<string | null>(null); 
   const [passportTab, setPassportTab] = useState<'timeline' | 'exams' | 'labs' | 'vaccines'>('timeline');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -181,7 +183,7 @@ export default function CustomersManager({
   };
 
   // ---------------------------------------------------------
-  // PET PASSPORT DATA & LOGIC (PHASE 3 & 4)
+  // PET PASSPORT DATA & LOGIC
   // ---------------------------------------------------------
   const petRecords = selectedPetId ? records.filter(r => r.patientId === selectedPetId).sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()) : [];
   const activePet = petRecords.length > 0 ? petRecords[0] : null;
@@ -202,31 +204,44 @@ export default function CustomersManager({
     setShowEditPetModal(true);
   };
 
-  const handleSavePetEdits = (e: React.FormEvent) => {
+  // PHASE 3: BULK SYNC RACE-CONDITION ARMOR
+  const handleSavePetEdits = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onUpdateRecord || !selectedPetId) {
+    if (!selectedPetId) return;
+
+    if (petRecords.length === 0) {
+      showToast('No medical records found to sync identity against.', 'warning');
+      setShowEditPetModal(false);
+      return;
+    }
+
+    const updatedRecords = petRecords.map(record => ({
+      ...record,
+      petName: editPetData.petName,
+      petType: editPetData.petType,
+      breed: editPetData.breed,
+      sex: editPetData.sex,
+      weight: editPetData.weight,
+      age: editPetData.age
+    }));
+
+    if (onUpdateRecordsBulk) {
+      // Optimal Route: Fire single payload to App.tsx
+      onUpdateRecordsBulk(updatedRecords);
+    } else if (onUpdateRecord) {
+      // Fallback Route: Micro-throttled loop to prevent IndexedDB lockup
+      for (const record of updatedRecords) {
+        onUpdateRecord(record);
+        await new Promise(resolve => setTimeout(resolve, 15));
+      }
+    } else {
       showToast('Record update engine unavailable.', 'error');
       return;
     }
 
-    // BULK MASTER-SYNC: Update the identity across ALL historical records for this patient
-    petRecords.forEach(record => {
-      const updated = {
-        ...record,
-        petName: editPetData.petName,
-        petType: editPetData.petType,
-        breed: editPetData.breed,
-        sex: editPetData.sex,
-        weight: editPetData.weight,
-        age: editPetData.age
-      };
-      onUpdateRecord(updated);
-    });
-
     setShowEditPetModal(false);
-    showToast('Pet Identity synchronized across all historical records.', 'success');
+    showToast('Patient Identity synchronized across all medical records.', 'success');
   };
-
 
   // ---------------------------------------------------------
   // AGGREGATORS FOR CLIENT DASHBOARD
@@ -818,7 +833,7 @@ export default function CustomersManager({
         document.body
       )}
 
-      {/* PHASE 4: EDIT PET MASTER IDENTITY MODAL */}
+      {/* PHASE 3 & 4: EDIT PET MASTER IDENTITY MODAL WITH BULK SYNC */}
       {showEditPetModal && createPortal(
         <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden">
