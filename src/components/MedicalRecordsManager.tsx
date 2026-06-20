@@ -130,6 +130,12 @@ export default function MedicalRecordsManager({
     showToast(`Prescription removed. Stock reinstated.`, 'success');
   };
 
+  const handleSaveDraft = () => {
+    showToast('Exam draft saved to local memory.', 'success');
+    setActiveView('list');
+    setActiveApt(null);
+  };
+
   const handleFinalizeExam = async () => {
     if (!activeApt) return;
 
@@ -386,7 +392,7 @@ export default function MedicalRecordsManager({
               
               {/* Action Bar */}
               <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3">
-                <button className="px-6 py-3 bg-white border border-slate-200 text-slate-600 font-black rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Draft</button>
+                <button onClick={handleSaveDraft} className="px-6 py-3 bg-white border border-slate-200 text-slate-600 font-black rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Draft</button>
                 <button onClick={handleFinalizeExam} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-transform active:scale-95 text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
                   <CheckCircle2 className="w-4 h-4" /> Finalize & Discharge Patient
                 </button>

@@ -149,7 +149,23 @@ export default function CustomersManager({
     setShowEditModal(true);
   };
 
+  // ARMOR-PLATED DATA MERGE: Collapses duplicates and preserves Pet Type/Breed
   const clientPets = selectedClient ? records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(selectedClient.primary_phone)) : [];
+  const petMap = new Map<string, any>();
+  
+  clientPets.forEach(p => {
+    const key = (p.petName || 'Unknown').trim().toLowerCase();
+    if (!petMap.has(key)) {
+      petMap.set(key, { ...p });
+    } else {
+      const existing = petMap.get(key);
+      if (!existing.petType && p.petType) existing.petType = p.petType;
+      if (!existing.breed && p.breed) existing.breed = p.breed;
+      petMap.set(key, existing);
+    }
+  });
+  
+  const uniqueClientPets = Array.from(petMap.values());
   const clientInvoices = selectedClient ? invoices.filter(i => normalizePhone(i.ownerPhone) === normalizePhone(selectedClient.primary_phone)).slice(0, 5) : [];
   const clientAppointments = selectedClient ? appointments.filter(a => normalizePhone(a.ownerPhone) === normalizePhone(selectedClient.primary_phone)).slice(0, 5) : [];
 
@@ -179,7 +195,9 @@ export default function CustomersManager({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {filteredClients.map(c => {
-            const petCount = records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(c.primary_phone)).length;
+            // FIX: Accurately count UNIQUE pets, not total records
+            const clientRecs = records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(c.primary_phone));
+            const petCount = new Set(clientRecs.map(r => (r.petName || 'Unknown').trim().toLowerCase())).size;
             const isSelected = selectedClientId === c.client_id;
             
             return (
@@ -290,17 +308,20 @@ export default function CustomersManager({
                 <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-2">
                   <PawPrint className="w-4 h-4 text-indigo-500" /> Registered Companions
                 </h3>
-                {clientPets.length === 0 ? (
-                  <div className="p-6 text-center text-xs font-bold text-slate-400 bg-slate-50 rounded-xl border border-slate-100 border-dashed">
+                {uniqueClientPets.length === 0 ? (
+                  <div className="text-center p-8 text-sm font-bold text-slate-400 bg-slate-50 rounded-xl border border-slate-100 border-dashed">
                     No active companions registered.
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {clientPets.map(pet => (
+                    {uniqueClientPets.map(pet => (
                       <div key={pet.id} className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:shadow-sm transition-all group flex flex-col justify-between h-full">
                         <div>
                           <div className="font-extrabold text-slate-800 text-sm">{pet.petName}</div>
-                          <div className="text-[10px] font-bold text-slate-500 mt-1">{pet.petType} • {pet.breed}</div>
+                          <div className="text-[10px] font-bold text-slate-500 mt-1">
+                            {pet.petType || 'Companion'}
+                            {pet.breed ? ' • ' + pet.breed : ''}
+                          </div>
                         </div>
                         <div className="mt-4 flex gap-2 w-full">
                           <button 
