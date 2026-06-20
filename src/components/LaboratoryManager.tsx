@@ -6,21 +6,24 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, TestTube, Activity, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
-import { MedicalRecord, LabResult, InventoryItem } from '../types';
+import { MedicalRecord, LabResult, InventoryItem, Appointment } from '../types';
 import { showToast } from './Toast';
+import { formatDisplayDate } from '../utils/time';
 
 interface LabProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
+  appointments?: Appointment[]; // PHASE 1: Added to detect lobby queue
   onUpdateRecord: (record: MedicalRecord) => void;
+  onAddRecord?: (record: MedicalRecord) => void; // PHASE 1: Auto-generate charts from labs
 }
 
-export default function LaboratoryManager({ records, inventory, onUpdateRecord }: LabProps) {
+const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
+
+export default function LaboratoryManager({ records, inventory, appointments, onUpdateRecord, onAddRecord }: LabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'order' | 'results'>('order');
-  
-  // PHASE 2: Queue Toggle
   const [showQueueOnly, setShowQueueOnly] = useState(true);
 
   const [showResultModal, setShowResultModal] = useState(false);
@@ -28,27 +31,65 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
   const [resultNotes, setResultNotes] = useState('');
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
 
-  // Dynamic Test Extraction from Inventory
   const availableLabTests = useMemo(() => {
     return inventory.filter(i => i.category === 'lab_service').sort((a, b) => a.name.localeCompare(b.name));
   }, [inventory]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatDisplayDate(new Date());
 
+  // PHASE 1: The "True Queue" Dual-Matrix Aggregator
   const displayPatients = useMemo(() => {
-    const patientMap = new Map<string, MedicalRecord>();
+    const patientMap = new Map<string, any>();
+
+    // Pass 1: Load from Medical Records
     records.forEach(r => {
-      // Find the most recent record for each patient
-      if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId)!.visitDate)) {
-        patientMap.set(r.patientId, r);
+      if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId).visitDate)) {
+        patientMap.set(r.patientId, {
+          patientId: r.patientId,
+          petName: r.petName,
+          petType: r.petType,
+          breed: r.breed,
+          weight: r.weight,
+          sex: r.sex,
+          ownerName: r.ownerName,
+          ownerPhone: r.ownerPhone,
+          visitDate: r.visitDate,
+          source: 'record'
+        });
+      }
+    });
+
+    // Pass 2: Load from Appointments (Catching un-charted pets in the lobby)
+    (appointments || []).forEach(a => {
+      const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
+      if (!patientMap.has(pid)) {
+        patientMap.set(pid, {
+          patientId: pid,
+          petName: a.petName,
+          petType: a.petType,
+          breed: a.breed,
+          weight: a.weight,
+          sex: a.sex,
+          ownerName: a.ownerName,
+          ownerPhone: a.ownerPhone,
+          visitDate: a.date,
+          source: 'appointment'
+        });
       }
     });
 
     let activeList = Array.from(patientMap.values());
 
-    // QUEUE FILTER: Only show patients with a record generated TODAY
     if (showQueueOnly) {
-      activeList = activeList.filter(p => records.some(r => r.patientId === p.patientId && r.visitDate === todayStr));
+      activeList = activeList.filter(p => {
+        const hasRecordToday = records.some(r => r.patientId === p.patientId && r.visitDate === todayStr);
+        const hasApptToday = (appointments || []).some(a => 
+          `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}` === p.patientId && 
+          a.date === todayStr && 
+          ['booked', 'in-progress'].includes(a.status)
+        );
+        return hasRecordToday || hasApptToday;
+      });
     }
 
     if (searchQuery) {
@@ -57,20 +98,50 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
     }
 
     return activeList.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
-  }, [records, showQueueOnly, searchQuery, todayStr]);
+  }, [records, appointments, showQueueOnly, searchQuery, todayStr]);
 
-  const selectedRecord = displayPatients.find(p => p.patientId === selectedPatientId) 
-    || records.find(r => r.patientId === selectedPatientId); // Fallback if they toggle queue off while selected
-
+  const selectedRecord = displayPatients.find(p => p.patientId === selectedPatientId);
   const allPatientRecords = selectedPatientId ? records.filter(r => r.patientId === selectedPatientId) : [];
   
   const allLabResults = allPatientRecords.flatMap(r => 
     (r.labResults || []).map(lab => ({ ...lab, recordId: r.id }))
   ).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
+  // PHASE 1: Phantom Chart Generation Logic
   const handleOrderTest = (testItem: InventoryItem) => {
-    if (!selectedRecord) return;
+    if (!selectedPatientId) return;
     
+    let activeRecord = records.find(r => r.patientId === selectedPatientId && r.visitDate === todayStr);
+    let isNewRecord = false;
+
+    if (!activeRecord) {
+      const stub = displayPatients.find(p => p.patientId === selectedPatientId);
+      if (!stub) return;
+      activeRecord = {
+        id: crypto.randomUUID(),
+        patientId: stub.patientId,
+        petName: stub.petName,
+        petType: stub.petType as any,
+        breed: stub.breed || 'Mixed',
+        age: 'Unknown',
+        weight: stub.weight || 0,
+        sex: stub.sex || 'Unknown',
+        ownerName: stub.ownerName,
+        ownerPhone: stub.ownerPhone,
+        ownerEmail: 'not-provided@example.com',
+        visitDate: todayStr,
+        attendingVet: 'System / Lab Tech',
+        symptoms: '',
+        diagnosis: 'Direct Lab Intake',
+        treatmentNotes: '',
+        prescribedMeds: [],
+        vaccinations: [],
+        labResults: [],
+        createdDate: new Date().toISOString().split('T')[0]
+      };
+      isNewRecord = true;
+    }
+
     const newLab: LabResult = {
       id: crypto.randomUUID(),
       testName: testItem.name,
@@ -85,13 +156,18 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
       quantity: 1
     };
 
-    const updatedRecord: MedicalRecord = {
-      ...selectedRecord,
-      labResults: [...(selectedRecord.labResults || []), newLab],
-      prescribedMeds: [...(selectedRecord.prescribedMeds || []), billingItem]
+    const updatedRecord = {
+      ...activeRecord,
+      labResults: [...(activeRecord.labResults || []), newLab],
+      prescribedMeds: [...(activeRecord.prescribedMeds || []), billingItem]
     };
 
-    onUpdateRecord(updatedRecord);
+    if (isNewRecord && onAddRecord) {
+      onAddRecord(updatedRecord);
+    } else {
+      onUpdateRecord(updatedRecord);
+    }
+
     showToast(`${testItem.name} ordered & billed to POS queue.`, 'success');
     setActiveTab('results');
   };
@@ -99,39 +175,22 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
   const openResultModal = (lab: LabResult, recordId: string) => {
     setActiveLabResult({ result: lab, recordId });
     setResultNotes(lab.notes || '');
-    
-    // Attempt to parse existing parameter JSON if available
     try {
-      if (lab.value && lab.value.startsWith('{')) {
-        setParameterValues(JSON.parse(lab.value));
-      } else {
-        setParameterValues({});
-      }
-    } catch(e) {
-      setParameterValues({});
-    }
-
+      if (lab.value && lab.value.startsWith('{')) setParameterValues(JSON.parse(lab.value));
+      else setParameterValues({});
+    } catch(e) { setParameterValues({}); }
     setShowResultModal(true);
   };
 
   const handleSaveResult = () => {
     if (!activeLabResult) return;
-    
     const targetRecord = records.find(r => r.id === activeLabResult.recordId);
     if (!targetRecord) return;
 
-    // Serialize parameter values to JSON string
     const stringifiedValues = JSON.stringify(parameterValues);
-
     const updatedLabs = targetRecord.labResults.map(lab => 
       lab.id === activeLabResult.result.id 
-        ? { 
-            ...lab, 
-            status: 'completed' as const, 
-            notes: resultNotes, 
-            value: stringifiedValues,
-            resultDate: todayStr 
-          } 
+        ? { ...lab, status: 'completed' as const, notes: resultNotes, value: stringifiedValues, resultDate: todayStr } 
         : lab
     );
 
@@ -140,7 +199,6 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
     showToast('Laboratory results finalized & locked.', 'success');
   };
 
-  // Find parameter schema for the active test
   const activeTestSchema = activeLabResult 
     ? inventory.find(i => i.name === activeLabResult.result.testName)?.labParameters 
     : undefined;
@@ -148,7 +206,6 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
   return (
     <div className="flex h-full w-full gap-4 overflow-hidden" id="laboratory-module-container">
       
-      {/* LEFT PANE: SMART QUEUE */}
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
         <div className="p-5 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
           <div className="flex items-center justify-between">
@@ -156,7 +213,7 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
               <TestTube className="w-4 h-4 text-indigo-600" /> Lab Patients
             </h2>
             <div className="flex bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
-              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Queue</button>
+              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
               <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All</button>
             </div>
           </div>
@@ -181,7 +238,7 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
               >
                 <div className="flex justify-between items-start mb-1">
                   <div className={`font-black truncate text-sm ${selectedPatientId === patient.patientId ? 'text-white' : 'text-slate-800'}`}>{patient.petName}</div>
-                  {showQueueOnly && <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${selectedPatientId === patient.patientId ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>In Clinic</span>}
+                  {showQueueOnly && <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${selectedPatientId === patient.patientId ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>Queued</span>}
                 </div>
                 <div className={`text-[10px] font-bold ${selectedPatientId === patient.patientId ? 'text-indigo-200' : 'text-slate-500'}`}>{patient.petType} • {patient.breed}</div>
                 <div className={`text-[10px] font-semibold mt-2 pt-2 border-t flex items-center gap-1.5 ${selectedPatientId === patient.patientId ? 'text-indigo-100 border-indigo-500' : 'text-slate-400 border-slate-100'}`}>
@@ -193,7 +250,6 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
         </div>
       </aside>
 
-      {/* RIGHT PANE: COMMAND CENTER */}
       <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
         {!selectedRecord ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-50">
@@ -203,7 +259,7 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
         ) : (
           <div className="flex-1 flex flex-col relative overflow-hidden">
             
-            <div className="bg-white p-6 border-b border-slate-200 flex justify-between items-start shrink-0 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] z-10">
+            <div className="bg-white p-6 border-b border-slate-200 flex justify-between items-start shrink-0 z-10">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center border border-indigo-100"><TestTube className="w-7 h-7 text-indigo-600" /></div>
                 <div>
@@ -213,9 +269,10 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
               </div>
             </div>
 
-            <div className="flex border-b border-slate-200 bg-white shrink-0 px-6 pt-2">
-              <button onClick={() => setActiveTab('order')} className={`px-6 py-3 text-[11px] font-black uppercase tracking-widest transition-colors ${activeTab === 'order' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>Order / Bill Tests</button>
-              <button onClick={() => setActiveTab('results')} className={`px-6 py-3 text-[11px] font-black uppercase tracking-widest transition-colors flex items-center gap-2 ${activeTab === 'results' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>
+            {/* PHASE 2 UI SYNC: Standardized Tabs */}
+            <div className="flex border-b border-slate-200 bg-white shrink-0 px-6 pt-2 gap-4">
+              <button onClick={() => setActiveTab('order')} className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 ${activeTab === 'order' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>Order / Bill Tests</button>
+              <button onClick={() => setActiveTab('results')} className={`pb-3 text-[10px] font-black uppercase tracking-widest transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'results' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}>
                 Results Log
                 {allLabResults.some(l => l.status === 'pending') && <span className="bg-amber-500 w-2 h-2 rounded-full animate-pulse"></span>}
               </button>
@@ -306,7 +363,6 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
         )}
       </main>
 
-      {/* DYNAMIC RESULTS ENTRY MODAL */}
       {showResultModal && activeLabResult && createPortal(
         <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-2xl w-full flex flex-col shadow-2xl animate-scale-up max-h-[90vh]">
@@ -320,8 +376,6 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
             </div>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
-              
-              {/* PHASE 2: DYNAMIC PARAMETER GRID */}
               {activeTestSchema && activeTestSchema.length > 0 && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
                   <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Measured Parameters</h4>
@@ -348,7 +402,6 @@ export default function LaboratoryManager({ records, inventory, onUpdateRecord }
                 </div>
               )}
 
-              {/* STANDARD NOTES BLOCK */}
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Pathologist Notes / Remarks</label>
                 <textarea 

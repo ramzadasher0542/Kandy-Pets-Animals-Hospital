@@ -1,456 +1,451 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ShoppingBag, Search, Tag, Trash2, Plus, Minus, UserPlus, CreditCard, Coins, FileText, Printer, ArrowRight, Lock, Activity, Sparkles, QrCode } from 'lucide-react';
-import { InventoryItem, Appointment, Invoice, InvoiceItem, PaymentMethod, User as StaffUser, MedicalRecord, ActiveShift } from '../types';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useMemo } from 'react';
+import { 
+  Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, 
+  User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
+  PenTool, CheckCircle2 // FIXED: Fatal ReferenceError imports added
+} from 'lucide-react';
+import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord } from '../types';
+import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { addRevenueToActiveShift, upsertInvoice, fetchInvoices } from '../lib/db';
 
 interface POSProps {
-  inventory: InventoryItem[]; appointments: Appointment[]; records: MedicalRecord[];
-  isOnline: boolean; currentUser: StaffUser; invoices: Invoice[];
-  onUpdateStock: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
-  onAddInvoice: (invoice: Invoice) => Promise<void>;
-  onVoidInvoice: (invoiceId: string) => void;
-  systemConfig?: any; onVerifyMasterPin?: (pin: string) => boolean;
-  onTriggerInventorySync?: () => void; incomingClient?: { phone: string; name: string; id: string } | null;
-  activeShift: ActiveShift | null;
-  onUpdateRecord: (record: MedicalRecord) => void;
+  inventory: InventoryItem[];
+  appointments: Appointment[];
+  records: MedicalRecord[];
+  onCheckout: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
+  activeShiftId?: string;
+  currentUser?: string;
 }
 
-interface ActiveClient { id: string; name: string; phone: string; petName?: string; appointmentId?: string; }
+interface CartItem extends InventoryItem {
+  cartQuantity: number;
+  cartId: string;
+}
 
-export default function POSRegister({ inventory, appointments, records, currentUser, invoices, onUpdateStock, onAddInvoice, onVoidInvoice, systemConfig, onVerifyMasterPin, incomingClient, activeShift, onUpdateRecord }: POSProps) {
-  
-  if (!activeShift) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 p-8 h-[calc(100vh-140px)]">
-        <div className="bg-white p-10 rounded-3xl shadow-xl flex flex-col items-center text-center max-w-md border border-slate-200 animate-scale-up">
-          <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-6"><Lock className="w-10 h-10" /></div>
-          <h2 className="text-xl font-black text-slate-800 mb-2">🔒 REGISTER IS CLOSED</h2>
-          <p className="text-slate-500 font-semibold mb-8 text-xs leading-relaxed">No active shift detected. Please navigate to the Shift & Drawer panel to open the register with your starting float.</p>
-        </div>
-      </div>
-    );
-  }
+const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-  // Bug #7 Fix: Always track the latest records prop to prevent stale closure in checkout
-  const recordsRef = useRef(records);
-  useEffect(() => { recordsRef.current = records; }, [records]);
-
-  const [activeTab, setActiveTab] = useState<'queue' | 'quick' | 'search'>('queue');
-  const [isWalkIn, setIsWalkIn] = useState(!incomingClient);
-  const [selectedClient, setSelectedClient] = useState<ActiveClient | null>(incomingClient ? { id: incomingClient.id, name: incomingClient.name, phone: incomingClient.phone } : null);
-  const [cart, setCart] = useState<Array<{ item: InventoryItem; quantity: number }>>([]);
-  const [discountVal, setDiscountVal] = useState<number>(0);
+export default function POSRegister({ inventory, appointments, records, onCheckout, activeShiftId, currentUser }: POSProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [barcodeInput, setBarcodeInput] = useState('');
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [discount, setDiscount] = useState<number>(0);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer'>('cash');
   
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [amountReceived, setAmountReceived] = useState('');
-  const [checkoutSuccess, setCheckoutSuccess] = useState<Invoice | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<Invoice | null>(null);
-  const cashInputRef = useRef<HTMLInputElement>(null);
+  // Checkout Context
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [customClientName, setCustomClientName] = useState('');
+  const [customClientPhone, setCustomClientPhone] = useState('');
 
-  const [showPinChallenge, setShowPinChallenge] = useState(false);
-  const [challengeInvoiceId, setChallengeInvoiceId] = useState<string | null>(null);
-  const [enteredChallengePin, setEnteredChallengePin] = useState('');
-  const [challengePinError, setChallengePinError] = useState(false);
+  const todayStr = formatDisplayDate(new Date());
 
-  useEffect(() => {
-    if (incomingClient) { setIsWalkIn(false); setSelectedClient({ id: incomingClient.id, name: incomingClient.name, phone: incomingClient.phone }); }
-  }, [incomingClient]);
+  // ---------------------------------------------------------
+  // INVENTORY & QUEUE LOGIC (ARMORED AGAINST UNDEFINED)
+  // ---------------------------------------------------------
+  const filteredInventory = useMemo(() => {
+    const safeInventory = inventory || [];
+    if (!searchQuery) return safeInventory;
+    const q = searchQuery.toLowerCase();
+    return safeInventory.filter(i => 
+      i.name.toLowerCase().includes(q) || 
+      i.sku.toLowerCase().includes(q)
+    );
+  }, [inventory, searchQuery]);
 
-  useEffect(() => {
-    if (isWalkIn) setSelectedClient({ id: 'walk_in_retail', name: 'Walk-In / Retail Customer', phone: '0000000000' });
-    else if (selectedClient?.id === 'walk_in_retail') setSelectedClient(null);
-  }, [isWalkIn]);
+  const activeQueue = useMemo(() => {
+    const safeAppointments = appointments || [];
+    return safeAppointments.filter(a => 
+      a.date === todayStr && ['booked', 'in-progress', 'completed'].includes(a.status)
+    ).sort((a, b) => {
+      // Prioritize completed appointments waiting for payment
+      if (a.status === 'completed' && b.status !== 'completed') return -1;
+      if (b.status === 'completed' && a.status !== 'completed') return 1;
+      return 0;
+    });
+  }, [appointments, todayStr]);
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowCheckoutModal(false); if (checkoutSuccess) setCheckoutSuccess(null); }
-      if (checkoutSuccess && e.key === 'Enter') { e.preventDefault(); handlePrintReceipt(checkoutSuccess); }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [showCheckoutModal, checkoutSuccess]);
-
-  const normalizePhone = (p: string) => p.replace(/\D/g, '');
-
-  const handleQueueClick = (apt: Appointment) => {
-    setIsWalkIn(false);
-    const matchedRec = records.find(r => r.petName === apt.petName && normalizePhone(r.ownerPhone) === normalizePhone(apt.ownerPhone));
-    setSelectedClient({ id: matchedRec?.patientId || apt.id, name: apt.ownerName, phone: apt.ownerPhone, petName: apt.petName, appointmentId: apt.id });
-    let consultFeeAlreadyInjected = false;
-    if (matchedRec && matchedRec.prescribedMeds) {
-      matchedRec.prescribedMeds.forEach(med => {
-        if (med.itemId === 'consult_fee') consultFeeAlreadyInjected = true;
-        const invItem = inventory.find(i => i.id === med.itemId);
-        if (invItem) addToCart(invItem, med.quantity || 1);
-        else if (med.itemId === 'boarding_deposit' || med.itemId === 'boarding_rate') {
-            const rateItem = inventory.find(i => i.id === 'boarding_rate' || i.name.toLowerCase().includes('boarding'));
-            const actualRate = rateItem ? rateItem.price : 2500;
-            const appliedPrice = med.itemId === 'boarding_deposit' ? -15000 : actualRate;
-            
-            addToCart({ id: med.itemId, sku: 'SRV-BRD', name: med.name, category: 'service', price: appliedPrice, cost: 0, stock: 999, minStock: 0, unit: 'Session' }, med.quantity);
-        }
-      });
-    }
-    // Bug #3 Fix: Only inject consult fee if prescribedMeds did NOT already contain one
-    if (!consultFeeAlreadyInjected) {
-      const consultFee = inventory.find(i => i.category === 'service' && i.name.toLowerCase().includes('consult'));
-      if (consultFee) addToCart(consultFee, 1);
-    }
-    showToast(`Session locked to ${apt.petName}. Prescriptions injected to cart.`, 'success');
-  };
-
-  const addToCart = (product: InventoryItem, qty: number = 1) => {
-    const isService = product?.category === 'service' || product?.category === 'lab_service';
-    if (product.stock <= 0 && !isService) { showToast(`Critical: ${product.name} is out of stock.`, 'error'); return; }
+  // ---------------------------------------------------------
+  // CART OPERATIONS
+  // ---------------------------------------------------------
+  const addToCart = (item: InventoryItem, qty: number = 1) => {
     setCart(prev => {
-      const existing = prev.find(i => i.item.id === product.id);
+      const existing = prev.find(i => i.id === item.id);
       if (existing) {
-        if (existing.quantity + qty > product.stock && !isService) { showToast(`Cannot add more. Inventory limit reached.`, 'error'); return prev; }
-        return prev.map(i => i.item.id === product.id ? { ...i, quantity: i.quantity + qty } : i);
+        return prev.map(i => i.id === item.id ? { ...i, cartQuantity: i.cartQuantity + qty } : i);
       }
-      return [...prev, { item: product, quantity: qty }];
+      return [...prev, { ...item, cartQuantity: qty, cartId: crypto.randomUUID() }];
     });
   };
 
-  const updateCartQty = (productId: string, val: number) => {
-    setCart(prev => prev.map(i => {
-      if (i.item.id === productId) {
-        const newQty = i.quantity + val;
-        const isService = i.item.category === 'service' || i.item.category === 'lab_service';
-        if (newQty <= 0) return { ...i, quantity: 0 };
-        if (newQty > i.item.stock && !isService) { showToast(`Cannot exceed available stock limit.`, 'error'); return i; }
-        return { ...i, quantity: newQty };
-      }
-      return i;
-    }).filter(i => i.quantity > 0));
+  const removeFromCart = (cartId: string) => {
+    setCart(prev => prev.filter(i => i.cartId !== cartId));
   };
 
-  const removeFromCart = (productId: string) => setCart(cart.filter(i => i.item.id !== productId));
-
-  const handleResetActiveRegisterCartAtomic = useCallback(() => { setCart([]); setDiscountVal(0); setIsWalkIn(true); setAmountReceived(''); }, []);
-
-  const taxRate = systemConfig ? systemConfig.taxRate : 0.0825;
-  const currencySign = systemConfig ? systemConfig.currencySymbol : 'Rs.';
-  
-  const centsSubtotal = cart.reduce((sum, item) => sum + Math.round(item.item.price * 100) * item.quantity, 0);
-  const centsDiscount = Math.round((discountVal || 0) * 100);
-  const netCentsSubtotal = Math.max(0, centsSubtotal - centsDiscount);
-  const centsTax = Math.round(netCentsSubtotal * taxRate);
-  const centsTotal = netCentsSubtotal + centsTax;
-
-  const subtotal = centsSubtotal / 100;
-  const discount = centsDiscount / 100;
-  const tax = centsTax / 100;
-  const total = centsTotal / 100;
-
-  const handleCheckoutSubmit = async (): Promise<boolean> => {
-    if (isProcessing) return false;
-    if (cart.length === 0) { showToast('Cannot checkout: Cart is empty.', 'error'); return false; }
-    setIsProcessing(true);
-    try {
-      let totalCogsCents = 0;
-      const newInvItems: InvoiceItem[] = cart.map(c => {
-        const itemCostCents = Math.round((Number(c.item.cost) || 0) * 100);
-        totalCogsCents += itemCostCents * c.quantity;
-        return { itemId: c.item.id, sku: c.item.sku, name: c.item.name, category: c.item.category, quantity: c.quantity, unitPrice: c.item.price, totalPrice: (Math.round(c.item.price * 100) * c.quantity) / 100 };
-      });
-      const totalCogs = totalCogsCents / 100;
-      const profit = Math.round((total - totalCogs) * 100) / 100;
-      
-      const currentLiveInvoices = await fetchInvoices();
-      let maxNum = 999;
-      currentLiveInvoices.forEach(inv => {
-        const numMatch = ((inv as any).invoiceNumber || (inv as any).invoice_number || inv.id || '').match(/INV-(\d+)/);
-        if (numMatch && numMatch[1]) {
-          const num = parseInt(numMatch[1], 10);
-          if (num > maxNum) maxNum = num;
-        }
-      });
-      const generatedSequence = `INV-${maxNum + 1}`;
-
-      // Bug #5 Fix: Use crypto.randomUUID() for collision-safe invoice IDs
-      const invoiceObj: Invoice = {
-        id: generatedSequence, appointmentId: selectedClient?.appointmentId, patientId: selectedClient?.id || '0', petName: selectedClient?.petName || 'Walk-in Pet', ownerName: selectedClient?.name || 'Walk-In Customer', ownerPhone: selectedClient?.phone || '0000000000', date: new Date().toISOString().split('T')[0], items: newInvItems, subtotal, tax, discount, sales_total: total, cogs: totalCogs, profit, shiftId: activeShift.id, paymentMethod, paymentStatus: 'paid', createdBy: currentUser?.name || 'Unknown'
-      };
-
-      const stockPromises = cart.filter(c => c.item.category !== 'service' && c.item.category !== 'lab_service').map(c => onUpdateStock(c.item.id, -c.quantity, c.item.stock));
-      await Promise.all(stockPromises);
-      await addRevenueToActiveShift(paymentMethod, Math.round(total * 100));
-
-      // SPIDERWEB SYNC: Wipe the Temporary Billing Queue to prevent double-billing
-      // Bug #7 Fix: Use recordsRef.current (latest snapshot) instead of stale closure
-      if (selectedClient && selectedClient.petName) {
-        const targetRecord = recordsRef.current.find(r => 
-          r.petName === selectedClient.petName && 
-          r.ownerPhone.replace(/\D/g, '') === selectedClient.phone.replace(/\D/g, '')
-        );
-        if (targetRecord) {
-          onUpdateRecord({ ...targetRecord, prescribedMeds: [] });
-        }
+  const updateCartQuantity = (cartId: string, delta: number) => {
+    setCart(prev => prev.map(i => {
+      if (i.cartId === cartId) {
+        const newQty = Math.max(1, i.cartQuantity + delta);
+        return { ...i, cartQuantity: newQty };
       }
+      return i;
+    }));
+  };
 
-      await upsertInvoice(invoiceObj);
-      await onAddInvoice(invoiceObj);
-      setCheckoutSuccess(invoiceObj);
-      handleResetActiveRegisterCartAtomic();
-      setShowCheckoutModal(false);
-      setIsProcessing(false);
-      showToast('Checkout complete! Invoice generated.', 'success');
-      return true;
-    } catch (err: any) {
-      showToast('Database error during checkout. Cart preserved.', 'error');
-      setIsProcessing(false);
-      return false;
+  const clearCart = () => {
+    if (window.confirm('Clear all items from the current transaction?')) {
+      setCart([]);
+      setDiscount(0);
+      setSelectedAppointment(null);
+      setCustomClientName('');
+      setCustomClientPhone('');
     }
   };
 
-  const hashPin = (pin: string) => {
-    if (!pin || /^\d{4}$/.test(pin) === false) return pin;
-    let hash = 5381; const combined = pin + "CeylonPetsSecuritySalt";
-    for (let i = 0; i < combined.length; i++) hash = (hash * 33) ^ combined.charCodeAt(i);
-    return (hash >>> 0).toString(16).padStart(8, '0');
+  // ---------------------------------------------------------
+  // E.H.R AUTO-SCRAPER ENGINE
+  // ---------------------------------------------------------
+  const handleSelectAppointment = (apt: Appointment) => {
+    setSelectedAppointment(apt);
+    setCustomClientName('');
+    setCustomClientPhone('');
+    
+    // Auto-Scrape Logic
+    const targetPid = `${(apt.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(apt.ownerPhone)}`;
+    const safeRecords = records || [];
+    const safeInventory = inventory || [];
+    const activeRecord = safeRecords.find(r => r.patientId === targetPid && r.visitDate === todayStr);
+
+    let newCartItems: CartItem[] = [];
+
+    // 1. Add Default Consultation Fee if exists in inventory
+    const consultFee = safeInventory.find(i => i.name.toLowerCase().includes('consultation') || i.category === 'service');
+    if (consultFee && cart.length === 0) {
+      newCartItems.push({ ...consultFee, cartQuantity: 1, cartId: crypto.randomUUID() });
+    }
+
+    // 2. Scrape Prescribed Meds & Lab Tests
+    if (activeRecord && activeRecord.prescribedMeds) {
+      activeRecord.prescribedMeds.forEach(med => {
+        const invItem = safeInventory.find(i => i.id === med.itemId);
+        if (invItem) {
+          const existing = newCartItems.find(i => i.id === invItem.id);
+          if (existing) {
+            existing.cartQuantity += med.quantity;
+          } else {
+            newCartItems.push({ ...invItem, cartQuantity: med.quantity, cartId: crypto.randomUUID() });
+          }
+        }
+      });
+    }
+
+    // 3. Scrape Unbilled Vaccinations
+    if (activeRecord && activeRecord.vaccinations) {
+      activeRecord.vaccinations.forEach(vax => {
+        if (!vax.billed) {
+          const invItem = safeInventory.find(i => i.id === vax.itemId);
+          if (invItem) {
+            newCartItems.push({ ...invItem, cartQuantity: 1, cartId: crypto.randomUUID() });
+          }
+        }
+      });
+    }
+
+    if (newCartItems.length > 0) {
+      setCart(newCartItems);
+      showToast(`Imported ${newCartItems.length} billable items from E.H.R.`, 'success');
+    } else {
+      setCart(newCartItems);
+      showToast('No active charges found in E.H.R. Manual entry required.', 'info');
+    }
   };
 
-  const handleInitiateVoid = (invId: string) => {
-    if (currentUser.role === 'owner' || currentUser.role === 'admin') {
-      if (window.confirm(`Void Invoice ${invId}? Stock will be reinstated.`)) {
-        onVoidInvoice(invId); setSelectedInvoiceDetails(prev => prev && prev.id === invId ? { ...prev, paymentStatus: 'void' } : prev);
+  // ---------------------------------------------------------
+  // FINANCIAL MATH & CHECKOUT
+  // ---------------------------------------------------------
+  const subtotal = cart.reduce((sum, item) => sum + (item.price * item.cartQuantity), 0);
+  const totalCostOfGoods = cart.reduce((sum, item) => sum + (item.cost * item.cartQuantity), 0);
+  const total = Math.max(0, subtotal - discount);
+
+  const handleCheckout = () => {
+    if (cart.length === 0) {
+      showToast('Cart is empty.', 'error');
+      return;
+    }
+
+    const isWalkIn = !selectedAppointment;
+    const clientName = isWalkIn ? (customClientName || 'Walk-in Client') : selectedAppointment.ownerName;
+    const clientPhone = isWalkIn ? (customClientPhone || '0000000000') : selectedAppointment.ownerPhone;
+    const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
+    const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
+
+    const invoiceItems: InvoiceItem[] = cart.map(c => ({
+      itemId: c.id,
+      sku: c.sku,
+      name: c.name,
+      category: c.category,
+      quantity: c.cartQuantity,
+      unitPrice: c.price,
+      totalPrice: c.price * c.cartQuantity
+    }));
+
+    const invoice: Invoice = {
+      id: crypto.randomUUID(),
+      appointmentId: selectedAppointment?.id,
+      patientId,
+      petName,
+      ownerName: clientName,
+      ownerPhone: clientPhone,
+      date: new Date().toISOString(),
+      items: invoiceItems,
+      subtotal,
+      tax: 0, 
+      discount,
+      sales_total: total,
+      cogs: totalCostOfGoods,
+      profit: total - totalCostOfGoods,
+      paymentMethod,
+      paymentStatus: 'paid',
+      createdBy: currentUser || 'Cashier',
+      shiftId: activeShiftId
+    };
+
+    const updatedInventory = [...(inventory || [])];
+    cart.forEach(cartItem => {
+      if (!['service', 'lab_service'].includes(cartItem.category)) {
+        const invIndex = updatedInventory.findIndex(i => i.id === cartItem.id);
+        if (invIndex !== -1) {
+          updatedInventory[invIndex] = {
+            ...updatedInventory[invIndex],
+            stock: Math.max(0, updatedInventory[invIndex].stock - cartItem.cartQuantity)
+          };
+        }
       }
-    } else { setChallengeInvoiceId(invId); setShowPinChallenge(true); }
-  };
+    });
 
-  const handleVerifyChallengePin = () => {
-    const authorized = onVerifyMasterPin ? onVerifyMasterPin(enteredChallengePin) : hashPin(enteredChallengePin) === (systemConfig?.masterPin || hashPin('5692'));
-    if (authorized && challengeInvoiceId) {
-      onVoidInvoice(challengeInvoiceId); setSelectedInvoiceDetails(prev => prev && prev.id === challengeInvoiceId ? { ...prev, paymentStatus: 'void' } : prev);
-      setShowPinChallenge(false); setChallengeInvoiceId(null); setEnteredChallengePin(''); showToast(`Transaction voided.`, 'success');
-    } else { setChallengePinError(true); setEnteredChallengePin(''); setTimeout(() => setChallengePinError(false), 2000); }
+    onCheckout(invoice, updatedInventory);
+    
+    setCart([]);
+    setDiscount(0);
+    setSelectedAppointment(null);
+    setCustomClientName('');
+    setCustomClientPhone('');
   };
-
-  const handlePrintReceipt = (inv: Invoice) => {
-    const printWindow = window.open('', '_blank', 'width=350,height=600');
-    if (!printWindow) return;
-    printWindow.document.write(`<html><head><style>body{font-family:monospace;font-size:12px;}</style></head><body><h3>${systemConfig?.hospitalName || 'Ceylon Pets'}</h3><p>Invoice: ${inv.id}<br/>Total: ${currencySign}${inv.sales_total.toFixed(2)}</p><script>window.onload=function(){window.print();setTimeout(function(){window.close();},500);}</script></body></html>`);
-    printWindow.document.close();
-  };
-
-  const billedAptIds = new Set(invoices.filter(i => i.paymentStatus === 'paid').map(i => i.appointmentId).filter(Boolean));
-  const queueApts = appointments.filter(a => a.status === 'completed' && !billedAptIds.has(a.id));
-  const quickAddItems = inventory.filter(i => ['retail', 'vaccine', 'prescription'].includes(i.category)).slice(0, 12);
-  const filteredProducts = inventory.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()) || i.sku.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
-    <div className="flex h-[calc(100vh-140px)] w-full gap-5 overflow-hidden" id="pos-enterprise-split">
-      <div className="w-[40%] min-w-[380px] flex flex-col border border-slate-200 rounded-2xl bg-white shadow-sm shrink-0 overflow-hidden relative">
-        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col gap-3 shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="font-black text-slate-800 tracking-tight text-sm">Active Register</span>
-            <label className="flex items-center cursor-pointer hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors">
-              <input type="checkbox" className="sr-only" checked={isWalkIn} onChange={(e) => setIsWalkIn(e.target.checked)} />
-              <div className={`w-8 h-4 bg-slate-200 rounded-full transition-colors relative ${isWalkIn ? 'bg-emerald-500' : ''}`}>
-                <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isWalkIn ? 'translate-x-4' : ''}`} />
-              </div>
-              <span className="ml-2 text-[10px] font-bold text-slate-600 uppercase tracking-wide">Walk-In</span>
-            </label>
-          </div>
-          {!isWalkIn && selectedClient && (
-            <div className="flex justify-between items-center bg-indigo-50 border border-indigo-200 p-3 rounded-xl shadow-xs animate-fade-in">
+    <div className="flex h-full w-full gap-4 overflow-hidden" id="pos-register-container">
+      
+      {/* LEFT PANE: CHECKOUT CART */}
+      <aside className="w-1/2 min-w-[400px] max-w-[500px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0 z-10">
+        <div className="p-5 border-b border-slate-100 bg-slate-50 shrink-0 flex items-center justify-between">
+          <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
+            <ShoppingCart className="w-5 h-5 text-indigo-600" /> Active Register
+          </h2>
+          {cart.length > 0 && (
+            <button onClick={clearCart} className="text-[10px] font-black text-rose-500 hover:text-rose-700 uppercase tracking-widest transition-colors cursor-pointer">
+              Void Cart
+            </button>
+          )}
+        </div>
+
+        {/* Client Context Header */}
+        <div className="bg-indigo-50 border-b border-indigo-100 p-4 shrink-0 flex items-center justify-between">
+          {selectedAppointment ? (
+            <div className="flex items-center gap-3">
+              <div className="bg-indigo-600 text-white p-2 rounded-xl shadow-sm"><User className="w-4 h-4"/></div>
               <div>
-                <div className="text-xs font-black text-indigo-900 leading-tight">{selectedClient.name}</div>
-                <div className="text-[10px] font-bold text-indigo-600 font-mono mt-0.5">{selectedClient.phone}</div>
-                {selectedClient.petName && <div className="text-[10px] font-bold text-slate-600 mt-1 flex items-center gap-1"><Activity className="w-3 h-3 text-indigo-400" /> Patient: {selectedClient.petName}</div>}
+                <div className="text-xs font-black text-indigo-900">{selectedAppointment.ownerName} <span className="text-[10px] text-indigo-500 font-bold ml-1">• {selectedAppointment.petName}</span></div>
+                <div className="text-[10px] font-bold text-indigo-700 font-mono mt-0.5">{selectedAppointment.ownerPhone}</div>
               </div>
-              <button onClick={() => setIsWalkIn(true)} className="w-6 h-6 flex items-center justify-center text-indigo-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors font-bold">✕</button>
+            </div>
+          ) : (
+            <div className="w-full grid grid-cols-2 gap-3">
+              <div>
+                <input type="text" placeholder="Walk-in Name (Opt)" value={customClientName} onChange={e => setCustomClientName(e.target.value)} className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-[10px] font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
+              <div>
+                <input type="text" placeholder="Phone (Opt)" value={customClientPhone} onChange={e => setCustomClientPhone(e.target.value)} className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-[10px] font-bold font-mono text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-white">
-          {cart.map(c => (
-            <div key={c.item.id} className="flex justify-between items-center p-3 border border-slate-100 rounded-xl bg-slate-50/50">
-              <div className="space-y-1 overflow-hidden pr-2">
-                <div className="text-[9px] font-mono text-slate-400">{c.item.sku}</div>
-                <div className="text-xs font-bold text-slate-800 truncate leading-none">{c.item.name}</div>
-                <div className="text-[10px] font-black text-slate-500 font-mono">{currencySign}{c.item.price.toFixed(2)}</div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
-                  <button onClick={() => updateCartQty(c.item.id, -1)} className="p-1 hover:bg-slate-100 text-slate-500 rounded-md"><Minus className="h-3 w-3" /></button>
-                  <span className="w-5 text-center font-bold text-slate-800 font-mono text-xs">{c.quantity}</span>
-                  <button onClick={() => updateCartQty(c.item.id, 1)} className="p-1 hover:bg-slate-100 text-slate-500 rounded-md"><Plus className="h-3 w-3" /></button>
+        {/* Cart Items */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/30 p-2 space-y-2">
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
+              <Receipt className="w-16 h-16 text-slate-300"/>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cart is empty</p>
+            </div>
+          ) : (
+            cart.map(item => (
+              <div key={item.cartId} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group animate-fade-in">
+                <div className="flex-1 min-w-0 pr-4">
+                  <div className="font-black text-slate-800 text-xs truncate">{item.name}</div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{item.category.replace('_', ' ')}</div>
                 </div>
-                <button onClick={() => removeFromCart(c.item.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="h-4 w-4" /></button>
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden shadow-inner">
+                    <button onClick={() => updateCartQuantity(item.cartId, -1)} className="p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"><Minus className="w-3 h-3"/></button>
+                    <div className="w-8 text-center text-xs font-black font-mono text-slate-800">{item.cartQuantity}</div>
+                    <button onClick={() => updateCartQuantity(item.cartId, 1)} className="p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"><Plus className="w-3 h-3"/></button>
+                  </div>
+                  <div className="w-20 text-right font-black font-mono text-xs text-slate-800">
+                    {(item.price * item.cartQuantity).toFixed(2)}
+                  </div>
+                  <button onClick={() => removeFromCart(item.cartId)} className="p-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-lg transition-colors cursor-pointer">
+                    <Trash2 className="w-4 h-4"/>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-          {cart.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-3">
-              <ShoppingBag className="w-10 h-10 opacity-50" />
-              <div className="text-xs font-bold">Register is Empty</div>
-            </div>
+            ))
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-200 bg-slate-50 shrink-0 space-y-3">
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between font-bold text-slate-500"><span>Subtotal:</span><span className="font-mono text-slate-700">{currencySign}{subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold text-slate-500 items-center"><span className="flex items-center gap-1"><Tag className="w-3 h-3 text-indigo-400" /> Discount:</span><input type="number" min="0" step="5" value={discountVal || ''} onChange={e => setDiscountVal(Math.max(0, parseFloat(e.target.value) || 0))} className="w-16 px-1.5 py-0.5 rounded-md border border-slate-200 text-right font-mono text-slate-700 font-bold outline-none focus:border-indigo-400" /></div>
-            <div className="flex justify-between font-bold text-slate-500 border-b border-slate-200 pb-2"><span>Vet Tax ({(taxRate*100).toFixed(1)}%):</span><span className="font-mono text-slate-700">{currencySign}{tax.toFixed(2)}</span></div>
-            <div className="flex justify-between items-center font-black text-slate-900 pt-1"><span className="text-sm">Total Due:</span>
-              <span className={`font-mono text-lg ${total < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{currencySign}{total.toFixed(2)}</span>
+        {/* Financial Totals & Checkout */}
+        <div className="bg-white border-t border-slate-200 p-5 shrink-0 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-10">
+          <div className="space-y-2 mb-4">
+            <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+              <span>Subtotal</span>
+              <span className="font-mono">{subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+              <span className="flex items-center gap-2">Discount <PenTool className="w-3 h-3"/></span>
+              <div className="relative w-24">
+                <span className="absolute left-2 top-1 text-[10px] font-mono">-</span>
+                <input type="number" min="0" step="0.01" value={discount || ''} onChange={e => setDiscount(parseFloat(e.target.value) || 0)} className="w-full text-right bg-slate-50 border border-slate-200 rounded text-[10px] font-mono font-bold py-1 px-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+              </div>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              <span className="text-sm font-black text-slate-800 uppercase tracking-widest">Total Due</span>
+              <span className="text-2xl font-black text-emerald-600 font-mono tracking-tight">{total.toFixed(2)}</span>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 pt-2">
-            <button onClick={() => { setPaymentMethod('cash'); setShowCheckoutModal(true); }} disabled={cart.length === 0} className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] rounded-xl cursor-pointer disabled:opacity-50 uppercase tracking-widest flex flex-col items-center justify-center gap-1"><Coins className="w-4 h-4" /> {total < 0 ? 'Refund' : 'Cash'}</button>
-            <button onClick={() => { setPaymentMethod('card'); setShowCheckoutModal(true); }} disabled={cart.length === 0 || total < 0} className="py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] rounded-xl cursor-pointer disabled:opacity-50 uppercase tracking-widest flex flex-col items-center justify-center gap-1"><CreditCard className="w-4 h-4" /> Card</button>
-            <button onClick={() => { setPaymentMethod('bank_transfer'); setShowCheckoutModal(true); }} disabled={cart.length === 0 || total < 0} className="py-3 bg-sky-600 hover:bg-sky-700 text-white font-black text-[10px] rounded-xl cursor-pointer disabled:opacity-50 uppercase tracking-widest flex flex-col items-center justify-center gap-1"><FileText className="w-4 h-4" /> Transfer</button>
-          </div>
-        </div>
-      </div>
 
-      <div className="flex-1 flex flex-col border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden relative">
-        <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-white shrink-0">
-          <div className="flex bg-slate-100 p-1 rounded-xl">
-            {(['queue', 'quick', 'search'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${activeTab === tab ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}>{tab === 'queue' ? 'Queue' : tab === 'quick' ? 'Quick Add' : 'Search'}</button>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {['cash', 'card', 'bank_transfer'].map(method => (
+              <button 
+                key={method} 
+                onClick={() => setPaymentMethod(method as any)}
+                className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 transition-all border cursor-pointer ${paymentMethod === method ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-xs' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+              >
+                <CreditCard className="w-4 h-4"/>
+                {method.replace('_', ' ')}
+              </button>
             ))}
           </div>
+
+          <button 
+            onClick={handleCheckout}
+            disabled={cart.length === 0}
+            className={`w-full py-3.5 rounded-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all shadow-md ${cart.length > 0 ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}
+          >
+            <CheckCircle2 className="w-5 h-5"/> Process Transaction
+          </button>
+        </div>
+      </aside>
+
+      {/* RIGHT PANE: DB SEARCH & E.H.R IMPORT */}
+      <main className="flex-1 bg-white rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
+        
+        {/* Top Search Bar */}
+        <div className="p-5 border-b border-slate-100 bg-white shrink-0 flex items-center gap-4 z-10 shadow-sm">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Scan Barcode or Search Inventory / Services..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+              autoFocus
+            />
+          </div>
         </div>
 
-        <div className="flex-1 bg-slate-50 p-5 overflow-y-auto custom-scrollbar relative">
-          {activeTab === 'queue' && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2"><Activity className="w-4 h-4 text-indigo-500" /> Awaiting Clinical Checkout</h3>
-              {queueApts.length === 0 ? <div className="p-8 border border-dashed border-slate-200 rounded-2xl text-center text-xs font-bold text-slate-400 bg-white">No patients currently queued for checkout.</div> : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {queueApts.map(apt => (
-                    <div key={apt.id} onClick={() => handleQueueClick(apt)} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-indigo-400 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between h-32 group relative overflow-hidden">
-                      <div className="absolute top-0 right-0 bg-emerald-100 text-emerald-700 px-2 py-1 text-[8px] font-black uppercase tracking-widest rounded-bl-lg">Pending</div>
-                      <div><div className="text-sm font-black text-slate-800">{apt.petName}</div><div className="text-[10px] font-bold text-slate-500 mt-0.5">{apt.ownerName} • <span className="font-mono">{apt.ownerPhone}</span></div></div>
-                      <div className="flex justify-between items-center border-t border-slate-100 pt-2 text-[10px]"><span className="font-bold text-slate-600 flex items-center gap-1"><UserPlus className="w-3 h-3" /> {apt.veterinarian}</span><span className="font-bold text-indigo-600 group-hover:underline flex items-center gap-1">Process Bill <ArrowRight className="w-3 h-3" /></span></div>
-                    </div>
-                  ))}
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col xl:flex-row gap-6 p-6 bg-slate-50/50">
+          
+          {/* Inventory Grid */}
+          <div className="flex-1">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-4 flex items-center gap-2">
+              <Package className="w-3.5 h-3.5"/> Inventory & Services
+            </h3>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredInventory.slice(0, 30).map(item => (
+                <div key={item.id} onClick={() => addToCart(item, 1)} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
+                  <div>
+                    <div className="font-black text-slate-800 text-xs leading-tight mb-1">{item.name}</div>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-3">{item.category.replace('_', ' ')}</div>
+                  </div>
+                  <div className="flex justify-between items-end border-t border-slate-50 pt-2">
+                    <div className="font-mono text-xs font-black text-indigo-600">{item.price.toFixed(2)}</div>
+                    {!['service', 'lab_service'].includes(item.category) && (
+                      <div className={`text-[9px] font-bold ${item.stock <= item.minStock ? 'text-rose-500' : 'text-slate-400'}`}>
+                        Stk: {item.stock}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              ))}
+              {filteredInventory.length === 0 && <div className="col-span-full py-8 text-center text-[10px] font-bold text-slate-400">No items match search.</div>}
+            </div>
+          </div>
+
+          {/* Active Queue / E.H.R Importer */}
+          <div className="w-full xl:w-80 shrink-0">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-4 flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5"/> Today's Clinical Queue
+            </h3>
+            <div className="space-y-3">
+              {activeQueue.length === 0 ? (
+                <div className="bg-white border border-dashed border-slate-200 rounded-xl p-6 text-center shadow-sm">
+                  <CalendarIcon className="w-8 h-8 text-slate-200 mx-auto mb-2"/>
+                  <div className="text-[10px] font-bold text-slate-400">No active patients in clinic today.</div>
+                </div>
+              ) : (
+                activeQueue.map(apt => {
+                  const isSelected = selectedAppointment?.id === apt.id;
+                  const isCompleted = apt.status === 'completed';
+                  
+                  return (
+                    <div 
+                      key={apt.id} 
+                      onClick={() => handleSelectAppointment(apt)}
+                      className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                    >
+                      {isCompleted && !isSelected && <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>}
+                      <div className="flex justify-between items-start mb-1">
+                        <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{apt.petName}</div>
+                        <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {isCompleted ? 'Ready' : 'In Clinic'}
+                        </div>
+                      </div>
+                      <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{apt.ownerName} • {apt.ownerPhone}</div>
+                      
+                      <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
+                        <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
+                          <FileText className="w-3 h-3"/> Import E.H.R Charges
+                        </div>
+                        <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </div>
-          )}
-
-          {activeTab === 'quick' && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-500" /> Frequent Items & Vaccines</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-                {quickAddItems.map(item => (
-                  <button key={item.id} onClick={() => addToCart(item, 1)} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-sky-400 transition-all text-left flex flex-col justify-between h-28 cursor-pointer active:scale-95 group">
-                    <span className="text-xs font-bold text-slate-800 line-clamp-3 leading-snug group-hover:text-sky-700">{item.name}</span>
-                    <div className="flex justify-between items-center mt-2 w-full"><span className="text-[11px] font-black text-emerald-600 font-mono">{currencySign}{item.price.toFixed(2)}</span><Plus className="w-4 h-4 text-slate-300 group-hover:text-sky-500" /></div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'search' && (
-            <div className="space-y-4 flex flex-col h-full">
-              <div className="flex gap-3 shrink-0 relative">
-                <div className="relative flex-1"><Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" /><input type="text" placeholder="Search by name or SKU..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:ring-1 focus:ring-indigo-500 shadow-sm outline-none" /></div>
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-                  {filteredProducts.map(product => (
-                    <div key={product.id} onClick={() => addToCart(product)} className="bg-white p-3 rounded-xl border border-slate-200 hover:border-indigo-300 cursor-pointer transition-all group flex flex-col justify-between active:scale-95">
-                      <div><span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 block w-max mb-1">{product.sku}</span><h5 className="text-[11px] font-bold text-slate-800 leading-snug line-clamp-2">{product.name}</h5></div>
-                      <div className="mt-2 flex justify-between items-center border-t border-slate-100 pt-2"><span className="text-xs font-black text-slate-800 font-mono">{currencySign}{product.price.toFixed(2)}</span><span className="text-[9px] font-bold text-slate-400">Stock: {['service', 'lab_service'].includes(product.category) ? '∞' : product.stock}</span></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {showCheckoutModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-scale-up">
-            <h3 className="text-base font-black text-slate-800 text-center">Confirm {total < 0 ? 'Refund' : paymentMethod.toUpperCase()}</h3>
-            <div className="bg-slate-50 p-4 rounded-xl text-center space-y-1">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{total < 0 ? 'Client Refund Due' : 'Total Due'}</span>
-              <div className={`text-3xl font-black font-mono ${total < 0 ? 'text-rose-600' : 'textemerald-600'}`}>{currencySign}{Math.abs(total).toFixed(2)}</div>
-            </div>
-            {paymentMethod === 'cash' && total >= 0 && (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-600 block">Cash Tendered by Customer</label>
-                <input ref={cashInputRef} type="number" value={amountReceived} onChange={e => setAmountReceived(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCheckoutSubmit()} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-lg font-mono font-black focus:border-emerald-500 focus:outline-none transition-colors" placeholder="0.00" />
-                {parseFloat(amountReceived) >= total && (
-                  <div className="flex justify-between text-xs font-bold bg-emerald-50 text-emerald-700 p-2 rounded-lg mt-2"><span>Change Due:</span><span className="font-mono">{currencySign}{(parseFloat(amountReceived) - total).toFixed(2)}</span></div>
-                )}
-              </div>
-            )}
-            <div className="flex gap-2 pt-2 border-t border-slate-100">
-              <button onClick={() => setShowCheckoutModal(false)} className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs flex-1 transition-colors">Cancel</button>
-              <button onClick={handleCheckoutSubmit} disabled={isProcessing || (paymentMethod === 'cash' && total >= 0 && Number(amountReceived) < total)} className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex-[2] shadow-md disabled:opacity-50">{total < 0 ? 'Process Refund & Close Invoice' : 'Complete Transaction'}</button>
-            </div>
           </div>
-        </div>
-      )}
 
-      {selectedInvoiceDetails && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-sky-100 max-h-[85vh] w-full max-w-md flex flex-col shadow-2xl animate-scale-up text-xs overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-start shrink-0">
-              <div><h4 className="text-sm font-extrabold text-slate-800">Invoice {selectedInvoiceDetails.id}</h4><p className="text-[10px] text-slate-400 font-mono mt-0.5">{selectedInvoiceDetails.date} • {selectedInvoiceDetails.createdBy}</p></div>
-              <button onClick={() => setSelectedInvoiceDetails(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
-              <div className="bg-indigo-50 p-3 rounded-xl"><span className="font-bold text-indigo-900 block">{selectedInvoiceDetails.ownerName}</span><span className="text-[10px] text-indigo-600 font-mono block mt-0.5">{selectedInvoiceDetails.ownerPhone}</span></div>
-              <table className="w-full text-left">
-                <thead className="text-[10px] text-slate-400 font-bold border-b border-slate-100"><tr><th className="pb-2">Item</th><th className="pb-2 text-center">Qty</th><th className="pb-2 text-right">Total</th></tr></thead>
-                <tbody className="divide-y divide-slate-50 font-semibold text-slate-700">
-                  {selectedInvoiceDetails.items.map((i, idx) => (
-                    <tr key={idx}><td className="py-2">{i.name}</td><td className="py-2 text-center">{i.quantity}</td><td className="py-2 text-right font-mono">{currencySign}{i.totalPrice.toFixed(2)}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="p-5 border-t border-slate-100 flex gap-2 shrink-0 bg-slate-50">
-              <button onClick={() => handlePrintReceipt(selectedInvoiceDetails)} className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-1"><Printer className="w-4 h-4"/> Print</button>
-              {selectedInvoiceDetails.paymentStatus !== 'void' && <button onClick={() => handleInitiateVoid(selectedInvoiceDetails.id)} className="flex-1 py-2.5 border border-rose-200 text-rose-600 font-bold rounded-xl bg-white hover:bg-rose-50">Void</button>}
-            </div>
-          </div>
         </div>
-      )}
+      </main>
 
-      {showPinChallenge && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-white rounded-3xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl animate-scale-up text-xs">
-            <h4 className="text-sm font-extrabold text-slate-800">Admin Override Required</h4>
-            <input type="password" maxLength={4} placeholder="PIN" value={enteredChallengePin} onChange={e => setEnteredChallengePin(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 text-center text-xl font-mono tracking-widest rounded-xl focus:outline-none focus:border-indigo-500" />
-            <div className="flex gap-2">
-              <button onClick={() => setShowPinChallenge(false)} className="flex-1 py-2.5 bg-slate-100 font-bold rounded-xl">Cancel</button>
-              <button onClick={handleVerifyChallengePin} className="flex-1 py-2.5 bg-rose-600 text-white font-bold rounded-xl">Authorize Void</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {checkoutSuccess && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl animate-scale-up">
-             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">✓</div>
-             <h3 className="text-xl font-black text-slate-800">Paid in Full</h3>
-             <p className="text-slate-500 text-xs font-semibold">Total: {currencySign}{checkoutSuccess.sales_total.toFixed(2)}</p>
-             <div className="flex gap-2 pt-2">
-               <button onClick={() => handlePrintReceipt(checkoutSuccess)} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-1"><Printer className="w-4 h-4"/> Print</button>
-               <button onClick={() => setCheckoutSuccess(null)} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl">Close</button>
-             </div>
-          </div>
-        </div>
-      )}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}</style>
     </div>
   );
 }
