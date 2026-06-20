@@ -168,7 +168,7 @@ export default function POSRegister({ inventory, appointments, records, currentU
       };
 
       const stockPromises = cart.filter(c => c.item.category !== 'service' && c.item.category !== 'lab_service').map(c => onUpdateStock(c.item.id, -c.quantity, c.item.stock));
-      await Promise.all([...stockPromises, onAddInvoice(invoiceObj)]);
+      await Promise.all(stockPromises);
       await addRevenueToActiveShift(paymentMethod, Math.round(total * 100));
 
       // SPIDERWEB SYNC: Wipe the Temporary Billing Queue to prevent double-billing
@@ -183,6 +183,7 @@ export default function POSRegister({ inventory, appointments, records, currentU
         }
       }
 
+      await onAddInvoice(invoiceObj);
       setCheckoutSuccess(invoiceObj);
       handleResetActiveRegisterCartAtomic();
       setShowCheckoutModal(false);

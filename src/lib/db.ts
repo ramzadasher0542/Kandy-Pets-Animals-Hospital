@@ -526,3 +526,7 @@ export async function getQueueItemsByService(serviceType: string): Promise<Clini
   });
   return queue.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
 }
+
+export async function fetchInvoices() { const items: any[] = []; await db.invoices.iterate((value) => { if (value && !Array.isArray(value)) items.push(value); }); return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); }
+
+export async function upsertInvoice(invoice: any) { if (!invoice || !invoice.id) return; await db.invoices.setItem(invoice.id, invoice); }

@@ -314,6 +314,7 @@ function App() {
             }
 
             // Allow 500ms for UI painting to stabilize
+            fetchInvoices().then(setInvoices);
             setTimeout(() => setIsBooting(false), 500);
           }
         } catch (hydrationError) {
@@ -497,37 +498,9 @@ function App() {
     });
   };
 
-  const handleAddInvoice = async (invoice: Invoice) => {
-    await upsertInvoice(invoice);
-    setInvoices(prev => [invoice, ...prev]);
+  const handleAddInvoice = async (invoice: any) => { await upsertInvoice(invoice); const updated = await fetchInvoices(); setInvoices(updated); };
 
-    // LIVING FLOOR VANISH LOGIC: When payment is complete, remove from clinic queue
-    if (invoice.paymentStatus === 'paid' && invoice.appointmentId) {
-      // Find and remove the queue item for this appointment
-      const queueItemToRemove = clinicQueue.find(q => q.appointmentId === invoice.appointmentId);
-      if (queueItemToRemove) {
-        await removeFromClinicQueue(queueItemToRemove.id);
-        setClinicQueue(prev => prev.filter(q => q.id !== queueItemToRemove.id));
-        showToast(`${invoice.petName} discharged from clinic floor.`, 'success');
-      }
-      handleUpdateAppointmentStatus(invoice.appointmentId, 'completed');
-    } else if (invoice.appointmentId) {
-      handleUpdateAppointmentStatus(invoice.appointmentId, 'completed');
-    }
-  };
-
-  const handleVoidInvoice = async (invoiceId: string) => {
-    const targetInvoice = invoices.find(inv => inv.id === invoiceId);
-    if (!targetInvoice || targetInvoice.paymentStatus === 'void') return;
-
-    targetInvoice.items.forEach(async (item) => {
-      if (item.category !== 'service') await handleUpdateStock(item.itemId, item.quantity);
-    });
-
-    const voided = { ...targetInvoice, paymentStatus: 'void' as const };
-    await upsertInvoice(voided);
-    setInvoices(prev => prev.map(inv => inv.id === invoiceId ? voided : inv));
-  };
+  const handleVoidInvoice = async (id: any) => { const target = invoices.find(i => i.id === id); if (target) { target.paymentStatus = 'void'; await upsertInvoice(target); const updated = await fetchInvoices(); setInvoices(updated); } };
 
   const handlePurgeDatabases = async () => {
     await db.inventory.clear();
