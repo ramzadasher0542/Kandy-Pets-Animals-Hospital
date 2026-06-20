@@ -1,3 +1,8 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 export type UserRole = 'admin' | 'veterinarian' | 'cashier' | 'owner' | 'dummy_admin';
 
 export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; }
@@ -17,7 +22,7 @@ export interface ClinicQueueItem {
   ownerName: string;
   ownerPhone: string;
   appointmentId: string;
-  serviceType: string; // 'Vaccine', 'Lab', 'Grooming', 'Examination', 'Boarding'
+  serviceType: string;
   checkInTime: string;
   status: QueueStatus;
   assignedVet?: string;
@@ -32,7 +37,98 @@ export interface InpatientLog { id: string; date: string; time: string; temperat
 export interface GroomingLog { id: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; }
 export interface BoardingRecord { id: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; }
 
-export interface MedicalRecord { id: string; patientId: string; petName: string; petType: PetClassification; breed: string; age: string; weight: number; ownerName: string; ownerPhone: string; ownerEmail: string; visitDate: string; subjectiveTags?: string[]; symptoms: string; objectiveFindings?: Record<string, { isNormal: boolean; notes: string }>; diagnosis: string; treatmentNotes: string; prescribedMeds: Array<{ itemId: string; name: string; dosage: string; quantity: number }>; vaccinations: Vaccination[]; labResults: LabResult[]; inpatientLogs?: InpatientLog[]; groomingRecords?: GroomingLog[]; boardingInfo?: BoardingRecord; createdDate: string; attendingVet?: string; appointmentId?: string; followUpDate?: string; }
+// ============================================================================
+// PHASE 1: ENTERPRISE EHR MATRIX (THE 1-CLICK TRIAGE SCHEMA)
+// ============================================================================
+
+export interface Vitals {
+  temperature?: number;
+  pulse?: number;
+  respiration?: number;
+  crt?: string; // Capillary Refill Time (e.g., '< 2s')
+  mucousMembrane?: string; // Pink, Pale, Cyanotic, Icteric
+  hydration?: string; // Normal, 5%, 10%, etc.
+  bcs?: number; // Body Condition Score (1-9)
+}
+
+export interface PatientHistory {
+  duration?: string; // '< 24 hours', '1-3 days', etc.
+  progression?: string; // 'Acute', 'Chronic', 'Improving', etc.
+  diet?: string[];
+  vaccinationStatus?: string;
+  dewormingStatus?: string;
+  previousMedicalHistory?: string[];
+  currentMedications?: string[];
+}
+
+export interface SystemicExam {
+  isNormal: boolean;
+  notes?: string;
+  abnormalities?: string[]; // Array of selected symptoms from the Excel matrix
+}
+
+export interface PhysicalExamination {
+  general: SystemicExam;
+  gastrointestinal: SystemicExam;
+  respiratory: SystemicExam;
+  cardiovascular: SystemicExam;
+  urogenital: SystemicExam;
+  skin: SystemicExam;
+  musculoskeletal: SystemicExam;
+  neurological: SystemicExam;
+  reproductive: SystemicExam;
+  eyesAndEars: SystemicExam;
+}
+
+export interface ClinicalAssessment {
+  diagnosisType?: 'Tentative' | 'Definitive';
+  severity?: 'Mild' | 'Moderate' | 'Severe' | 'Critical';
+  status?: 'Stable' | 'Unstable';
+  prognosis?: 'Good' | 'Guarded' | 'Poor';
+  notes?: string;
+}
+
+// ============================================================================
+
+export interface MedicalRecord { 
+  id: string; 
+  patientId: string; 
+  petName: string; 
+  petType: PetClassification; 
+  breed: string; 
+  age: string; 
+  weight: number; 
+  ownerName: string; 
+  ownerPhone: string; 
+  ownerEmail: string; 
+  visitDate: string; 
+  
+  // --- NEW EHR MATRIX FIELDS ---
+  vitals?: Vitals;
+  patientHistory?: PatientHistory;
+  physicalExam?: PhysicalExamination;
+  assessment?: ClinicalAssessment;
+  diagnosticPlan?: string[]; 
+  monitoringPlan?: string[];
+  // -----------------------------
+
+  // Legacy fields retained for backwards compatibility
+  subjectiveTags?: string[]; 
+  symptoms: string; 
+  objectiveFindings?: Record<string, { isNormal: boolean; notes: string }>; 
+  diagnosis: string; 
+  treatmentNotes: string; 
+  prescribedMeds: Array<{ itemId: string; name: string; dosage: string; quantity: number }>; 
+  vaccinations: Vaccination[]; 
+  labResults: LabResult[]; 
+  inpatientLogs?: InpatientLog[]; 
+  groomingRecords?: GroomingLog[]; 
+  boardingInfo?: BoardingRecord; 
+  createdDate: string; 
+  attendingVet?: string; 
+  appointmentId?: string; 
+  followUpDate?: string; 
+}
 
 export interface InvoiceItem { itemId: string; sku: string; name: string; category: ItemCategory; quantity: number; unitPrice: number; totalPrice: number; }
 
