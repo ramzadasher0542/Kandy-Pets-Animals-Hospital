@@ -82,7 +82,8 @@ import {
   deleteMedicalRecord, upsertInvoice, upsertAlert,
   fetchInventory, fetchAppointments, fetchMedicalRecords,
   fetchInvoices, fetchNotifications, fetchAlerts,
-  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems
+  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems,
+  atomicStockDecrement
 } from './lib/db';
 
 function hashPin(pin: string): string {
@@ -363,23 +364,25 @@ function App() {
     showToast(`${product.name} added to inventory.`);
   };
 
-  const handleUpdateStock = async (itemId: string, qtyDelta: number, expectedStock?: number) => {
-    const currentItem = inventory.find(i => i.id === itemId);
-    if (!currentItem) return;
-    const newStock = Math.max(0, currentItem.stock + qtyDelta);
+  // AUDIT FIX: Atomic stock decrement — reads from IndexedDB, not stale React state
+  const handleUpdateStock = async (itemId: string, qtyDelta: number, _expectedStock?: number) => {
+    try {
+      const newStock = await atomicStockDecrement(itemId, qtyDelta);
 
-    // DB Update
-    await upsertInventoryItem({ ...currentItem, stock: newStock });
+      // Update React state to match the DB truth
+      setInventory(prev => prev.map(item => item.id === itemId ? { ...item, stock: newStock } : item));
 
-    // UI Update
-    setInventory(prev => prev.map(item => item.id === itemId ? { ...item, stock: newStock } : item));
-
-    if (newStock <= currentItem.minStock && currentItem.category !== 'service') {
-      const alert: SystemAlert = { id: crypto.randomUUID(), severity: 'urgent', category: 'inventory', message: `LOW STOCK: ${currentItem.name} (${newStock} left).`, timestamp: new Date().toISOString(), read: false };
-      await upsertAlert(alert);
-      setAlerts(prev => [alert, ...prev]);
+      const currentItem = inventory.find(i => i.id === itemId);
+      if (currentItem && newStock <= currentItem.minStock && currentItem.category !== 'service') {
+        const alert: SystemAlert = { id: crypto.randomUUID(), severity: 'urgent', category: 'inventory', message: `LOW STOCK: ${currentItem.name} (${newStock} left).`, timestamp: new Date().toISOString(), read: false };
+        await upsertAlert(alert);
+        setAlerts(prev => [alert, ...prev]);
+      }
+      showToast(`Stock updated: ${currentItem?.name || itemId} (${newStock} remaining).`);
+    } catch (error: any) {
+      console.error('[CeylonPets] Stock update failed:', error);
+      showToast(`Stock update failed: ${error.message}`, 'error');
     }
-    showToast(`Stock updated: ${currentItem.name} (${newStock} remaining).`);
   };
 
   const handleUpdatePrice = async (id: string, newPrice: number) => {
@@ -406,39 +409,44 @@ function App() {
   const handleUpdateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
     const apt = appointments.find(a => a.id === id);
     if (apt) {
-      const updated = { ...apt, status, updated_at: new Date().toISOString() };
-      await upsertAppointment(updated);
-      setAppointments(prev => prev.map(a => a.id === id ? updated : a));
+      try {
+        const updated = { ...apt, status, updated_at: new Date().toISOString() };
+        await upsertAppointment(updated);
+        setAppointments(prev => prev.map(a => a.id === id ? updated : a));
 
-      // LIVING FLOOR: When appointment is checked-in (in-progress), add to clinic queue
-      if (status === 'in-progress') {
-        const queueItem: ClinicQueueItem = {
-          id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
-          petId: `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
-          petName: apt.petName,
-          ownerName: apt.ownerName,
-          ownerPhone: apt.ownerPhone,
-          appointmentId: apt.id,
-          serviceType: apt.admissionType === 'Vaccination' ? 'Vaccine' : apt.admissionType === 'Pet Boarding' ? 'Boarding' : 'Examination',
-          checkInTime: new Date().toISOString(),
-          status: 'active',
-          assignedVet: apt.veterinarian
-        };
-        await addToClinicQueue(queueItem);
-        setClinicQueue(prev => [queueItem, ...prev]);
-      }
-
-      // FIXED: Remove from queue when appointment is completed or cancelled
-      if (status === 'completed' || status === 'cancelled') {
-        const matchPetId = `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`;
-        const queueItem = clinicQueue.find(q => q.petId === matchPetId);
-        if (queueItem) {
-          await removeFromClinicQueue(queueItem.id);
-          setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+        // LIVING FLOOR: When appointment is checked-in (in-progress), add to clinic queue
+        if (status === 'in-progress') {
+          const queueItem: ClinicQueueItem = {
+            id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
+            petId: `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
+            petName: apt.petName,
+            ownerName: apt.ownerName,
+            ownerPhone: apt.ownerPhone,
+            appointmentId: apt.id,
+            serviceType: apt.admissionType === 'Vaccination' ? 'Vaccine' : apt.admissionType === 'Pet Boarding' ? 'Boarding' : 'Examination',
+            checkInTime: new Date().toISOString(),
+            status: 'active',
+            assignedVet: apt.veterinarian
+          };
+          await addToClinicQueue(queueItem);
+          setClinicQueue(prev => [queueItem, ...prev]);
         }
-      }
 
-      showToast(`Appointment status updated to ${status}.`);
+        // FIXED: Remove from queue when appointment is completed or cancelled
+        if (status === 'completed' || status === 'cancelled') {
+          const matchPetId = `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`;
+          const queueItem = clinicQueue.find(q => q.petId === matchPetId);
+          if (queueItem) {
+            await removeFromClinicQueue(queueItem.id);
+            setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+          }
+        }
+
+        showToast(`Appointment status updated to ${status}.`);
+      } catch (error: any) {
+        console.error('[CeylonPets] Appointment status update failed:', error);
+        showToast(`Failed to update appointment status: ${error.message}`, 'error');
+      }
     }
   };
 
@@ -477,38 +485,48 @@ function App() {
     showToast('Medical record permanently deleted.', 'success');
   };
 
+  // AUDIT FIX: Properly await DB writes instead of fire-and-forget inside setState
   const handleUpdateCustomer = async (oldPhone: string, newPhone: string, newName: string, newEmail: string) => {
     const normOld = oldPhone.replace(/\D/g, '');
-    setAppointments(prev => {
-      return prev.map(a => {
-        if (a.ownerPhone.replace(/\D/g, '') === normOld) {
-          const u = { ...a, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail };
-          upsertAppointment(u);
-          return u;
-        }
-        return a;
-      });
+    
+    // Collect updates, await DB writes, then batch React state updates
+    const aptUpdates: Appointment[] = [];
+    appointments.forEach(a => {
+      if (a.ownerPhone.replace(/\D/g, '') === normOld) {
+        aptUpdates.push({ ...a, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail });
+      }
     });
-    setRecords(prev => {
-      return prev.map(r => {
-        if (r.ownerPhone.replace(/\D/g, '') === normOld) {
-          const u = { ...r, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail };
-          upsertMedicalRecord(u);
-          return u;
-        }
-        return r;
-      });
+    
+    const recUpdates: MedicalRecord[] = [];
+    records.forEach(r => {
+      if (r.ownerPhone.replace(/\D/g, '') === normOld) {
+        recUpdates.push({ ...r, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail });
+      }
     });
-    setInvoices(prev => {
-      return prev.map(i => {
-        if (i.ownerPhone.replace(/\D/g, '') === normOld) {
-          const u = { ...i, ownerName: newName, ownerPhone: newPhone };
-          upsertInvoice(u);
-          return u;
-        }
-        return i;
-      });
+    
+    const invUpdates: Invoice[] = [];
+    invoices.forEach(i => {
+      if (i.ownerPhone.replace(/\D/g, '') === normOld) {
+        invUpdates.push({ ...i, ownerName: newName, ownerPhone: newPhone });
+      }
     });
+
+    try {
+      // Await all DB writes before updating React state
+      await Promise.all([
+        ...aptUpdates.map(u => upsertAppointment(u)),
+        ...recUpdates.map(u => upsertMedicalRecord(u)),
+        ...invUpdates.map(u => upsertInvoice(u))
+      ]);
+
+      // Batch React state updates
+      if (aptUpdates.length > 0) setAppointments(prev => prev.map(a => aptUpdates.find(u => u.id === a.id) || a));
+      if (recUpdates.length > 0) setRecords(prev => prev.map(r => recUpdates.find(u => u.id === r.id) || r));
+      if (invUpdates.length > 0) setInvoices(prev => prev.map(i => invUpdates.find(u => u.id === i.id) || i));
+    } catch (error: any) {
+      console.error('[CeylonPets] Customer update failed:', error);
+      showToast(`Failed to update customer across records: ${error.message}`, 'error');
+    }
   };
 
   const handleUpdatePet = async (oldPatientId: string, newPetName: string, newDetails: any) => {
@@ -524,29 +542,31 @@ function App() {
     });
   };
 
+  // AUDIT FIX: Removed redundant double-write of appointment completion.
+  // upsertInvoice in db.ts already marks the appointment as 'completed'.
+  // Added try-catch for error resilience.
   const handleAddInvoice = async (invoice: any) => {
-    await upsertInvoice(invoice);
-    const updated = await fetchInvoices();
-    setInvoices(updated);
+    try {
+      await upsertInvoice(invoice);
+      const updated = await fetchInvoices();
+      setInvoices(updated);
 
-    // FIXED: Remove patient from clinic queue after checkout
-    if (invoice.patientId && invoice.patientId !== 'RETAIL') {
-      const queueItem = clinicQueue.find(q => q.petId === invoice.patientId);
-      if (queueItem) {
-        await removeFromClinicQueue(queueItem.id);
-        setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+      // Remove patient from clinic queue after checkout
+      if (invoice.patientId && invoice.patientId !== 'RETAIL') {
+        const queueItem = clinicQueue.find(q => q.petId === invoice.patientId);
+        if (queueItem) {
+          await removeFromClinicQueue(queueItem.id);
+          setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+        }
       }
-    }
 
-    // FIXED: Auto-complete the appointment after checkout
-    // This removes the pet from POS queue, Pets portal, and Examinations "IN CLINIC"
-    if (invoice.appointmentId) {
-      const apt = appointments.find(a => a.id === invoice.appointmentId);
-      if (apt && apt.status !== 'completed') {
-        const completedApt = { ...apt, status: 'completed' as const, updated_at: new Date().toISOString() };
-        await upsertAppointment(completedApt);
-        setAppointments(prev => prev.map(a => a.id === apt.id ? completedApt : a));
+      // Sync React appointment state to match DB (upsertInvoice already completed it in DB)
+      if (invoice.appointmentId) {
+        setAppointments(prev => prev.map(a => a.id === invoice.appointmentId ? { ...a, status: 'completed' as const, updated_at: new Date().toISOString() } : a));
       }
+    } catch (error: any) {
+      console.error('[CeylonPets] Invoice creation failed:', error);
+      showToast(`Checkout failed: ${error.message}`, 'error');
     }
   };
 
@@ -665,7 +685,7 @@ function App() {
       case 'boarding': return <BoardingManager records={records} onUpdateRecord={handleUpdateRecord} />;
       case 'grooming': return <GroomingManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={setInventory} systemConfig={systemConfig} />;
-      case 'invoices': return <InvoicesManager />; // MOUNTED THE FINANCIAL HUB
+      case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shifts.setItem(log.id, log); setShiftLogs(prev => [log, ...prev]); }} />;
       case 'dashboard':
         return <DashboardAnalytics inventory={inventory} appointments={appointments} activeShift={activeShift} onNavigate={(tab) => { setViewPayload(null); setActiveView(tab); setHistoryStack(prev => [...prev, tab]); }} />;

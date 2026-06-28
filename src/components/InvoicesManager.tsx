@@ -11,33 +11,18 @@ import {
 } from 'lucide-react';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { fetchInvoices, upsertInvoice } from '../lib/db';
+// AUDIT FIX: Removed direct DB imports — InvoicesManager now uses props from App.tsx
 
 interface InvoicesProps {
-  invoices?: any[];
-  onVoidInvoice?: any;
+  invoices: any[];
+  onVoidInvoice: (id: string) => Promise<void>;
   systemConfig?: any;
 }
 
-export default function InvoicesManager({ systemConfig }: InvoicesProps) {
-  const [invoices, setInvoices] = useState<any[]>([]);
+export default function InvoicesManager({ invoices = [], onVoidInvoice, systemConfig }: InvoicesProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'paid' | 'void'>('All');
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
-
-  // BOOT SEQUENCE: Direct DB Fetch bypasses App.tsx state failures
-  useEffect(() => {
-    loadFinancialArchive();
-  }, []);
-
-  const loadFinancialArchive = async () => {
-    try {
-      const data = await fetchInvoices();
-      setInvoices(data);
-    } catch (err) {
-      console.error('[Enterprise OS] Failed to load archive:', err);
-    }
-  };
 
   // High-Speed Filtering Engine
   const filteredInvoices = useMemo(() => {
@@ -75,10 +60,8 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
     
     if (window.confirm(`CRITICAL ACTION: Are you sure you want to VOID Invoice ${invId}? This will mark the revenue as zero.`)) {
       
-      // DIRECT DB MUTATION: Safely voids without relying on App.tsx
-      const target = { ...selectedInvoice, paymentStatus: 'void' as const };
-      await upsertInvoice(target);
-      await loadFinancialArchive(); // Instantly refresh the grid
+      // AUDIT FIX: Route through App.tsx handler for single source of truth
+      await onVoidInvoice(selectedInvoice.id);
       
       showToast(`Invoice ${invId} successfully voided.`, 'success');
       setSelectedInvoice(null);
@@ -211,7 +194,9 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
                       <div className={`font-mono text-sm font-black ${isVoid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
                         {currencySign}{(inv.sales_total || 0).toFixed(2)}
                       </div>
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{inv.paymentMethod}</div>
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
+                        {inv.paymentMethod === 'split' ? 'SPLIT TENDER' : inv.paymentMethod}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-xs inline-flex items-center gap-1 ${
@@ -316,7 +301,19 @@ export default function InvoicesManager({ systemConfig }: InvoicesProps) {
                   <span className="font-mono font-black text-slate-900">{currencySign}{(selectedInvoice.sales_total || 0).toFixed(2)}</span>
                 </div>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
-                  Method: {selectedInvoice.paymentMethod || 'CASH'}
+                  {selectedInvoice.paymentMethod === 'split' ? (
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-slate-500 mb-1">SPLIT TENDER BREAKDOWN</span>
+                      {(selectedInvoice.splitPayments || []).map((sp: any, idx: number) => (
+                        <div key={idx} className="flex justify-between w-32">
+                          <span>{sp.method.replace('_', ' ')}:</span>
+                          <span className="font-mono">{currencySign}{sp.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span>Method: {selectedInvoice.paymentMethod || 'CASH'}</span>
+                  )}
                 </div>
               </div>
 

@@ -56,7 +56,8 @@ export default function POSRegister({
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer' | 'split'>('cash');
+  const [splitAmounts, setSplitAmounts] = useState({ cash: 0, card: 0, bank_transfer: 0 });
   
   // Checkout Context
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -119,6 +120,8 @@ export default function POSRegister({
     if (window.confirm('Clear all items from the current transaction?')) {
       setCart([]);
       setDiscount(0);
+      setPaymentMethod('cash');
+      setSplitAmounts({ cash: 0, card: 0, bank_transfer: 0 });
       setSelectedAppointment(null);
       setCustomClientName('');
       setCustomClientPhone('');
@@ -135,7 +138,15 @@ export default function POSRegister({
     
     // Auto-Scrape Logic
     const targetPid = `${(apt.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(apt.ownerPhone)}`;
-    const activeRecord = records.find(r => r.patientId === targetPid && r.visitDate === todayStr);
+    // AUDIT FIX: Multi-day charge sweep — find today's record OR any record with active boarding
+    const allPatientRecords = records.filter(r => r.patientId === targetPid);
+    const activeRecord = allPatientRecords.find(r => r.visitDate === todayStr)
+      || allPatientRecords.find(r => r.boardingInfo && r.boardingInfo.status === 'active');
+    
+    // AUDIT FIX: Sweep charges from ALL records with active boarding (multi-day hospitalization)
+    const boardingRecords = allPatientRecords.filter(r => 
+      r.boardingInfo && r.boardingInfo.status === 'active' && r.visitDate !== todayStr
+    );
 
     let newCartItems: CartItem[] = [];
 
@@ -173,6 +184,23 @@ export default function POSRegister({
         }
       });
     }
+
+    // 4. AUDIT FIX: Sweep prescribed meds from multi-day boarding records
+    boardingRecords.forEach(rec => {
+      if (rec.prescribedMeds) {
+        rec.prescribedMeds.forEach(med => {
+          const invItem = inventory.find(i => i.id === med.itemId);
+          if (invItem) {
+            const existing = newCartItems.find(i => i.id === invItem.id);
+            if (existing) {
+              existing.cartQuantity += med.quantity;
+            } else {
+              newCartItems.push({ ...invItem, cartQuantity: med.quantity, cartId: crypto.randomUUID() });
+            }
+          }
+        });
+      }
+    });
 
     if (newCartItems.length > 0) {
       setCart(newCartItems);
@@ -240,6 +268,11 @@ export default function POSRegister({
       cogs: totalCostOfGoods,
       profit: total - totalCostOfGoods,
       paymentMethod,
+      splitPayments: paymentMethod === 'split' ? [
+        { method: 'cash' as const, amount: splitAmounts.cash },
+        { method: 'card' as const, amount: splitAmounts.card },
+        { method: 'bank_transfer' as const, amount: splitAmounts.bank_transfer }
+      ].filter(p => p.amount > 0) : undefined,
       paymentStatus: 'paid',
       createdBy: currentUser || 'Cashier',
       shiftId: activeShiftId
@@ -374,23 +407,67 @@ export default function POSRegister({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {['cash', 'card', 'bank_transfer'].map(method => (
-              <button 
-                key={method} 
-                onClick={() => setPaymentMethod(method as any)}
-                className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 transition-all border cursor-pointer ${paymentMethod === method ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-xs' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-              >
-                <CreditCard className="w-4 h-4"/>
-                {method.replace('_', ' ')}
-              </button>
-            ))}
+          <div className="flex gap-2 mb-4 bg-slate-50 p-1 rounded-xl border border-slate-200">
+            <button 
+              onClick={() => { setPaymentMethod('cash'); setSplitAmounts({ cash: 0, card: 0, bank_transfer: 0 }); }}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod !== 'split' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Single
+            </button>
+            <button 
+              onClick={() => { 
+                setPaymentMethod('split'); 
+                setSplitAmounts({ cash: total, card: 0, bank_transfer: 0 }); 
+              }}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'split' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Split Payment
+            </button>
           </div>
+
+          {paymentMethod !== 'split' ? (
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {['cash', 'card', 'bank_transfer'].map(method => (
+                <button 
+                  key={method} 
+                  onClick={() => setPaymentMethod(method as any)}
+                  className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex flex-col items-center gap-1 transition-all border cursor-pointer ${paymentMethod === method ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-xs' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                >
+                  <CreditCard className="w-4 h-4"/>
+                  {method.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                <span>Cash Amount</span>
+                <input type="number" min="0" step="0.01" value={splitAmounts.cash || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, cash: parseFloat(e.target.value) || 0 }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
+              </div>
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                <span>Card Amount</span>
+                <input type="number" min="0" step="0.01" value={splitAmounts.card || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, card: parseFloat(e.target.value) || 0 }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
+              </div>
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                <span>Bank Transfer</span>
+                <input type="number" min="0" step="0.01" value={splitAmounts.bank_transfer || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, bank_transfer: parseFloat(e.target.value) || 0 }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
+              </div>
+              {(() => {
+                const diff = (total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)).toFixed(2);
+                const isBalanced = Math.abs(parseFloat(diff)) < 0.01;
+                return (
+                  <div className={`text-[10px] font-black uppercase tracking-widest text-right mt-2 ${isBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {isBalanced ? 'Balanced' : `Remaining: ${diff}`}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           <button 
             onClick={handleCheckout}
-            disabled={cart.length === 0}
-            className={`w-full py-3.5 rounded-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all shadow-md ${cart.length > 0 ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}
+            disabled={cart.length === 0 || (paymentMethod === 'split' && Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) >= 0.01)}
+            className={`w-full py-3.5 rounded-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all shadow-md ${(cart.length > 0 && (paymentMethod !== 'split' || Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) < 0.01)) ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}
           >
             <CheckCircle2 className="w-5 h-5"/> Process Transaction
           </button>

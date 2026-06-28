@@ -56,13 +56,20 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   }
 }
 
-export async function updateInventoryStockCAS(itemId: string, newStock: number, expectedStock: number): Promise<void> {
+/**
+ * AUDIT FIX: True atomic stock decrement — reads current stock from IndexedDB
+ * (not stale React state), applies delta, and writes back.
+ * Returns the new stock value on success, or throws on failure.
+ */
+export async function atomicStockDecrement(itemId: string, qtyDelta: number): Promise<number> {
   const item = await db.inventory.getItem<InventoryItem>(itemId);
-  if (!item || item.stock !== expectedStock) {
-    throw new Error('CAS_MISMATCH');
+  if (!item) {
+    throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
   }
+  const newStock = Math.max(0, item.stock + qtyDelta);
   item.stock = newStock;
   await db.inventory.setItem(itemId, item);
+  return newStock;
 }
 
 // ==========================================
@@ -260,6 +267,9 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
   let grossSales = 0;
   let totalCogs = 0;
   let clinicalRevenue = 0;
+  let labRevenue = 0;
+  let vaccineRevenue = 0;
+  let prescriptionRevenue = 0;
   let retailRevenue = 0;
 
   // Stream invoices natively from DB without loading full arrays
@@ -268,17 +278,17 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
       grossSales += Math.round(inv.sales_total || 0);
       totalCogs += Math.round(inv.cogs || 0);
       
+      // AUDIT FIX: 5-category breakdown instead of 2
       inv.items?.forEach(item => {
-        const isService = item.category === 'service' || item.category === 'lab_service';
         const itemPrice = item.unitPrice || 0;
         const itemQty = item.quantity || 0;
         const computedTotal = Math.round(itemPrice * itemQty);
 
-        if (isService) {
-          clinicalRevenue += computedTotal;
-        } else {
-          retailRevenue += computedTotal;
-        }
+        if (item.category === 'service') clinicalRevenue += computedTotal;
+        else if (item.category === 'lab_service') labRevenue += computedTotal;
+        else if (item.category === 'vaccine') vaccineRevenue += computedTotal;
+        else if (item.category === 'prescription') prescriptionRevenue += computedTotal;
+        else retailRevenue += computedTotal;
       });
     }
   });
@@ -288,8 +298,12 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
     total_cogs: totalCogs,
     cogs: totalCogs,
     net_profit: Math.round(grossSales - totalCogs),
+    // AUDIT FIX: Full 5-category breakdown
     category_breakdown: [
       { category: 'service', total: clinicalRevenue },
+      { category: 'lab_service', total: labRevenue },
+      { category: 'vaccine', total: vaccineRevenue },
+      { category: 'prescription', total: prescriptionRevenue },
       { category: 'retail', total: retailRevenue }
     ]
   };

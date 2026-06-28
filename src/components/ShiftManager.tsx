@@ -75,19 +75,47 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       inv.paymentStatus === 'paid' && inv.shiftId === activeShift.id
     );
 
-    const cashSales = shiftInvoices.filter(i => i.paymentMethod === 'cash').reduce((s, i) => s + (i.sales_total || 0), 0);
-    const cardSales = shiftInvoices.filter(i => i.paymentMethod === 'card').reduce((s, i) => s + (i.sales_total || 0), 0);
-    const bankSales = shiftInvoices.filter(i => i.paymentMethod === 'bank_transfer').reduce((s, i) => s + (i.sales_total || 0), 0);
+    // AUDIT FIX: Use integer cents to prevent floating-point drift, and support split payments
+    let cashSalesCents = 0;
+    let cardSalesCents = 0;
+    let bankSalesCents = 0;
 
-    const adjustIn = adjustments.filter(a => a.type === 'IN').reduce((s, a) => s + a.amount, 0);
-    const adjustOut = adjustments.filter(a => a.type === 'OUT').reduce((s, a) => s + a.amount, 0);
+    shiftInvoices.forEach(inv => {
+      if (inv.paymentMethod === 'split' && inv.splitPayments) {
+        inv.splitPayments.forEach(sp => {
+          if (sp.method === 'cash') cashSalesCents += Math.round(sp.amount * 100);
+          else if (sp.method === 'card') cardSalesCents += Math.round(sp.amount * 100);
+          else if (sp.method === 'bank_transfer') bankSalesCents += Math.round(sp.amount * 100);
+        });
+      } else {
+        const totalCents = Math.round((inv.sales_total || 0) * 100);
+        if (inv.paymentMethod === 'cash') cashSalesCents += totalCents;
+        else if (inv.paymentMethod === 'card') cardSalesCents += totalCents;
+        else if (inv.paymentMethod === 'bank_transfer') bankSalesCents += totalCents;
+      }
+    });
 
-    const expectedCash = activeShift.openingFloat + cashSales + adjustIn - adjustOut;
-    const totalRevenue = cashSales + cardSales + bankSales;
-    const actual = parseFloat(actualClosingInput) || 0;
-    const discrepancy = actual - expectedCash;
+    const adjustInCents = adjustments.filter(a => a.type === 'IN').reduce((s, a) => s + Math.round(a.amount * 100), 0);
+    const adjustOutCents = adjustments.filter(a => a.type === 'OUT').reduce((s, a) => s + Math.round(a.amount * 100), 0);
 
-    return { cashSales, cardSales, bankSales, adjustIn, adjustOut, expectedCash, totalRevenue, discrepancy, txCount: shiftInvoices.length };
+    const openingFloatCents = Math.round(activeShift.openingFloat * 100);
+    const expectedCashCents = openingFloatCents + cashSalesCents + adjustInCents - adjustOutCents;
+    const totalRevenueCents = cashSalesCents + cardSalesCents + bankSalesCents;
+    const actualCents = Math.round((parseFloat(actualClosingInput) || 0) * 100);
+    const discrepancyCents = actualCents - expectedCashCents;
+
+    // Convert back to display currency (divide only at the end)
+    return {
+      cashSales: cashSalesCents / 100,
+      cardSales: cardSalesCents / 100,
+      bankSales: bankSalesCents / 100,
+      adjustIn: adjustInCents / 100,
+      adjustOut: adjustOutCents / 100,
+      expectedCash: expectedCashCents / 100,
+      totalRevenue: totalRevenueCents / 100,
+      discrepancy: discrepancyCents / 100,
+      txCount: shiftInvoices.length
+    };
   }, [invoices, activeShift, adjustments, actualClosingInput]);
 
   const handleOpenShift = () => {
@@ -117,7 +145,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       expectedClosing: drawerMath.expectedCash,
       actualClosing: parseFloat(actualClosingInput) || 0,
       discrepancy: drawerMath.discrepancy,
-      status: drawerMath.discrepancy === 0 ? 'balanced' : 'discrepancy'
+      status: Math.abs(drawerMath.discrepancy) < 0.01 ? 'balanced' : 'discrepancy'
     };
 
     onSaveShift(log);

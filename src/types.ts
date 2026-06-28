@@ -167,14 +167,14 @@ export interface MedicalRecord {
 
 export interface InvoiceItem { itemId: string; sku: string; name: string; category: ItemCategory; quantity: number; unitPrice: number; totalPrice: number; }
 
-export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'e_wallet' | 'deposit';
+export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'e_wallet' | 'deposit' | 'split';
 
 export interface ActiveShift { id: string; openedAt: string; openedBy: string; openedByName: string; openingFloat: number; }
 export interface ShiftReconciliation { id: string; timestamp: string; userId: string; userName: string; openingFloat: number; cashSales: number; expectedClosing: number; actualClosing: number; discrepancy: number; status: 'balanced' | 'discrepancy'; }
 
 export interface Shift { id: string; openedBy: string; startTime: string; endTime?: string; openingFloatCents: number; cashCollectedCents: number; cardCollectedCents: number; bankTransferCollectedCents: number; expectedCashCents?: number; actualCashCents?: number; discrepancyCents?: number; notes?: string; isOpen: boolean; opening_float: number; actual_cash: number | null; discrepancy_reason: string; created_at: string; updated_at: string; is_deleted: boolean; }
 
-export interface Invoice { id: string; appointmentId?: string; patientId: string; petName: string; ownerName: string; ownerPhone: string; date: string; items: InvoiceItem[]; subtotal: number; tax: number; discount: number; sales_total: number; cogs?: number; profit?: number; paymentMethod?: PaymentMethod; paymentStatus: 'unpaid' | 'paid' | 'void'; depositHeld?: number; createdBy: string; shiftId?: string; notes?: string; }
+export interface Invoice { id: string; appointmentId?: string; patientId: string; petName: string; ownerName: string; ownerPhone: string; date: string; items: InvoiceItem[]; subtotal: number; tax: number; discount: number; sales_total: number; cogs?: number; profit?: number; paymentMethod?: PaymentMethod; splitPayments?: Array<{ method: PaymentMethod; amount: number }>; paymentStatus: 'unpaid' | 'paid' | 'void'; depositHeld?: number; createdBy: string; shiftId?: string; notes?: string; }
 
 export interface ClientNotification { id: string; petName: string; ownerName: string; recipient: string; type: 'appointment_reminder' | 'vaccine_alert' | 'followup' | 'lab_result'; channel: 'sms' | 'email' | 'push'; message: string; scheduledTime: string; status: 'queued' | 'sent' | 'failed'; }
 export interface SystemAlert { id: string; severity: 'info' | 'warning' | 'urgent'; category: 'inventory' | 'appointment' | 'system' | 'lab'; message: string; timestamp: string; read: boolean; }
