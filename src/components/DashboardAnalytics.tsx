@@ -16,11 +16,13 @@ export default function DashboardAnalytics({
   onNavigate = () => {} 
 }: DashboardProps) {
   
-  const todayStr = new Date().toISOString().split('T')[0];
+  // FIXED: Use local date to avoid timezone issues with ISO split
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   // Traffic Calculations
   const todaysAppointments = appointments.filter(a => a.date.startsWith(todayStr));
-  const waiting = todaysAppointments.filter(a => a.status === 'scheduled');
+  const waiting = todaysAppointments.filter(a => a.status === 'booked'); // FIXED: was 'scheduled' which doesn't match AppointmentStatus type
   const inSession = todaysAppointments.filter(a => a.status === 'in-progress');
   const completed = todaysAppointments.filter(a => a.status === 'completed');
 
@@ -109,7 +111,7 @@ export default function DashboardAnalytics({
                       <div className="text-[10px] font-bold text-slate-500 mt-0.5">{apt.ownerName} • {apt.veterinarian}</div>
                     </div>
                     <div>
-                      {apt.status === 'scheduled' && <span className="px-3 py-1.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Waiting</span>}
+                      {apt.status === 'booked' && <span className="px-3 py-1.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Waiting</span>}
                       {apt.status === 'in-progress' && <span className="px-3 py-1.5 bg-sky-100 text-sky-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">In Session</span>}
                       {apt.status === 'completed' && <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Completed</span>}
                       {apt.status === 'cancelled' && <span className="px-3 py-1.5 bg-rose-100 text-rose-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Cancelled</span>}

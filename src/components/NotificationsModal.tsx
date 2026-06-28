@@ -144,7 +144,7 @@ export default function NotificationsModal({
             >
               <div className="space-y-1.5 flex-1 pr-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-800 text-sm">{notif.petName}s Owner ({notif.ownerName})</span>
+                  <span className="font-bold text-slate-800 text-sm">{notif.petName}'s Owner ({notif.ownerName})</span>
                   <span className="px-2 py-0.5 bg-slate-100 text-slate-500 font-mono font-bold text-[9px] rounded uppercase">
                     {(notif.type || '').replace('_',' ')}
                   </span>

@@ -10,6 +10,8 @@ import {
   PenTool, CheckCircle2 // FIXED: Added missing icons
 } from 'lucide-react';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord } from '../types';
+import { fetchInvoices, upsertInvoice } from '../lib/db';
+import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 
@@ -17,9 +19,19 @@ interface POSProps {
   inventory: InventoryItem[];
   appointments: Appointment[];
   records: MedicalRecord[];
-  onCheckout: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
+  onCheckout?: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
   activeShiftId?: string;
   currentUser?: string;
+  invoices?: Invoice[];
+  onUpdateStock?: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
+  onAddInvoice?: (invoice: any) => Promise<void>;
+  onVoidInvoice?: (id: string) => Promise<void>;
+  systemConfig?: any;
+  onVerifyMasterPin?: (pin: string) => boolean;
+  onTriggerInventorySync?: () => Promise<void>;
+  activeShift?: any;
+  incomingClient?: any;
+  onUpdateRecord?: (record: MedicalRecord) => Promise<void>;
 }
 
 interface CartItem extends InventoryItem {
@@ -34,8 +46,10 @@ export default function POSRegister({
   inventory = [], 
   appointments = [], 
   records = [], 
-  onCheckout, 
-  activeShiftId, 
+  onAddInvoice, 
+  onUpdateStock,
+  activeShiftId,
+  activeShift,
   currentUser 
 }: POSProps) {
   
@@ -64,10 +78,10 @@ export default function POSRegister({
   }, [inventory, searchQuery]);
 
   const activeQueue = useMemo(() => {
+    // FIXED: Only show checked-in patients. 'booked' = not physically here yet.
     return appointments.filter(a => 
-      a.date === todayStr && ['booked', 'in-progress', 'completed'].includes(a.status)
+      a.date === todayStr && ['in-progress', 'completed'].includes(a.status)
     ).sort((a, b) => {
-      // Prioritize completed appointments waiting for payment
       if (a.status === 'completed' && b.status !== 'completed') return -1;
       if (b.status === 'completed' && a.status !== 'completed') return 1;
       return 0;
@@ -126,7 +140,8 @@ export default function POSRegister({
     let newCartItems: CartItem[] = [];
 
     // 1. Add Default Consultation Fee if exists in inventory
-    const consultFee = inventory.find(i => i.name.toLowerCase().includes('consultation') || i.category === 'service');
+    // FIXED: Was `|| i.category === 'service'` which grabbed ANY service (like grooming)
+    const consultFee = inventory.find(i => i.name.toLowerCase().includes('consultation'));
     if (consultFee && cart.length === 0) {
       newCartItems.push({ ...consultFee, cartQuantity: 1, cartId: crypto.randomUUID() });
     }
@@ -175,9 +190,19 @@ export default function POSRegister({
   const totalCostOfGoods = cart.reduce((sum, item) => sum + (item.cost * item.cartQuantity), 0);
   const total = Math.max(0, subtotal - discount);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       showToast('Cart is empty.', 'error');
+      return;
+    }
+
+    // FIXED: Stock validation — prevent over-selling
+    const overSoldItems = cart.filter(c => {
+      const invItem = inventory.find(i => i.id === c.id);
+      return invItem && !['service', 'lab_service'].includes(invItem.category) && c.cartQuantity > invItem.stock;
+    });
+    if (overSoldItems.length > 0) {
+      showToast(`Insufficient stock for: ${overSoldItems.map(i => i.name).join(', ')}`, 'error');
       return;
     }
 
@@ -185,7 +210,9 @@ export default function POSRegister({
     const clientName = isWalkIn ? (customClientName || 'Walk-in Client') : selectedAppointment.ownerName;
     const clientPhone = isWalkIn ? (customClientPhone || '0000000000') : selectedAppointment.ownerPhone;
     const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
-    const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
+    // patientId format: lowercase_petName + last9_phone_digits
+    // Matches: medical records, clinic queue, patient portal
+    const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase().trim()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
 
     const invoiceItems: InvoiceItem[] = cart.map(c => ({
       itemId: c.id,
@@ -232,7 +259,22 @@ export default function POSRegister({
       }
     });
 
-    onCheckout(invoice, updatedInventory);
+    // FIXED: Use actual props from App.tsx instead of non-existent onCheckout
+    if (onAddInvoice) await onAddInvoice(invoice);
+    
+    // Deduct stock for physical items
+    if (onUpdateStock) {
+      for (const cartItem of cart) {
+        if (!['service', 'lab_service'].includes(cartItem.category)) {
+          const invItem = inventory.find(i => i.id === cartItem.id);
+          if (invItem) {
+            await onUpdateStock(cartItem.id, -cartItem.cartQuantity, invItem.stock);
+          }
+        }
+      }
+    }
+    
+    showToast(`Transaction completed — Invoice #${invoice.id.slice(0,8)}`, 'success');
     
     // Reset
     setCart([]);
@@ -274,7 +316,7 @@ export default function POSRegister({
                 <input type="text" placeholder="Walk-in Name (Opt)" value={customClientName} onChange={e => setCustomClientName(e.target.value)} className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-[10px] font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" />
               </div>
               <div>
-                <input type="text" placeholder="Phone (Opt)" value={customClientPhone} onChange={e => setCustomClientPhone(e.target.value)} className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-[10px] font-bold font-mono text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                <PhoneInput value={customClientPhone} onChange={setCustomClientPhone} className="w-full" />
               </div>
             </div>
           )}

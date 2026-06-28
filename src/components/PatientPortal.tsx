@@ -17,9 +17,17 @@ interface PatientPortalProps {
   records: MedicalRecord[];
   appointments?: Appointment[]; 
   onUpdateRecord?: (record: MedicalRecord) => void;
-  onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
+  onUpdateRecordsBulk?: (records: MedicalRecord[]) => void;
   onGoToRecords?: (patientId: string) => void;
   onGenerateConsent?: (clientName: string, petName: string) => void;
+  onBookAppointment?: (appointment: Appointment) => Promise<void>;
+  clinicQueue: any[];
+  systemConfig?: any;
+  viewPayload?: any;
+  onAddRecord?: (record: MedicalRecord) => Promise<void>;
+  onGoToCustomers?: (phone: string) => void;
+  onGoToAppointments?: (client: any, pet: any) => void;
+  onUpdatePet?: (oldPatientId: string, newPetName: string, newDetails: any) => Promise<void>;
 }
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
@@ -27,6 +35,7 @@ const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) :
 export default function PatientPortal({ 
   records, 
   appointments,
+  clinicQueue,
   onUpdateRecord, 
   onUpdateRecordsBulk,
   onGoToRecords, 
@@ -65,7 +74,10 @@ export default function PatientPortal({
       }
     });
 
+    // FIXED: Only add checked-in (in-progress) appointments to pet map
+    // Booked appointments = pet hasn't arrived yet, don't pollute the portal
     (appointments || []).forEach(a => {
+      if (a.status !== 'in-progress') return;
       const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
       if (!petMap.has(pid)) {
         petMap.set(pid, {
@@ -87,13 +99,8 @@ export default function PatientPortal({
 
     if (showQueueOnly) {
       activeList = activeList.filter(p => {
-        const hasRecordToday = records.some(r => r.patientId === p.patientId && r.visitDate === todayStr);
-        const hasApptToday = (appointments || []).some(a => 
-          `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}` === p.patientId && 
-          a.date === todayStr && 
-          ['booked', 'in-progress'].includes(a.status)
-        );
-        return hasRecordToday || hasApptToday;
+        // FIXED: Only pets actively in the clinicQueue are "In Clinic"
+        return (clinicQueue || []).some(q => q.petId === p.patientId);
       });
     }
 
@@ -229,7 +236,7 @@ export default function PatientPortal({
               <div className="px-6 py-4 flex items-center justify-end border-b border-slate-100 bg-slate-50/50">
                 <div className="flex gap-2">
                    {onGoToRecords && petRecords.length > 0 && (
-                     <button onClick={() => onGoToRecords(activePet.id)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                     <button onClick={() => onGoToRecords(activePet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                        <Activity className="w-3.5 h-3.5"/> Open Current E.H.R
                      </button>
                    )}

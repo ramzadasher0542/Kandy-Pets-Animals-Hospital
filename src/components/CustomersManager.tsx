@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification } from '../types';
 import { fetchClients, upsertClient } from '../lib/db';
+import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
 
@@ -448,7 +449,7 @@ export default function CustomersManager({
             </button>
             <div className="flex gap-2">
                {onGoToRecords && (
-                 <button onClick={() => onGoToRecords(activePet.id)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                 <button onClick={() => onGoToRecords(activePet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                    <Activity className="w-3.5 h-3.5"/> Open E.H.R
                  </button>
                )}
@@ -770,10 +771,11 @@ export default function CustomersManager({
                       </div>
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Primary Phone *</label>
-                        <div className="relative flex items-center">
-                          <span className="absolute left-3 font-mono font-bold text-slate-400 text-[10px]">+94</span>
-                          <input type="text" required value={formData.primary_phone} onChange={e => setFormData({...formData, primary_phone: e.target.value})} className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold font-mono text-xs" />
-                        </div>
+                        <PhoneInput 
+                          required 
+                          value={formData.primary_phone} 
+                          onChange={(val) => setFormData({...formData, primary_phone: val})} 
+                        />
                       </div>
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Email Address</label>
@@ -921,11 +923,11 @@ export default function CustomersManager({
                   </div>
                   <div className="space-y-1 col-span-1">
                     <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Primary Phone *</label>
-                    <input type="text" required placeholder="077 123 4567" value={formData.primary_phone} onChange={e => setFormData({...formData, primary_phone: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold" />
+                    <PhoneInput required value={formData.primary_phone} onChange={val => setFormData({...formData, primary_phone: val})} />
                   </div>
                   <div className="space-y-1 col-span-1">
                     <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Alternate Phone</label>
-                    <input type="text" value={formData.alternate_phone} onChange={e => setFormData({...formData, alternate_phone: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold" />
+                    <PhoneInput value={formData.alternate_phone} onChange={val => setFormData({...formData, alternate_phone: val})} />
                   </div>
                   <div className="space-y-1 col-span-2">
                     <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Email Address</label>

@@ -11,13 +11,22 @@ import {
 } from 'lucide-react';
 import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment } from '../types';
 import { formatDisplayDate } from '../utils/time';
+import { showToast } from './Toast'; // FIXED: was missing, caused runtime error
 
 interface RecordsProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
-  appointments?: Appointment[]; // PHASE 2: Added to detect lobby queue
+  appointments?: Appointment[];
   onAddRecord: (record: MedicalRecord) => void;
   onUpdateRecord: (record: MedicalRecord) => void;
+  onDeleteRecord?: (id: string) => Promise<void>;
+  onUpdateStock?: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
+  onAddAppointment?: (appointment: Appointment) => Promise<void>;
+  onUpdateAppointmentStatus?: (id: string, status: string) => Promise<void>;
+  clinicQueue?: any[];
+  systemConfig?: any;
+  viewPayload?: any;
+  onUpdateRecordsBulk?: (records: MedicalRecord[]) => Promise<void>;
 }
 
 // ============================================================================
@@ -59,7 +68,7 @@ const SYSTEM_LABELS: Record<keyof PhysicalExamination, string> = {
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function MedicalRecordsManager({ records, inventory, appointments, onAddRecord, onUpdateRecord }: RecordsProps) {
+export default function MedicalRecordsManager({ records, inventory, appointments, clinicQueue, onAddRecord, onUpdateRecord }: RecordsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showQueueOnly, setShowQueueOnly] = useState(true); // Default to Queue
   const [showModal, setShowModal] = useState(false);
@@ -120,7 +129,10 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     });
 
     // Pass 2: Active Appointments (Catching un-charted pets in lobby)
+    // FIXED: Only add checked-in (in-progress) appointments to patient map
+    // Booked appointments = pet hasn't arrived, don't show in charting dashboard
     (appointments || []).forEach(a => {
+      if (a.status !== 'in-progress') return;
       const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
       if (!patientMap.has(pid)) {
         patientMap.set(pid, {
@@ -135,11 +147,10 @@ export default function MedicalRecordsManager({ records, inventory, appointments
           visitDate: a.date,
           assessment: null,
           diagnosis: 'Pending Triage',
-          hasRecordToday: false, // It's only an appointment so far
+          hasRecordToday: false,
           apptStatus: a.status
         });
       } else {
-        // Update existing with appointment status if applicable
         if (a.date === todayStr) {
           patientMap.get(pid).apptStatus = a.status;
         }
@@ -149,7 +160,8 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     let activeList = Array.from(patientMap.values());
 
     if (showQueueOnly) {
-      activeList = activeList.filter(p => p.hasRecordToday || ['booked', 'in-progress'].includes(p.apptStatus));
+      // FIXED: Only pets actively in the clinicQueue are "In Clinic"
+      activeList = activeList.filter(p => (clinicQueue || []).some(q => q.petId === p.patientId));
     }
 
     if (searchQuery) {
@@ -216,7 +228,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
   const saveRecord = () => {
     if (!editingRecord) return;
     
-    const compiledSymptoms = Object.values(exam).flatMap(sys => sys.abnormalities || []).join(', ');
+    const compiledSymptoms = Object.values(exam).flatMap((sys: any) => sys.abnormalities || []).join(', ');
     const compiledDiagnosis = `${assessment.diagnosisType || 'Diagnosis'}: ${assessment.notes || ''}`;
 
     const updatedRecord: MedicalRecord = {
@@ -516,7 +528,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
                 disabled={!selectedMed}
                 className={`flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${selectedMed ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
               >
-                Add to Prescription & Deduct Stock
+                Add to Prescription
               </button>
             </div>
           </div>
@@ -592,8 +604,8 @@ export default function MedicalRecordsManager({ records, inventory, appointments
                     {patient.visitDate === todayStr && (
                       <span className="mt-1 inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase tracking-widest rounded">Today</span>
                     )}
-                    {patient.apptStatus === 'booked' && (
-                       <span className="mt-1 ml-1 inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest rounded">In Lobby</span>
+                    {patient.apptStatus === 'in-progress' && (
+                       <span className="mt-1 ml-1 inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest rounded">In Treatment</span>
                     )}
                   </td>
                   <td className="py-4 px-6">

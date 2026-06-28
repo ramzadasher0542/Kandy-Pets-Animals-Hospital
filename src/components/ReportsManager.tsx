@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import localforage from 'localforage';
-import { Wallet, DollarSign, TrendingUp, TrendingDown, Plus, ArrowDownRight, ArrowUpRight, ShieldCheck, FileText } from 'lucide-react';
+import { Wallet, DollarSign, TrendingUp, TrendingDown, Plus, ArrowDownRight, ArrowUpRight, ShieldCheck, FileText, Download } from 'lucide-react';
 import { showToast } from './Toast';
+import { db } from '../lib/localDb';
 
 // --- Types ---
 interface CashAdjustment {
@@ -28,8 +29,8 @@ interface VaultInvoice {
 }
 
 // --- DB Initialization ---
-const invoicesDb = localforage.createInstance({ name: 'ceylonpets-vhms', storeName: 'invoices' });
-const cashDb = localforage.createInstance({ name: 'ceylonpets-vhms', storeName: 'cash_adjustments' });
+// FIXED: Use shared CeylonPets_Enterprise_OS database for invoices (was reading from wrong DB)
+const cashDb = localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'cash_adjustments' });
 
 export default function ReportsManager() {
   const [loading, setLoading] = useState(true);
@@ -53,14 +54,14 @@ export default function ReportsManager() {
     vaultBalance: 0
   });
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+  const formatCurrency = (val: number) => new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR' }).format(val);
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const invs: VaultInvoice[] = [];
-      await invoicesDb.iterate((val: VaultInvoice) => { invs.push(val); });
+      await db.invoices.iterate((val: VaultInvoice) => { if (val && !Array.isArray(val)) invs.push(val); });
       
       const adjs: CashAdjustment[] = [];
       await cashDb.iterate((val: CashAdjustment) => { adjs.push(val); });
@@ -89,7 +90,7 @@ export default function ReportsManager() {
     paidInvs.forEach(inv => {
       const total = inv.sales_total || (inv.amountCents ? inv.amountCents / 100 : 0);
       rev += total;
-      prof += inv.profit || (total * 0.4); // fallback 40% margin if legacy data
+      prof += inv.profit || 0; // No guessing — only use actual recorded profit
       
       const method = (inv.paymentMethod || inv.method || '').toLowerCase();
       if (method === 'cash') cSales += total;
@@ -143,11 +144,8 @@ export default function ReportsManager() {
         <div className="relative z-10 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-black tracking-tight text-white">Owner's Vault</h1>
-            <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Financial Reports & Cash Management</p>
+            <p className="text-xs font-bold text-slate-400 mt-2 uppercase tracking-widest">Financial Reports & Analytics</p>
           </div>
-          <button onClick={() => setShowModal(true)} className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl text-[11px] uppercase tracking-widest flex items-center gap-2 shadow-lg transition-transform active:scale-95 cursor-pointer">
-            <Plus className="w-4 h-4" /> Adjust Cash Vault
-          </button>
         </div>
       </header>
 
@@ -175,7 +173,20 @@ export default function ReportsManager() {
                <FileText className="w-12 h-12 text-slate-200 mb-4" />
                <h3 className="text-sm font-black text-slate-800 mb-1">Detailed Ledger Export</h3>
                <p className="text-xs text-slate-500 font-semibold mb-6">Download your full transaction history for your accountant.</p>
-               <button className="px-6 py-2.5 border-2 border-indigo-100 text-indigo-600 hover:bg-indigo-50 font-black text-[10px] uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Export CSV Ledger</button>
+               <button onClick={() => {
+                 if (invoices.length === 0) { showToast('No invoice data to export.', 'error'); return; }
+                 const headers = ['ID','Date','Method','Status','Total','Profit'];
+                 const rows = invoices.map(inv => [
+                   inv.id, inv.date, inv.paymentMethod || inv.method || '', inv.paymentStatus || inv.status || '',
+                   (inv.sales_total || 0).toFixed(2), (inv.profit || 0).toFixed(2)
+                 ]);
+                 const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                 const blob = new Blob([csv], { type: 'text/csv' });
+                 const url = URL.createObjectURL(blob);
+                 const a = document.createElement('a'); a.href = url; a.download = `ceylonpets_ledger_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+                 URL.revokeObjectURL(url);
+                 showToast('CSV ledger exported successfully.', 'success');
+               }} className="px-6 py-2.5 border-2 border-indigo-100 text-indigo-600 hover:bg-indigo-50 font-black text-[10px] uppercase tracking-widest rounded-xl transition-colors cursor-pointer flex items-center gap-2"><Download className="w-4 h-4" /> Export CSV Ledger</button>
             </div>
           </div>
 
@@ -224,60 +235,7 @@ export default function ReportsManager() {
         </div>
       </main>
 
-      {/* Cash Adjustment Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up">
-            <div className="p-6 bg-slate-900 flex justify-between items-center">
-              <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><DollarSign className="w-4 h-4 text-emerald-400"/> Log Cash Adjustment</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white transition-colors cursor-pointer">✕</button>
-            </div>
-            <form onSubmit={handleSaveAdjustment} className="p-6 space-y-5">
-              
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                <button type="button" onClick={() => setAdjType('OUT')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${adjType === 'OUT' ? 'bg-white shadow-sm text-rose-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Take Cash Out</button>
-                <button type="button" onClick={() => setAdjType('IN')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${adjType === 'IN' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Add Cash In</button>
-              </div>
 
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Amount</label>
-                <input type="number" step="0.01" min="0" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00" className="w-full px-4 py-3 text-2xl font-black font-mono text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" autoFocus required />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Category</label>
-                <select value={adjCategory} onChange={e => setAdjCategory(e.target.value as any)} className="w-full px-4 py-3 text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 cursor-pointer">
-                  {adjType === 'OUT' ? (
-                    <>
-                      <option value="Expense">Business Expense (Supplies, Bills)</option>
-                      <option value="Owner Draw">Owner Draw / Payout</option>
-                      <option value="Other">Other Outflow</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="Income">Non-Invoice Income</option>
-                      <option value="Starting Float">Starting Register Float</option>
-                      <option value="Investment">Owner Investment</option>
-                      <option value="Other">Other Inflow</option>
-                    </>
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Reason / Details</label>
-                <input type="text" value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g. Bought cleaning supplies..." className="w-full px-4 py-3 text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500" required />
-              </div>
-
-              <div className="pt-2">
-                <button type="submit" className={`w-full py-4 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-transform active:scale-95 cursor-pointer ${adjType === 'IN' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
-                  Confirm {adjType === 'IN' ? 'Cash Addition' : 'Cash Removal'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }

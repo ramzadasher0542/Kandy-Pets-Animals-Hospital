@@ -5,11 +5,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Building2, Printer, Users, ShieldAlert, Save, Plus, 
+import { Building2, Printer, Users, ShieldAlert, Save, Plus, 
   Trash2, Database, Power, X, Lock, CheckCircle2, User,
-  FileText, Download, Upload, Layers, AlertTriangle
-} from 'lucide-react';
+  FileText, Download, Upload, Layers, AlertTriangle, Smartphone } from 'lucide-react';
+import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, upsertInventoryItem } from '../lib/db';
 import { ItemCategory, InventoryItem } from '../types';
@@ -317,7 +316,7 @@ export default function SystemSettings({
                   </div>
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Contact Phone</label>
-                    <input type="text" value={localConfig.hospitalPhone} onChange={e => updateConfig('hospitalPhone', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                    <PhoneInput value={localConfig.hospitalPhone} onChange={val => updateConfig('hospitalPhone', val)} />
                   </div>
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Public Email</label>

@@ -4,7 +4,6 @@
  */
 
 import { db } from './localDb';
-import localforage from 'localforage';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import {
   InventoryItem,
@@ -28,7 +27,7 @@ import {
 export async function fetchInventory(): Promise<InventoryItem[]> {
   const items: InventoryItem[] = [];
   await db.inventory.iterate((value: InventoryItem) => {
-    if (value && !Array.isArray(value)) items.push(value);
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
   });
   return items;
 }
@@ -48,7 +47,13 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
 
 export async function deleteInventoryItem(id: string): Promise<void> {
   if (!id) return;
-  await db.inventory.removeItem(id);
+  // FIXED: Soft delete instead of hard delete for data integrity
+  const item = await db.inventory.getItem<InventoryItem>(id);
+  if (item) {
+    (item as any).is_deleted = true;
+    (item as any).updated_at = new Date().toISOString();
+    await db.inventory.setItem(id, item);
+  }
 }
 
 export async function updateInventoryStockCAS(itemId: string, newStock: number, expectedStock: number): Promise<void> {
@@ -136,7 +141,7 @@ export async function fetchVeterinarians(): Promise<User[]> {
 export async function fetchMedicalRecords(): Promise<MedicalRecord[]> {
   const records: MedicalRecord[] = [];
   await db.records.iterate((value: MedicalRecord) => {
-    if (value && !Array.isArray(value)) records.push(value);
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) records.push(value);
   });
   return records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 }
@@ -152,7 +157,13 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
 
 export async function deleteMedicalRecord(id: string): Promise<void> {
   if (!id) return;
-  await db.records.removeItem(id);
+  // FIXED: Soft delete instead of hard delete for data integrity
+  const rec = await db.records.getItem<MedicalRecord>(id);
+  if (rec) {
+    (rec as any).is_deleted = true;
+    (rec as any).updated_at = new Date().toISOString();
+    await db.records.setItem(id, rec);
+  }
 }
 
 // ==========================================
@@ -161,7 +172,8 @@ export async function deleteMedicalRecord(id: string): Promise<void> {
 export async function fetchInvoices(): Promise<Invoice[]> {
   const invoices: Invoice[] = [];
   await db.invoices.iterate((value: Invoice) => {
-    if (value && !Array.isArray(value) && value.paymentStatus !== 'void') invoices.push(value);
+    // FIXED: Include ALL invoices (including voided) — let consumers handle filtering
+    if (value && !Array.isArray(value)) invoices.push(value);
   });
   return invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
@@ -318,7 +330,7 @@ export async function openShift(openedBy: string, openingFloatCents: number): Pr
     cardCollectedCents: 0,
     bankTransferCollectedCents: 0,
     isOpen: true,
-    opening_float: openingFloatCents / 100,
+    opening_float: Math.round(openingFloatCents) / 100, // FIXED: ensure integer before division
     actual_cash: null,
     discrepancy_reason: '',
     created_at: now,
@@ -350,7 +362,7 @@ export async function closeShift(
       discrepancyCents: Math.round(discrepancyCents),
       notes: notes || 'Shift closed',
       isOpen: false,
-      actual_cash: actualCashCents / 100,
+      actual_cash: Math.round(actualCashCents) / 100, // FIXED: ensure integer before division
       discrepancy_reason: notes || '',
       updated_at: now
     };
@@ -362,7 +374,7 @@ export async function closeShift(
 export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {
   const activeId = localStorage.getItem('ceylon_active_shift_id');
   if (!activeId) return;
-  const shift = await db.shifts.getItem<any>(activeId);
+  const shift = await db.shifts.getItem<Shift>(activeId); // FIXED: type-safe instead of <any>
   if (shift && shift.isOpen) {
     if (method === 'cash') shift.cashCollectedCents = (shift.cashCollectedCents || 0) + Math.round(amountCents);
     if (method === 'card') shift.cardCollectedCents = (shift.cardCollectedCents || 0) + Math.round(amountCents);
@@ -414,16 +426,26 @@ export async function upsertClient(client: Client): Promise<void> {
 // SYSTEM MAINTENANCE
 // ==========================================
 export async function fetchFullSystemState(): Promise<any> {
+  // FIXED: Include ALL collections in backup (was missing shifts, clients, clinicQueue)
+  const shifts: Shift[] = [];
+  await db.shifts.iterate((value: Shift) => { if (value && !Array.isArray(value)) shifts.push(value); });
+  const clients: Client[] = [];
+  await db.clients.iterate((value: Client) => { if (value && !Array.isArray(value)) clients.push(value); });
+  const queue: ClinicQueueItem[] = [];
+  await db.clinicQueue.iterate((value: ClinicQueueItem) => { if (value && !Array.isArray(value)) queue.push(value); });
+
   const state: any = {
     app: 'CeylonPets',
-    version: '2.0.0', // Phase 8 IndexedDB Architecture
+    version: '2.1.0', // Phase 8+ Audit Fix
     timestamp: new Date().toISOString(),
     collections: {
       inventory: await fetchInventory(),
       appointments: await fetchAppointments(),
       records: await fetchMedicalRecords(),
       invoices: await fetchInvoices(),
-      pos_shifts: [], // Assuming separate sync logic if needed
+      pos_shifts: shifts,
+      clients: clients,
+      clinicQueue: queue,
       system_alerts: await fetchAlerts(),
       notifications: await fetchNotifications()
     }
@@ -473,6 +495,13 @@ export async function reconstituteSystemState(payload: any): Promise<void> {
   }
   if (payload.collections.clinicQueue) {
     payload.collections.clinicQueue.forEach((q: any) => writePromises.push(db.clinicQueue.setItem(q.id, q)));
+  }
+  // FIXED: Restore clients and shifts (was missing)
+  if (payload.collections.clients) {
+    payload.collections.clients.forEach((c: any) => writePromises.push(db.clients.setItem(c.client_id || c.id, c)));
+  }
+  if (payload.collections.pos_shifts) {
+    payload.collections.pos_shifts.forEach((s: any) => writePromises.push(db.shifts.setItem(s.id, s)));
   }
 
   await Promise.all(writePromises);

@@ -13,13 +13,14 @@ import {
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
-import { upsertClient } from '../lib/db'; 
+import { upsertClient } from '../lib/db';
+import PhoneInput from './PhoneInput'; 
 import { db } from '../lib/localDb'; 
 
 interface AppointmentsProps {
   appointments: Appointment[];
   records: MedicalRecord[];
-  isOnline: boolean;
+  isOnline?: boolean;
   onAddAppointment: (appointment: Appointment) => void;
   onUpdateStatus: (id: string, status: AppointmentStatus) => void;
   onAddRecord: (record: MedicalRecord) => void;
@@ -270,23 +271,8 @@ export default function AppointmentsManager({
       return;
     }
 
-    try {
-      const clientPayload = {
-        client_id: `CLI-${normalizeSearchPhone(ownerPhone)}`,
-        full_name: ownerName.trim(),
-        primary_phone: enforcePhoneFormat(ownerPhone),
-        alternate_phone: phone2 || '',
-        email_address: ownerEmail || '',
-        physical_address: address || '',
-        communication_preference: 'sms' as any,
-        account_balance: 0,
-        lifetime_value: 0,
-        client_status: 'active' as any
-      };
-      await upsertClient(clientPayload);
-    } catch (err) {
-      console.error('[Enterprise OS] CRM Sync Failed:', err);
-    }
+    // Client/CRM record creation moved to check-in (handleCheckIn)
+    // Rationale: Don't pollute pet/customer DB until patient physically arrives
 
     const metadata = JSON.stringify({ phone2, address });
     const tokenBlock = `:::METADATA${metadata}:::`;
@@ -350,6 +336,30 @@ export default function AppointmentsManager({
   const handleCheckIn = (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
     
+    // FIXED: Create client/CRM record on check-in, NOT on appointment booking
+    // Only real walk-ins enter the customer database
+    try {
+      const clientPayload = {
+        client_id: crypto.randomUUID(),
+        full_name: apt.ownerName.trim(),
+        primary_phone: enforcePhoneFormat(apt.ownerPhone),
+        alternate_phone: '',
+        email_address: apt.ownerEmail || 'not-provided@example.com',
+        physical_address: '',
+        communication_preference: 'sms' as any,
+        account_balance: 0,
+        lifetime_value: 0,
+        client_status: 'active' as any,
+        administrative_notes: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_deleted: false
+      };
+      upsertClient(clientPayload);
+    } catch (err) {
+      console.error('[Enterprise OS] CRM Sync on check-in failed:', err);
+    }
+
     const targetPhone = normalizeSearchPhone(apt.ownerPhone);
     const targetPetName = (apt.petName || '').trim().toLowerCase();
 
@@ -373,13 +383,17 @@ export default function AppointmentsManager({
         ownerEmail: apt.ownerEmail || 'not-provided@example.com',
         visitDate: apt.date,
         attendingVet: apt.veterinarian,
+        appointmentId: apt.id, // FIXED: was missing — broken Appointment → Record link
         symptoms: '',
         diagnosis: '',
         treatmentNotes: '',
         prescribedMeds: [],
         vaccinations: [],
         labResults: [],
-        createdDate: new Date().toISOString().split('T')[0]
+        createdDate: new Date().toISOString().split('T')[0],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_deleted: false
       };
       onAddRecord(newRecord);
     }
@@ -1066,14 +1080,10 @@ export default function AppointmentsManager({
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Phone (+94 Format) *</label>
-                            <input 
-                              type="text" 
+                            <PhoneInput 
                               required 
                               value={ownerPhone} 
-                              onChange={(e) => setOwnerPhone(e.target.value)} 
-                              onBlur={(e) => setOwnerPhone(enforcePhoneFormat(e.target.value))}
-                              placeholder="+94 77 123 4567"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs" 
+                              onChange={setOwnerPhone}
                             />
                           </div>
                           <div>

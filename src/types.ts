@@ -159,7 +159,10 @@ export interface MedicalRecord {
   createdDate: string; 
   attendingVet?: string; 
   appointmentId?: string; 
-  followUpDate?: string; 
+  followUpDate?: string;
+  created_at?: string;
+  updated_at?: string;
+  is_deleted?: boolean;
 }
 
 export interface InvoiceItem { itemId: string; sku: string; name: string; category: ItemCategory; quantity: number; unitPrice: number; totalPrice: number; }
@@ -179,4 +182,4 @@ export interface OfflineSyncItem { id: string; action: 'create_appointment' | 'c
 
 export const CATEGORY_DISPLAY_MAP: Record<string, string> = { 'service': 'Clinical Care', 'lab_service': 'Labs & Diagnostics', 'vaccine': 'Vaccinations', 'prescription': 'Pharmacy Rx', 'retail': 'Pet Supplies Shop', 'Taxes & Adjustments': 'Taxes & Adjustments', 'other': 'Other / Uncategorized' };
 
-export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; }
+export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; created_at?: string; updated_at?: string; is_deleted?: boolean; }

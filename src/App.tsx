@@ -121,27 +121,27 @@ function App() {
   const [clinicQueue, setClinicQueue] = useState<ClinicQueueItem[]>([]);
 
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
-    appName: 'CeylonPets',
-    resellerName: 'ASH POINT SOLUTIONS',
+    appName: 'Ceylon Pets POS',
+    resellerName: 'Ash Point Solutions',
     hospitalName: 'Ceylon Pets Animal Hospital',
-    hospitalAddress: 'No. 34 Palace Road, Petaluma CA',
-    hospitalPhone: '+1 (555) 781-4200',
+    hospitalAddress: 'Kandy, Sri Lanka',
+    hospitalPhone: '+94 81 234 5678',
     hospitalEmail: 'contact@ceylonpets.lk',
     invoiceLogo: '🐾',
-    invoiceFooterMessage: 'Please pay upon discharge. Thank you for choosing CeylonPets!',
-    invoiceSubFooterMessage: '* CEYLONPETS OFFICIAL RECEIPT *',
-    invoiceExtraFooterMessage: '',
-    taxRate: 0.08,
-    currencySymbol: 'Rs.',
-    selectedReceiptPrinter: 'Epson TM-T88VI Serial COM Port',
-    selectedReportPrinter: 'HP LaserJet Enterprise MFP M528',
-    receiptPaperSize: '80mm',
+    invoiceFooterMessage: 'Thank you for choosing Ceylon Pets!',
+    invoiceSubFooterMessage: '* OFFICIAL RECEIPT *',
+    invoiceExtraFooterMessage: 'POWERED BY ASH POINT SOLUTIONS',
+    taxRate: 0.0825,
+    currencySymbol: 'Rs. ',
+    selectedReceiptPrinter: '',
+    selectedReportPrinter: '',
+    receiptPaperSize: '58mm',
     connectionType: 'usb',
-    localAutosaveInterval: 30,
-    cloudEndpoint: 'https://vault.ashpointsolutions.lk/api/backup/client1',
-    cloudBackupEnabled: true,
-    emailDigestEnabled: true,
-    recipientEmails: ['manager@ceylonpets.lk', 'accounts@ceylonpets.lk'],
+    localAutosaveInterval: 15,
+    cloudEndpoint: '',
+    cloudBackupEnabled: false,
+    emailDigestEnabled: false,
+    recipientEmails: [],
     digestSchedule: 'daily_end',
     rolePermissions: {
       cashier: ['pos', 'shift'],
@@ -149,8 +149,7 @@ function App() {
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift']
     },
-    masterPin: hashPin('5692'),
-    dummyAdminPin: hashPin('7777')
+    masterPin: hashPin('5692')
   } as SystemConfig);
 
   // --- THE INDEXED-DB BOOTLOADER & MIGRATION ENGINE ---
@@ -414,8 +413,8 @@ function App() {
       // LIVING FLOOR: When appointment is checked-in (in-progress), add to clinic queue
       if (status === 'in-progress') {
         const queueItem: ClinicQueueItem = {
-          id: `queue_${apt.id}_${Date.now()}`,
-          petId: `${apt.petName}_${apt.ownerPhone.replace(/\D/g, '')}`,
+          id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
+          petId: `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
           petName: apt.petName,
           ownerName: apt.ownerName,
           ownerPhone: apt.ownerPhone,
@@ -427,6 +426,16 @@ function App() {
         };
         await addToClinicQueue(queueItem);
         setClinicQueue(prev => [queueItem, ...prev]);
+      }
+
+      // FIXED: Remove from queue when appointment is completed or cancelled
+      if (status === 'completed' || status === 'cancelled') {
+        const matchPetId = `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`;
+        const queueItem = clinicQueue.find(q => q.petId === matchPetId);
+        if (queueItem) {
+          await removeFromClinicQueue(queueItem.id);
+          setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+        }
       }
 
       showToast(`Appointment status updated to ${status}.`);
@@ -515,9 +524,34 @@ function App() {
     });
   };
 
-  const handleAddInvoice = async (invoice: any) => { await upsertInvoice(invoice); const updated = await fetchInvoices(); setInvoices(updated); };
+  const handleAddInvoice = async (invoice: any) => {
+    await upsertInvoice(invoice);
+    const updated = await fetchInvoices();
+    setInvoices(updated);
 
-  const handleVoidInvoice = async (id: any) => { const target = invoices.find(i => i.id === id); if (target) { target.paymentStatus = 'void'; await upsertInvoice(target); const updated = await fetchInvoices(); setInvoices(updated); } };
+    // FIXED: Remove patient from clinic queue after checkout
+    if (invoice.patientId && invoice.patientId !== 'RETAIL') {
+      const queueItem = clinicQueue.find(q => q.petId === invoice.patientId);
+      if (queueItem) {
+        await removeFromClinicQueue(queueItem.id);
+        setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+      }
+    }
+
+    // FIXED: Auto-complete the appointment after checkout
+    // This removes the pet from POS queue, Pets portal, and Examinations "IN CLINIC"
+    if (invoice.appointmentId) {
+      const apt = appointments.find(a => a.id === invoice.appointmentId);
+      if (apt && apt.status !== 'completed') {
+        const completedApt = { ...apt, status: 'completed' as const, updated_at: new Date().toISOString() };
+        await upsertAppointment(completedApt);
+        setAppointments(prev => prev.map(a => a.id === apt.id ? completedApt : a));
+      }
+    }
+  };
+
+  // FIXED: No longer mutates React state directly — creates a new object
+  const handleVoidInvoice = async (id: any) => { const target = invoices.find(i => i.id === id); if (target) { const voided = { ...target, paymentStatus: 'void' as const }; await upsertInvoice(voided); const updated = await fetchInvoices(); setInvoices(updated); } };
 
   const handlePurgeDatabases = async () => {
     await db.inventory.clear();
@@ -618,8 +652,7 @@ function App() {
           <POSRegister
             inventory={inventory} 
             appointments={appointments} // ADD THIS LINE
-            records={records}           // ADD THIS LINE
-            isOnline={isOnline}
+            records={records}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
             onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
             onVerifyMasterPin={handleVerifyMasterPin} onTriggerInventorySync={async () => { }}
@@ -628,7 +661,7 @@ function App() {
           />
         );
       }
-      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} isOnline={isOnline} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
+      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
       case 'boarding': return <BoardingManager records={records} onUpdateRecord={handleUpdateRecord} />;
       case 'grooming': return <GroomingManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={setInventory} systemConfig={systemConfig} />;
@@ -638,7 +671,7 @@ function App() {
         return <DashboardAnalytics inventory={inventory} appointments={appointments} activeShift={activeShift} onNavigate={(tab) => { setViewPayload(null); setActiveView(tab); setHistoryStack(prev => [...prev, tab]); }} />;
       case 'reports':
         return <ReportsManager />;
-      case 'examinations': return <MedicalRecordsManager records={records} inventory={inventory} appointments={appointments} isOnline={isOnline} onAddRecord={handleAddRecord} onUpdateRecord={handleUpdateRecord} onDeleteRecord={handleDeleteRecord} onUpdateStock={handleUpdateStock} onAddAppointment={handleAddAppointment} onUpdateAppointmentStatus={handleUpdateAppointmentStatus} />;
+      case 'examinations': return <MedicalRecordsManager clinicQueue={clinicQueue} records={records} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
         return (
@@ -686,7 +719,7 @@ function App() {
           />
         );
       }
-      case 'pets': return <PatientPortal records={records} appointments={appointments} isOnline={isOnline} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
+      case 'pets': return <PatientPortal records={records} appointments={appointments} clinicQueue={clinicQueue} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'vaccinations': return <VaccinationsManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
       case 'laboratory': return <LaboratoryManager records={records} inventory={inventory as any} onUpdateRecord={handleUpdateRecord} />;
       case 'customers': return <CustomersManager records={records} invoices={invoices} appointments={appointments} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;

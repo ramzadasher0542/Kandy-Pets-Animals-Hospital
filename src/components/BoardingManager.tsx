@@ -54,6 +54,24 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
     };
   }, [records]);
 
+  // FIXED: Discharge handler — was completely missing, pets were trapped forever
+  const handleDischarge = (cage: string) => {
+    const occupantRecord = activeBoardingMap.get(cage);
+    if (!occupantRecord || !occupantRecord.boardingInfo) return;
+    if (!window.confirm(`Discharge ${occupantRecord.petName} from ${cage}? This will free the cage.`)) return;
+
+    const updatedRecord: MedicalRecord = {
+      ...occupantRecord,
+      boardingInfo: {
+        ...occupantRecord.boardingInfo,
+        status: 'discharged'
+      }
+    };
+    onUpdateRecord(updatedRecord);
+    showToast(`${occupantRecord.petName} discharged from ${cage}. Cage is now available.`, 'success');
+    setSelectedCage(null);
+  };
+
   const handleOpenGuard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
@@ -138,10 +156,11 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 
                 if (occupant) {
                   return (
-                    <div key={cage} className="p-3 border-2 border-rose-200 bg-rose-50 rounded-xl relative overflow-hidden opacity-90 cursor-not-allowed">
+                    <div key={cage} className="p-3 border-2 border-rose-200 bg-rose-50 rounded-xl relative overflow-hidden">
                       <div className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">{cage}</div>
                       <div className="font-extrabold text-slate-800 text-sm truncate">{occupant.petName}</div>
                       <div className="text-[10px] font-bold text-slate-500 truncate">{occupant.ownerName}</div>
+                      <button onClick={() => handleDischarge(cage)} className="mt-2 w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Discharge</button>
                       <div className="absolute top-0 right-0 w-8 h-8 bg-rose-100 flex items-center justify-center rounded-bl-xl">
                         <Lock className="w-3 h-3 text-rose-500" />
                       </div>
@@ -173,10 +192,11 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 
                 if (occupant) {
                   return (
-                    <div key={cage} className="p-3 border-2 border-rose-200 bg-rose-50 rounded-xl relative overflow-hidden opacity-90 cursor-not-allowed">
+                    <div key={cage} className="p-3 border-2 border-rose-200 bg-rose-50 rounded-xl relative overflow-hidden">
                       <div className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">{cage}</div>
                       <div className="font-extrabold text-slate-800 text-sm truncate">{occupant.petName}</div>
                       <div className="text-[10px] font-bold text-slate-500 truncate">{occupant.ownerName}</div>
+                      <button onClick={() => handleDischarge(cage)} className="mt-2 w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Discharge</button>
                       <div className="absolute top-0 right-0 w-8 h-8 bg-rose-100 flex items-center justify-center rounded-bl-xl">
                         <Lock className="w-3 h-3 text-rose-500" />
                       </div>
