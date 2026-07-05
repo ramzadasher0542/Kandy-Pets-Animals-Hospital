@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, UserPlus, Phone, Mail, MapPin, Calendar, 
@@ -11,7 +11,7 @@ import {
   Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe
 } from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification } from '../types';
-import { fetchClients, upsertClient } from '../lib/db';
+import { fetchClients } from '../lib/db';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
@@ -28,6 +28,7 @@ interface CustomersManagerProps {
   onAddRecord?: (record: MedicalRecord) => void; 
   onUpdateRecord?: (record: MedicalRecord) => void; 
   onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
+  onUpdateClient?: (client: any) => Promise<void>;
 }
 
 export default function CustomersManager({ 
@@ -41,7 +42,8 @@ export default function CustomersManager({
   onGenerateConsent,
   onAddRecord,
   onUpdateRecord,
-  onUpdateRecordsBulk
+  onUpdateRecordsBulk,
+  onUpdateClient
 }: CustomersManagerProps) {
   
   const [clients, setClients] = useState<Client[]>([]);
@@ -62,21 +64,21 @@ export default function CustomersManager({
   });
 
   const [newPetData, setNewPetData] = useState({
-    petName: '', petType: 'Canine', breed: ''
+    petName: '', petType: 'Canine', breed: '', weight: 0, sex: 'Unknown', age: ''
   });
 
   const [editPetData, setEditPetData] = useState({
     petName: '', petType: 'Canine' as PetClassification, breed: '', sex: 'Unknown', weight: 0, age: ''
   });
 
-  useEffect(() => {
-    loadClients();
-  }, []);
-
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     const data = await fetchClients();
     setClients(data);
-  };
+  }, [records, appointments]);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
 
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
 
@@ -119,7 +121,7 @@ export default function CustomersManager({
       client_status: 'active'
     };
 
-    await upsertClient(newClient);
+    if (onUpdateClient) await onUpdateClient(newClient);
 
     if (newPetData.petName && onAddRecord) {
       const targetPhone = normalizePhone(formData.primary_phone);
@@ -127,12 +129,13 @@ export default function CustomersManager({
       
       const newRecord: MedicalRecord = {
         id: crypto.randomUUID(),
-        patientId: `${targetPetName}_${targetPhone}`,
+        patientId: crypto.randomUUID(),
         petName: newPetData.petName.trim(),
         petType: newPetData.petType as any,
         breed: newPetData.breed || 'Mixed breed',
-        age: 'Unknown',
-        weight: 0,
+        age: newPetData.age || 'Unknown',
+        weight: newPetData.weight || 0,
+        sex: newPetData.sex || 'Unknown',
         ownerName: formData.full_name.trim(),
         ownerPhone: formData.primary_phone.trim(),
         ownerEmail: formData.email_address || 'not-provided@example.com',
@@ -155,7 +158,7 @@ export default function CustomersManager({
     showToast('Client and Companion successfully registered.', 'success');
     
     setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
-    setNewPetData({ petName: '', petType: 'Canine', breed: '' });
+    setNewPetData({ petName: '', petType: 'Canine', breed: '', weight: 0, sex: 'Unknown', age: '' });
   };
 
   const handleUpdateExistingClient = async (e: React.FormEvent) => {
@@ -174,7 +177,7 @@ export default function CustomersManager({
       administrative_notes: formData.administrative_notes
     };
     
-    await upsertClient(updatedClient);
+    if (onUpdateClient) await onUpdateClient(updatedClient);
     await loadClients();
     
     if (onUpdateCustomer) onUpdateCustomer(oldPhone, formData.primary_phone, formData.full_name, formData.email_address);
@@ -228,12 +231,11 @@ export default function CustomersManager({
 
     if (onUpdateRecordsBulk) {
       // Optimal Route: Fire single payload to App.tsx
-      onUpdateRecordsBulk(updatedRecords);
+      await onUpdateRecordsBulk(updatedRecords);
     } else if (onUpdateRecord) {
       // Fallback Route: Micro-throttled loop to prevent IndexedDB lockup
       for (const record of updatedRecords) {
-        onUpdateRecord(record);
-        await new Promise(resolve => setTimeout(resolve, 15));
+        await onUpdateRecord(record);
       }
     } else {
       showToast('Record update engine unavailable.', 'error');
@@ -731,7 +733,7 @@ export default function CustomersManager({
           <button 
             onClick={() => {
               setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
-              setNewPetData({ petName: '', petType: 'Canine', breed: '' });
+              setNewPetData({ petName: '', petType: 'Canine', breed: '', weight: 0, sex: 'Unknown', age: '' });
               setShowAddModal(true);
             }}
             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
@@ -810,6 +812,22 @@ export default function CustomersManager({
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Breed</label>
                         <input type="text" value={newPetData.breed} onChange={(e) => setNewPetData({...newPetData, breed: e.target.value})} placeholder="e.g. Labrador" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Weight (kg)</label>
+                        <input type="number" value={newPetData.weight === 0 ? '' : newPetData.weight} onChange={(e) => setNewPetData({...newPetData, weight: parseFloat(e.target.value) || 0})} placeholder="0.0" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Sex</label>
+                        <select value={newPetData.sex} onChange={(e) => setNewPetData({...newPetData, sex: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                          <option value="Unknown">Unknown</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Age</label>
+                        <input type="text" value={newPetData.age} onChange={(e) => setNewPetData({...newPetData, age: e.target.value})} placeholder="e.g. 2 years" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                       </div>
                     </div>
                   </div>

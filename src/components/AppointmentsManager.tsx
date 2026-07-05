@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Calendar as CalendarIcon, Clock, Search, Plus, User, CheckCircle2, 
@@ -13,7 +13,6 @@ import {
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
-import { upsertClient } from '../lib/db';
 import PhoneInput from './PhoneInput'; 
 import { db } from '../lib/localDb'; 
 
@@ -28,6 +27,7 @@ interface AppointmentsProps {
   preFilledClient?: any;
   preFilledPet?: any;
   onGenerateConsent?: (clientName: string, petName: string) => void;
+  onUpdateClient?: (client: any) => Promise<void>;
 }
 
 // ---------------------------------------------------------
@@ -64,7 +64,7 @@ const getNextAptNumber = (apts: Appointment[]) => {
 
 export default function AppointmentsManager({ 
   appointments, records, isOnline, onAddAppointment, onUpdateStatus,
-  onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent
+  onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent, onUpdateClient
 }: AppointmentsProps) {
   
   // ---------------------------------------------------------
@@ -125,25 +125,26 @@ export default function AppointmentsManager({
     setAllAppointments(sorted);
   }, [appointments]);
 
-  useEffect(() => {
-    const fetchVets = async () => {
-      try {
-        const users = await db.users.getItem<AppUser[]>('users_list') || [];
-        const vets = users.filter(u => u.role === 'veterinarian' || u.role === 'admin');
-        if (vets.length > 0) {
-          setLiveVets(vets.map(v => ({ name: v.name, id: v.id })));
-          if (!veterinarian) setVeterinarian(vets[0].name);
-        } else {
-          const fallback = { name: 'Attending Doctor', id: 'fallback' };
-          setLiveVets([fallback]);
-          if (!veterinarian) setVeterinarian(fallback.name);
-        }
-      } catch (e) {
-        console.error('Failed to fetch vets:', e);
+  const fetchVets = useCallback(async () => {
+    try {
+      const users = await db.users.getItem<AppUser[]>('users_list') || [];
+      const vets = users.filter(u => u.role === 'veterinarian' || u.role === 'admin');
+      if (vets.length > 0) {
+        setLiveVets(vets.map(v => ({ name: v.name, id: v.id })));
+        if (!veterinarian) setVeterinarian(vets[0].name);
+      } else {
+        const fallback = { name: 'Attending Doctor', id: 'fallback' };
+        setLiveVets([fallback]);
+        if (!veterinarian) setVeterinarian(fallback.name);
       }
-    };
+    } catch (e) {
+      console.error('Failed to fetch vets:', e);
+    }
+  }, [veterinarian]);
+
+  useEffect(() => {
     fetchVets();
-  }, []);
+  }, [fetchVets]);
 
   useEffect(() => {
     if (preFilledClient || preFilledPet) {
@@ -162,17 +163,6 @@ export default function AppointmentsManager({
     }
   }, [preFilledClient, preFilledPet]);
 
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showAddModal) { setShowAddModal(false); resetForm(); }
-        if (selectedPopoverApt) setSelectedPopoverApt(null);
-        if (overflowPopover) setOverflowPopover(null);
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [showAddModal, selectedPopoverApt, overflowPopover]);
 
   // ---------------------------------------------------------
   // IDENTITY SCANNER ENGINE (SUPERCHARGED)
@@ -220,7 +210,7 @@ export default function AppointmentsManager({
   // ---------------------------------------------------------
   // FORM & SUBMISSION
   // ---------------------------------------------------------
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setEditingAptId(null);
     setPetName(''); setBreed(''); setWeight(''); setSex('Unknown');
     setOwnerName(''); setOwnerPhone('+94 '); setOwnerEmail('');
@@ -228,7 +218,19 @@ export default function AppointmentsManager({
     setDate(formatDisplayDate(new Date())); setTime(formatDisplayTime(new Date()));
     setIdentitySearch(''); setKnownPets([]);
     if (liveVets.length > 0) setVeterinarian(liveVets[0].name);
-  };
+  }, [liveVets]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showAddModal) { setShowAddModal(false); resetForm(); }
+        if (selectedPopoverApt) setSelectedPopoverApt(null);
+        if (overflowPopover) setOverflowPopover(null);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [showAddModal, selectedPopoverApt, overflowPopover, resetForm]);
 
   const handleEditClick = (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
@@ -246,17 +248,20 @@ export default function AppointmentsManager({
     setVeterinarian(apt.veterinarian);
     setAdmissionType(apt.admissionType || 'OPD');
     
-    let displayReason = apt.reason;
-    const match = apt.reason.match(/:::METADATA(.*?):::/);
+    setPhone2(apt.alternatePhone || '');
+    setAddress(apt.address || '');
+    
+    let displayReason = apt.reason || '';
+    const match = displayReason.match(/:::METADATA(.*?):::\n?/);
     if (match) {
       try {
-        const meta = JSON.parse(match[1]);
-        setPhone2(meta.phone2 || '');
-        setAddress(meta.address || '');
-        displayReason = apt.reason.replace(match[0], '').trim();
+        if (!apt.alternatePhone && !apt.address) {
+          const meta = JSON.parse(match[1]);
+          setPhone2(meta.phone2 || '');
+          setAddress(meta.address || '');
+        }
       } catch(e){}
-    } else {
-      setPhone2(''); setAddress('');
+      displayReason = displayReason.replace(match[0], '').trim();
     }
     
     setReason(displayReason);
@@ -274,9 +279,6 @@ export default function AppointmentsManager({
     // Client/CRM record creation moved to check-in (handleCheckIn)
     // Rationale: Don't pollute pet/customer DB until patient physically arrives
 
-    const metadata = JSON.stringify({ phone2, address });
-    const tokenBlock = `:::METADATA${metadata}:::`;
-    const packedReason = `${tokenBlock}\n${reason}`;
     const now = new Date().toISOString();
     const currentWeight = typeof weight === 'number' ? weight : parseFloat(weight as string) || 0;
 
@@ -298,7 +300,9 @@ export default function AppointmentsManager({
         veterinarian,
         assignedVet: veterinarian,
         admissionType: admissionType as any,
-        reason: packedReason,
+        reason: reason,
+        alternatePhone: phone2,
+        address: address,
         updated_at: now
       } as any;
       if (onUpdateAppointment) onUpdateAppointment(updatedApt);
@@ -320,20 +324,22 @@ export default function AppointmentsManager({
         veterinarian,
         assignedVet: veterinarian,
         admissionType: admissionType as any,
-        reason: packedReason,
+        reason: reason,
+        alternatePhone: phone2,
+        address: address,
         status: 'booked',
         created_at: now,
         updated_at: now,
         is_deleted: false
       } as any;
-      onAddAppointment(newApt);
+      await onAddAppointment(newApt);
     }
 
     setShowAddModal(false);
     resetForm();
   };
 
-  const handleCheckIn = (apt: Appointment) => {
+  const handleCheckIn = async (apt: any) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
     
     // FIXED: Create client/CRM record on check-in, NOT on appointment booking
@@ -343,9 +349,9 @@ export default function AppointmentsManager({
         client_id: crypto.randomUUID(),
         full_name: apt.ownerName.trim(),
         primary_phone: enforcePhoneFormat(apt.ownerPhone),
-        alternate_phone: '',
+        alternate_phone: apt.alternatePhone || '',
         email_address: apt.ownerEmail || 'not-provided@example.com',
-        physical_address: '',
+        physical_address: apt.address || '',
         communication_preference: 'sms' as any,
         account_balance: 0,
         lifetime_value: 0,
@@ -355,7 +361,7 @@ export default function AppointmentsManager({
         updated_at: new Date().toISOString(),
         is_deleted: false
       };
-      upsertClient(clientPayload);
+      if (onUpdateClient) await onUpdateClient(clientPayload);
     } catch (err) {
       console.error('[Enterprise OS] CRM Sync on check-in failed:', err);
     }
@@ -371,11 +377,11 @@ export default function AppointmentsManager({
     if (!patientExists) {
       const newRecord: MedicalRecord = {
         id: crypto.randomUUID(),
-        patientId: `${targetPetName}_${targetPhone}`,
+        patientId: crypto.randomUUID(),
         petName: apt.petName.trim(),
         petType: apt.petType,
         breed: apt.breed || 'Mixed breed',
-        age: 'Unknown',
+        age: apt.age || 'Unknown',
         weight: apt.weight || 0,
         sex: apt.sex || 'Unknown',
         ownerName: apt.ownerName.trim(),
@@ -395,15 +401,15 @@ export default function AppointmentsManager({
         updated_at: new Date().toISOString(),
         is_deleted: false
       };
-      onAddRecord(newRecord);
+      await onAddRecord(newRecord);
     }
-    onUpdateStatus(apt.id, 'in-progress');
+    await onUpdateStatus(apt.id, 'in-progress');
     setSelectedPopoverApt(null);
   };
 
-  const handleCancelApt = (apt: Appointment) => {
+  const handleCancelApt = async (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
-    onUpdateStatus(apt.id, 'cancelled');
+    await onUpdateStatus(apt.id, 'cancelled');
     setSelectedPopoverApt(null);
   };
 

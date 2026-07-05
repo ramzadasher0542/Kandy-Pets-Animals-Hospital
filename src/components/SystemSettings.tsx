@@ -7,10 +7,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Building2, Printer, Users, ShieldAlert, Save, Plus, 
   Trash2, Database, Power, X, Lock, CheckCircle2, User,
-  FileText, Download, Upload, Layers, AlertTriangle, Smartphone } from 'lucide-react';
+  FileText, Download, Upload, Layers, AlertTriangle, Smartphone, DownloadCloud, UploadCloud } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
-import { fetchInventory, upsertInventoryItem } from '../lib/db';
+import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
 import { ItemCategory, InventoryItem } from '../types';
 
 export interface SystemConfig {
@@ -57,14 +57,16 @@ interface SettingsProps {
   inventory?: any[];
   invoices?: any[];
   currentUser: any;
-  onUpdateInventory?: (items: any[]) => void;
+  onUpdateInventory?: (item: any) => Promise<void>;
+  onDeleteInventory?: (id: string) => Promise<void>;
   onRestoreSnapshot?: () => Promise<boolean>;
   onPurgeDatabases: () => void;
   onHardReboot: () => void;
+  onVerifyMasterPin?: (pin: string) => boolean;
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onHardReboot, onUpdateInventory
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onHardReboot, onUpdateInventory, onDeleteInventory, onVerifyMasterPin
 }: SettingsProps) {
   
   const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'database'>('profile');
@@ -79,6 +81,7 @@ export default function SystemSettings({
   const [stagedImports, setStagedImports] = useState<any[]>([]);
   const [showStagingModal, setShowStagingModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalConfig(config);
@@ -160,6 +163,60 @@ export default function SystemSettings({
     showToast('Registry exported successfully.', 'success');
   };
 
+  const handleDownloadBackup = async () => {
+    try {
+      const json = await exportFullDatabase();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Full system backup downloaded successfully.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to download system backup.', 'error');
+    }
+  };
+
+  const handleRestoreBackupTrigger = () => {
+    if (!onVerifyMasterPin) {
+      showToast('System configuration error: Master PIN verification unavailable.', 'error');
+      return;
+    }
+    const pin = window.prompt("Enter Master PIN to authorize system restoration:");
+    if (!pin) return;
+    if (!onVerifyMasterPin(pin)) {
+      showToast('Invalid Master PIN.', 'error');
+      return;
+    }
+    backupInputRef.current?.click();
+  };
+
+  const handleBackupFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      try {
+        await restoreFullDatabase(text);
+        showToast('System successfully restored from backup! Rebooting...', 'success');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (error) {
+        console.error(error);
+        showToast('Failed to restore backup. Invalid or corrupt file.', 'error');
+      }
+    };
+    reader.readAsText(file);
+    if (backupInputRef.current) backupInputRef.current.value = '';
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -229,12 +286,10 @@ export default function SystemSettings({
         location: raw.location || ''
       };
 
-      await upsertInventoryItem(payload);
+      if (onUpdateInventory) {
+        await onUpdateInventory(payload);
+      }
     }
-
-    // Force Global Sync so POS and Dashboard update instantly
-    const updatedInventory = await fetchInventory();
-    if (onUpdateInventory) onUpdateInventory(updatedInventory);
     
     setStagedImports([]);
     setShowStagingModal(false);
@@ -430,28 +485,46 @@ export default function SystemSettings({
               {/* SECTION: Bulk Inventory Logistics */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
-                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Mass Inventory Import / Export</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Safely backup the live registry or stage bulk CSV uploads to update stock quantities.</p>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Data Security & Backups</h3>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Safely backup the full system, live registry, or stage bulk CSV uploads to update stock quantities.</p>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <button onClick={exportTemplate} className="p-4 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                    <div className="w-10 h-10 bg-white text-indigo-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5"/></div>
-                    <span className="text-xs font-black text-slate-800">Download Template</span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
-                  </button>
-                  
-                  <button onClick={exportCurrentInventory} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                    <div className="w-10 h-10 bg-white text-emerald-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Download className="w-5 h-5"/></div>
-                    <span className="text-xs font-black text-slate-800">Export Registry</span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button onClick={handleDownloadBackup} className="p-5 bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 hover:border-indigo-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                    <div className="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform"><DownloadCloud className="w-6 h-6"/></div>
+                    <span className="text-sm font-black text-slate-800 mt-1">Download Full System Backup</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Complete JSON Snapshot</span>
                   </button>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative overflow-hidden group">
-                    <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                    <div className="w-10 h-10 bg-white text-sky-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Upload className="w-5 h-5"/></div>
-                    <span className="text-xs font-black text-slate-800">Upload CSV</span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
+                  <button onClick={handleRestoreBackupTrigger} className="p-5 bg-gradient-to-br from-amber-50 to-white border border-amber-200 hover:border-amber-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                    <input type="file" accept=".json" ref={backupInputRef} onChange={handleBackupFileUpload} className="hidden" />
+                    <div className="w-12 h-12 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform"><UploadCloud className="w-6 h-6"/></div>
+                    <span className="text-sm font-black text-slate-800 mt-1">Restore System from Backup</span>
+                    <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Requires Master PIN</span>
+                  </button>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">CSV Inventory Management</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button onClick={exportTemplate} className="p-4 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                      <div className="w-10 h-10 bg-white text-indigo-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5"/></div>
+                      <span className="text-xs font-black text-slate-800">Download Template</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
+                    </button>
+                    
+                    <button onClick={exportCurrentInventory} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                      <div className="w-10 h-10 bg-white text-emerald-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Download className="w-5 h-5"/></div>
+                      <span className="text-xs font-black text-slate-800">Export Registry</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
+                    </button>
+
+                    <div className="p-4 bg-slate-50 border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative overflow-hidden group">
+                      <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                      <div className="w-10 h-10 bg-white text-sky-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Upload className="w-5 h-5"/></div>
+                      <span className="text-xs font-black text-slate-800">Upload CSV</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
+                    </div>
                   </div>
                 </div>
               </div>

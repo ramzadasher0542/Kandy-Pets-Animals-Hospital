@@ -67,17 +67,9 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
       status: 'active' as const
     };
 
-    const billingItem = {
-      itemId: vaccine.id,
-      name: `[VACCINE] ${vaccine.name}`,
-      dosage: '1 Dose',
-      quantity: 1
-    };
-
     const updatedRecord: MedicalRecord = {
       ...selectedRecord,
-      vaccinations: [...(selectedRecord.vaccinations || []), newVaccination],
-      prescribedMeds: [...(selectedRecord.prescribedMeds || []), billingItem]
+      vaccinations: [...(selectedRecord.vaccinations || []), newVaccination]
     };
 
     // Bug #1 Fix: Stock deduction removed. POSRegister.tsx exclusively handles

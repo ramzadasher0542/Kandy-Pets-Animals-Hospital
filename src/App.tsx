@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
 
 interface Props { children: ReactNode; }
 interface State { hasError: boolean; error: Error | null; }
@@ -82,9 +82,9 @@ import {
   deleteMedicalRecord, upsertInvoice, upsertAlert,
   fetchInventory, fetchAppointments, fetchMedicalRecords,
   fetchInvoices, fetchNotifications, fetchAlerts,
-  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems,
-  atomicStockDecrement
+  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems, atomicStockDecrement, deleteInventoryItem
 } from './lib/db';
+import { globalMutex } from './lib/mutex';
 
 function hashPin(pin: string): string {
   if (!pin) return '';
@@ -158,6 +158,13 @@ function App() {
     let isMounted = true;
     async function bootSequence() {
       try {
+        if (navigator.storage && navigator.storage.persist) {
+          navigator.storage.persist().then(granted => {
+            if (granted) console.log('[CeylonPets] Persistent storage granted by browser.');
+            else console.warn('[CeylonPets] Persistent storage denied. Data may be evicted if disk is full.');
+          });
+        }
+
         if (import.meta.env.DEV) {
           console.log('[Bootloader] Initiating DB sequence...');
         }
@@ -314,7 +321,6 @@ function App() {
             }
 
             // Allow 500ms for UI painting to stabilize
-            fetchInvoices().then(setInvoices);
             setTimeout(() => setIsBooting(false), 500);
           }
         } catch (hydrationError) {
@@ -358,14 +364,18 @@ function App() {
     }
   }, [currentUser, activeView, systemConfig]);
 
-  const handleAddProduct = async (product: InventoryItem) => {
-    await upsertInventoryItem(product);
-    setInventory(prev => [product, ...prev]);
-    showToast(`${product.name} added to inventory.`);
-  };
+  const handleAddProduct = useCallback(async (product: InventoryItem) => {
+    try {
+      await upsertInventoryItem(product);
+      setInventory(prev => [product, ...prev]);
+      showToast(`${product.name} added to inventory.`);
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
 
   // AUDIT FIX: Atomic stock decrement — reads from IndexedDB, not stale React state
-  const handleUpdateStock = async (itemId: string, qtyDelta: number, _expectedStock?: number) => {
+  const handleUpdateStock = useCallback(async (itemId: string, qtyDelta: number, _expectedStock?: number) => {
     try {
       const newStock = await atomicStockDecrement(itemId, qtyDelta);
 
@@ -383,30 +393,42 @@ function App() {
       console.error('[CeylonPets] Stock update failed:', error);
       showToast(`Stock update failed: ${error.message}`, 'error');
     }
-  };
+  }, [inventory]);
 
-  const handleUpdatePrice = async (id: string, newPrice: number) => {
-    const item = inventory.find(i => i.id === id);
-    if (item) {
-      await upsertInventoryItem({ ...item, price: newPrice });
-      setInventory(prev => prev.map(i => i.id === id ? { ...i, price: newPrice } : i));
-      showToast(`Price updated for item.`);
+  const handleUpdatePrice = useCallback(async (id: string, newPrice: number) => {
+    try {
+      const item = inventory.find(i => i.id === id);
+      if (item) {
+        await upsertInventoryItem({ ...item, price: newPrice });
+        setInventory(prev => prev.map(i => i.id === id ? { ...i, price: newPrice } : i));
+        showToast(`Price updated for item.`);
+      }
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
     }
-  };
+  }, [inventory]);
 
-  const handleAddAppointment = async (appointment: Appointment) => {
-    await upsertAppointment(appointment);
-    setAppointments(prev => [appointment, ...prev]);
-    showToast(`Appointment scheduled for ${appointment.petName}.`);
-  };
+  const handleAddAppointment = useCallback(async (appointment: Appointment) => {
+    try {
+      await upsertAppointment(appointment);
+      setAppointments(prev => [appointment, ...prev]);
+      showToast(`Appointment scheduled for ${appointment.petName}.`);
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
 
-  const handleUpdateAppointment = async (updated: Appointment) => {
-    await upsertAppointment(updated);
-    setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
-    showToast(`Appointment for ${updated.petName} updated successfully.`);
-  };
+  const handleUpdateAppointment = useCallback(async (updated: Appointment) => {
+    try {
+      await upsertAppointment(updated);
+      setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
+      showToast(`Appointment for ${updated.petName} updated successfully.`);
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
 
-  const handleUpdateAppointmentStatus = async (id: string, status: AppointmentStatus) => {
+  const handleUpdateAppointmentStatus = useCallback(async (id: string, status: AppointmentStatus) => {
     const apt = appointments.find(a => a.id === id);
     if (apt) {
       try {
@@ -448,45 +470,93 @@ function App() {
         showToast(`Failed to update appointment status: ${error.message}`, 'error');
       }
     }
-  };
+  }, [appointments, clinicQueue]);
 
-  const handleAddRecord = async (newRec: MedicalRecord) => {
-    await upsertMedicalRecord(newRec);
-    setRecords(prev => [newRec, ...prev]);
-    showToast(`Medical record added for ${newRec.petName}.`);
-  };
-
-  const handleUpdateRecord = async (updated: MedicalRecord) => {
-    await upsertMedicalRecord(updated);
-    setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
-    showToast(`Medical record updated for ${updated.petName}.`);
-  };
-
-  const handleBulkUpdateRecords = async (updatedRecords: MedicalRecord[]) => {
+  const handleAddRecord = useCallback(async (newRec: MedicalRecord) => {
     try {
-      // 1. Fire a single batch transaction to the database
-      await Promise.all(updatedRecords.map(record => upsertMedicalRecord(record)));
+      await upsertMedicalRecord(newRec);
+      setRecords(prev => [newRec, ...prev]);
+      showToast(`Medical record added for ${newRec.petName}.`);
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
+
+  const handleUpdateRecord = useCallback(async (updated: MedicalRecord) => {
+    try {
+      await upsertMedicalRecord(updated);
+      setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+      showToast(`Medical record updated for ${updated.petName}.`);
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
+
+  const handleBulkUpdateRecords = useCallback(async (updatedRecords: MedicalRecord[]) => {
+    try {
+      const results = await Promise.allSettled(updatedRecords.map(record => upsertMedicalRecord(record)));
       
-      // 2. Perform exactly ONE React state render
       setRecords(prev => {
         const newMap = new Map(prev.map(r => [r.id, r]));
-        updatedRecords.forEach(ur => newMap.set(ur.id, ur));
+        updatedRecords.forEach((ur, idx) => {
+          if (results[idx].status === 'fulfilled') newMap.set(ur.id, ur);
+        });
         return Array.from(newMap.values());
       });
       
     } catch (error) {
       console.error("Bulk sync failed:", error);
     }
-  };
+  }, []);
 
-  const handleDeleteRecord = async (id: string) => {
-    await deleteMedicalRecord(id);
-    setRecords(prev => prev.filter(r => r.id !== id));
-    showToast('Medical record permanently deleted.', 'success');
-  };
+  const handleUpdateClient = useCallback(async (client: any) => {
+    try {
+      await upsertClient(client);
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
+
+  const handleUpdateInventoryItem = useCallback(async (item: InventoryItem) => {
+    try {
+      await upsertInventoryItem(item);
+      setInventory(prev => prev.map(i => i.id === item.id ? item : i));
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
+
+  const handleDeleteInventoryItem = useCallback(async (id: string) => {
+    const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
+    if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
+      showToast("Unauthorized. Invalid Master PIN.", "error");
+      return;
+    }
+    try {
+      await deleteInventoryItem(id);
+      setInventory(prev => prev.filter(i => i.id !== id));
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
+
+  const handleDeleteRecord = useCallback(async (id: string) => {
+    const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
+    if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
+      showToast("Unauthorized. Invalid Master PIN.", "error");
+      return;
+    }
+    try {
+      await deleteMedicalRecord(id);
+      setRecords(prev => prev.filter(r => r.id !== id));
+      showToast('Medical record permanently deleted.', 'success');
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
 
   // AUDIT FIX: Properly await DB writes instead of fire-and-forget inside setState
-  const handleUpdateCustomer = async (oldPhone: string, newPhone: string, newName: string, newEmail: string) => {
+  const handleUpdateCustomer = useCallback(async (oldPhone: string, newPhone: string, newName: string, newEmail: string) => {
     const normOld = oldPhone.replace(/\D/g, '');
     
     // Collect updates, await DB writes, then batch React state updates
@@ -512,40 +582,38 @@ function App() {
     });
 
     try {
-      // Await all DB writes before updating React state
-      await Promise.all([
-        ...aptUpdates.map(u => upsertAppointment(u)),
-        ...recUpdates.map(u => upsertMedicalRecord(u)),
-        ...invUpdates.map(u => upsertInvoice(u))
-      ]);
+      const aptResults = await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
+      const recResults = await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
+      const invResults = await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
 
-      // Batch React state updates
-      if (aptUpdates.length > 0) setAppointments(prev => prev.map(a => aptUpdates.find(u => u.id === a.id) || a));
-      if (recUpdates.length > 0) setRecords(prev => prev.map(r => recUpdates.find(u => u.id === r.id) || r));
-      if (invUpdates.length > 0) setInvoices(prev => prev.map(i => invUpdates.find(u => u.id === i.id) || i));
+      if (aptUpdates.length > 0) setAppointments(prev => prev.map(a => { const idx = aptUpdates.findIndex(u => u.id === a.id); return idx > -1 && aptResults[idx].status === 'fulfilled' ? aptUpdates[idx] : a; }));
+      if (recUpdates.length > 0) setRecords(prev => prev.map(r => { const idx = recUpdates.findIndex(u => u.id === r.id); return idx > -1 && recResults[idx].status === 'fulfilled' ? recUpdates[idx] : r; }));
+      if (invUpdates.length > 0) setInvoices(prev => prev.map(i => { const idx = invUpdates.findIndex(u => u.id === i.id); return idx > -1 && invResults[idx].status === 'fulfilled' ? invUpdates[idx] : i; }));
     } catch (error: any) {
       console.error('[CeylonPets] Customer update failed:', error);
       showToast(`Failed to update customer across records: ${error.message}`, 'error');
     }
-  };
+  }, [appointments, records, invoices]);
 
-  const handleUpdatePet = async (oldPatientId: string, newPetName: string, newDetails: any) => {
-    setRecords(prev => {
-      return prev.map(r => {
-        if (r.patientId === oldPatientId) {
-          const u = { ...r, petName: newPetName, ...newDetails };
-          upsertMedicalRecord(u);
-          return u;
-        }
-        return r;
-      });
-    });
-  };
+  const handleUpdatePet = useCallback(async (oldPatientId: string, newPetName: string, newDetails: any) => {
+    try {
+      const toUpdate = records.filter(r => r.patientId === oldPatientId).map(r => ({ ...r, petName: newPetName, ...newDetails }));
+      if (toUpdate.length === 0) return;
+      const results = await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
+      
+      setRecords(prev => prev.map(r => {
+        const idx = toUpdate.findIndex(u => u.id === r.id);
+        return idx > -1 && results[idx].status === 'fulfilled' ? toUpdate[idx] : r;
+      }));
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, [records]);
 
   // AUDIT FIX: Removed redundant double-write of appointment completion.
   // upsertInvoice in db.ts already marks the appointment as 'completed'.
   // Added try-catch for error resilience.
-  const handleAddInvoice = async (invoice: any) => {
+  const handleAddInvoice = useCallback(async (invoice: any) => {
     try {
       await upsertInvoice(invoice);
       const updated = await fetchInvoices();
@@ -568,29 +636,77 @@ function App() {
       console.error('[CeylonPets] Invoice creation failed:', error);
       showToast(`Checkout failed: ${error.message}`, 'error');
     }
-  };
+  }, [clinicQueue]);
 
   // FIXED: No longer mutates React state directly — creates a new object
-  const handleVoidInvoice = async (id: any) => { const target = invoices.find(i => i.id === id); if (target) { const voided = { ...target, paymentStatus: 'void' as const }; await upsertInvoice(voided); const updated = await fetchInvoices(); setInvoices(updated); } };
+  const handleVoidInvoice = useCallback(async (id: any) => {
+    const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
+    if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
+      showToast("Unauthorized. Invalid Master PIN.", "error");
+      return;
+    }
+    try {
+      const target = invoices.find(i => i.id === id);
+      if (target) {
+        const voided = { ...target, paymentStatus: 'void' as const };
+        await upsertInvoice(voided);
+        const updated = await fetchInvoices();
+        setInvoices(updated);
+      }
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, [invoices]);
 
-  const handlePurgeDatabases = async () => {
-    await db.inventory.clear();
-    await db.appointments.clear();
-    await db.records.clear();
-    await db.invoices.clear();
-    await db.shifts.clear();
-    await db.notifications.clear();
-    await db.alerts.clear();
-    await db.users.clear();
-    localStorage.clear(); sessionStorage.clear();
-    window.location.reload();
-  };
+  const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
+    const unlock = await globalMutex.lock();
+    try {
+      await upsertInvoice(invoice);
+      const updatedInvoices = await fetchInvoices();
+      setInvoices(updatedInvoices);
 
-  const handleHardReboot = async () => {
-    await db.system.clear();
-    localStorage.clear(); sessionStorage.clear();
-    window.location.reload();
-  };
+      for (const cartItem of cart) {
+        if (!['service', 'lab_service'].includes(cartItem.category)) {
+          await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
+        }
+      }
+      const updatedInv = await fetchInventory();
+      setInventory(updatedInv);
+    } catch (error: any) {
+      console.error('Checkout failed:', error);
+      showToast(`Checkout Error: ${error.message}`, 'error');
+      throw error; // Rethrow so POSRegister knows it failed
+    } finally {
+      unlock();
+    }
+  }, []);
+
+  const handlePurgeDatabases = useCallback(async () => {
+    try {
+      await db.inventory.clear();
+      await db.appointments.clear();
+      await db.records.clear();
+      await db.invoices.clear();
+      await db.shifts.clear();
+      await db.notifications.clear();
+      await db.alerts.clear();
+      await db.users.clear();
+      localStorage.clear(); sessionStorage.clear();
+      window.location.reload();
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
+
+  const handleHardReboot = useCallback(async () => {
+    try {
+      await db.system.clear();
+      localStorage.clear(); sessionStorage.clear();
+      window.location.reload();
+    } catch (error: any) {
+      showToast(`Failed: ${error.message}`, 'error');
+    }
+  }, []);
 
   const handleVerifyMasterPin = (pin: string): boolean => hashPin(pin) === (systemConfig.masterPin || hashPin('0000'));
 
@@ -681,10 +797,10 @@ function App() {
           />
         );
       }
-      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
+      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
       case 'boarding': return <BoardingManager records={records} onUpdateRecord={handleUpdateRecord} />;
-      case 'grooming': return <GroomingManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} />;
-      case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={setInventory} systemConfig={systemConfig} />;
+      case 'grooming': return <GroomingManager records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} />;
+      case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shifts.setItem(log.id, log); setShiftLogs(prev => [log, ...prev]); }} />;
       case 'dashboard':
@@ -732,17 +848,19 @@ function App() {
             inventory={inventory}
             invoices={invoices}
             currentUser={currentUser}
-            onUpdateInventory={(newInv) => setInventory(newInv)}
+            onUpdateInventory={handleUpdateInventoryItem}
+            onDeleteInventory={handleDeleteInventoryItem}
             onRestoreSnapshot={async () => true}
             onPurgeDatabases={handlePurgeDatabases}
             onHardReboot={handleHardReboot}
+            onVerifyMasterPin={handleVerifyMasterPin}
           />
         );
       }
       case 'pets': return <PatientPortal records={records} appointments={appointments} clinicQueue={clinicQueue} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'vaccinations': return <VaccinationsManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
       case 'laboratory': return <LaboratoryManager records={records} inventory={inventory as any} onUpdateRecord={handleUpdateRecord} />;
-      case 'customers': return <CustomersManager records={records} invoices={invoices} appointments={appointments} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
+      case 'customers': return <CustomersManager records={records} invoices={invoices} appointments={appointments} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       default: return null;
     }
   };

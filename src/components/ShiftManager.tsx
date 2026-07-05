@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Lock, Calculator, AlertTriangle, CheckCircle2, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift } from '../types';
+import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
 import localforage from 'localforage';
 
@@ -118,16 +118,57 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     };
   }, [invoices, activeShift, adjustments, actualClosingInput]);
 
-  const handleOpenShift = () => {
+  const handleOpenShift = async () => {
     if (!openingFloatInput) { showToast('Please enter a starting float amount.', 'error'); return; }
-    const newShift: ActiveShift = {
+    
+    const floatAmount = parseFloat(openingFloatInput) || 0;
+    const openingFloatCents = Math.round(floatAmount * 100);
+
+    const newShift: Shift = {
       id: crypto.randomUUID(),
-      openedAt: new Date().toISOString(),
       openedBy: currentUser.username,
-      openedByName: currentUser.name,
-      openingFloat: parseFloat(openingFloatInput) || 0
+      startTime: new Date().toISOString(),
+      openingFloatCents,
+      cashCollectedCents: 0,
+      cardCollectedCents: 0,
+      bankTransferCollectedCents: 0,
+      expectedCashCents: openingFloatCents,
+      actualCashCents: undefined,
+      discrepancyCents: undefined,
+      notes: '',
+      isOpen: true,
+      opening_float: floatAmount,
+      actual_cash: null,
+      discrepancy_reason: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_deleted: false,
     };
-    setActiveShift(newShift);
+
+    localStorage.setItem('ceylon_active_shift_id', newShift.id);
+
+    const newAdj: CashAdjustment = {
+      id: `CASH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      type: 'IN',
+      amount: floatAmount,
+      category: 'Starting Float',
+      reason: 'Register opened with starting float',
+      date: new Date().toISOString(),
+      createdBy: currentUser.name,
+      shiftId: newShift.id
+    };
+    await cashDb.setItem(newAdj.id, newAdj);
+    setAdjustments(prev => [newAdj, ...prev]);
+
+    const activeShiftState: ActiveShift = {
+      id: newShift.id,
+      openedAt: newShift.startTime,
+      openedBy: newShift.openedBy,
+      openedByName: currentUser.name,
+      openingFloat: floatAmount
+    };
+
+    setActiveShift(activeShiftState);
     showToast('Register opened and active shift started.', 'success');
   };
 
@@ -151,6 +192,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     onSaveShift(log);
     setLastClosedShift(log);
     setActiveShift(null);
+    localStorage.removeItem('ceylon_active_shift_id');
 
     if (drawerMath.discrepancy !== 0) {
       showToast(`Warning: Drawer discrepancy of Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)} detected.`, 'warning');

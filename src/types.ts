@@ -53,7 +53,9 @@ export interface Appointment {
   sex?: string;
   ownerName: string; 
   ownerPhone: string; 
+  alternatePhone?: string;
   ownerEmail?: string; 
+  address?: string;
   date: string; 
   time: string; 
   veterinarian: string; 
@@ -67,10 +69,10 @@ export interface Appointment {
 }
 
 export interface Vaccination { itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; }
-export interface LabResult { id: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; }
+export interface LabResult { id: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; }
 export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: string; frequency?: string; remarks?: string; vetId: string; }
-export interface GroomingLog { id: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; }
-export interface BoardingRecord { id: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; }
+export interface GroomingLog { id: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; }
+export interface BoardingRecord { id: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; billingItems?: any[]; }
 
 // ============================================================================
 // PHASE 1: ENTERPRISE EHR MATRIX
@@ -150,7 +152,7 @@ export interface MedicalRecord {
   objectiveFindings?: Record<string, { isNormal: boolean; notes: string }>; 
   diagnosis: string; 
   treatmentNotes: string; 
-  prescribedMeds: Array<{ itemId: string; name: string; dosage: string; quantity: number }>; 
+  prescribedMeds: Array<{ itemId: string; name: string; dosage: string; quantity: number; frequency?: string; duration?: string; instructions?: string; }>; 
   vaccinations: Vaccination[]; 
   labResults: LabResult[]; 
   inpatientLogs?: InpatientLog[]; 

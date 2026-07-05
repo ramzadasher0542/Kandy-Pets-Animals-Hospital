@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { db } from './localDb';
+import { db, safeDbWrite } from './localDb';
+import { globalMutex } from './mutex';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import {
   InventoryItem,
@@ -62,14 +63,19 @@ export async function deleteInventoryItem(id: string): Promise<void> {
  * Returns the new stock value on success, or throws on failure.
  */
 export async function atomicStockDecrement(itemId: string, qtyDelta: number): Promise<number> {
-  const item = await db.inventory.getItem<InventoryItem>(itemId);
-  if (!item) {
-    throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
+  const unlock = await globalMutex.lock();
+  try {
+    const item = await db.inventory.getItem<InventoryItem>(itemId);
+    if (!item) {
+      throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
+    }
+    const newStock = Math.max(0, item.stock + qtyDelta);
+    item.stock = newStock;
+    await safeDbWrite(db.inventory, itemId, item);
+    return newStock;
+  } finally {
+    unlock();
   }
-  const newStock = Math.max(0, item.stock + qtyDelta);
-  item.stock = newStock;
-  await db.inventory.setItem(itemId, item);
-  return newStock;
 }
 
 // ==========================================
@@ -388,12 +394,17 @@ export async function closeShift(
 export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {
   const activeId = localStorage.getItem('ceylon_active_shift_id');
   if (!activeId) return;
-  const shift = await db.shifts.getItem<Shift>(activeId); // FIXED: type-safe instead of <any>
-  if (shift && shift.isOpen) {
-    if (method === 'cash') shift.cashCollectedCents = (shift.cashCollectedCents || 0) + Math.round(amountCents);
-    if (method === 'card') shift.cardCollectedCents = (shift.cardCollectedCents || 0) + Math.round(amountCents);
-    if (method === 'bank_transfer') shift.bankTransferCollectedCents = (shift.bankTransferCollectedCents || 0) + Math.round(amountCents);
-    await db.shifts.setItem(activeId, shift);
+  const unlock = await globalMutex.lock();
+  try {
+    const shift = await db.shifts.getItem<Shift>(activeId); // FIXED: type-safe instead of <any>
+    if (shift && shift.isOpen) {
+      if (method === 'cash') shift.cashCollectedCents = (shift.cashCollectedCents || 0) + Math.round(amountCents);
+      if (method === 'card') shift.cardCollectedCents = (shift.cardCollectedCents || 0) + Math.round(amountCents);
+      if (method === 'bank_transfer') shift.bankTransferCollectedCents = (shift.bankTransferCollectedCents || 0) + Math.round(amountCents);
+      await safeDbWrite(db.shifts, activeId, shift);
+    }
+  } finally {
+    unlock();
   }
 }
 
@@ -568,4 +579,94 @@ export async function getQueueItemsByService(serviceType: string): Promise<Clini
     }
   });
   return queue.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+}
+
+// ==========================================
+// FULL DATABASE EXPORT & RESTORE
+// ==========================================
+export async function exportFullDatabase(): Promise<string> {
+  const unlock = await globalMutex.lock();
+  try {
+    const data: any = {
+      clients: [],
+      inventory: [],
+      appointments: [],
+      medicalRecords: [],
+      invoices: [],
+      shifts: [],
+      alerts: [],
+      notifications: [],
+      clinicQueue: [],
+      system: []
+    };
+
+    await db.clients.iterate((value: any, key: string) => { data.clients.push(value); });
+    await db.inventory.iterate((value: any, key: string) => { data.inventory.push(value); });
+    await db.appointments.iterate((value: any, key: string) => { data.appointments.push(value); });
+    await db.records.iterate((value: any, key: string) => { data.medicalRecords.push(value); });
+    await db.invoices.iterate((value: any, key: string) => { data.invoices.push(value); });
+    await db.shifts.iterate((value: any, key: string) => { data.shifts.push(value); });
+    await db.alerts.iterate((value: any, key: string) => { data.alerts.push(value); });
+    await db.notifications.iterate((value: any, key: string) => { data.notifications.push(value); });
+    await db.clinicQueue.iterate((value: any, key: string) => { data.clinicQueue.push(value); });
+    await db.system.iterate((value: any, key: string) => { data.system.push({ key, value }); });
+
+    return JSON.stringify(data);
+  } finally {
+    unlock();
+  }
+}
+
+export async function restoreFullDatabase(jsonData: string): Promise<void> {
+  const data = JSON.parse(jsonData);
+  const unlock = await globalMutex.lock();
+  try {
+    await db.clients.clear();
+    await db.inventory.clear();
+    await db.appointments.clear();
+    await db.records.clear();
+    await db.invoices.clear();
+    await db.shifts.clear();
+    await db.alerts.clear();
+    await db.notifications.clear();
+    await db.clinicQueue.clear();
+    await db.system.clear();
+
+    const writePromises: Promise<any>[] = [];
+
+    if (data.clients) {
+      data.clients.forEach((item: any) => writePromises.push(db.clients.setItem(item.client_id || item.id, item)));
+    }
+    if (data.inventory) {
+      data.inventory.forEach((item: any) => writePromises.push(db.inventory.setItem(item.id, item)));
+    }
+    if (data.appointments) {
+      data.appointments.forEach((item: any) => writePromises.push(db.appointments.setItem(item.id, item)));
+    }
+    if (data.medicalRecords) {
+      data.medicalRecords.forEach((item: any) => writePromises.push(db.records.setItem(item.id, item)));
+    }
+    if (data.invoices) {
+      data.invoices.forEach((item: any) => writePromises.push(db.invoices.setItem(item.id, item)));
+    }
+    if (data.shifts) {
+      data.shifts.forEach((item: any) => writePromises.push(db.shifts.setItem(item.id, item)));
+    }
+    if (data.alerts) {
+      data.alerts.forEach((item: any) => writePromises.push(db.alerts.setItem(item.id, item)));
+    }
+    if (data.notifications) {
+      data.notifications.forEach((item: any) => writePromises.push(db.notifications.setItem(item.id, item)));
+    }
+    if (data.clinicQueue) {
+      data.clinicQueue.forEach((item: any) => writePromises.push(db.clinicQueue.setItem(item.id, item)));
+    }
+    if (data.system) {
+      data.system.forEach((item: any) => writePromises.push(db.system.setItem(item.key, item.value)));
+    }
+
+    await Promise.all(writePromises);
+  } finally {
+    unlock();
+  }
 }

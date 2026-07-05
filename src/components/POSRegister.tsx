@@ -32,6 +32,7 @@ interface POSProps {
   activeShift?: any;
   incomingClient?: any;
   onUpdateRecord?: (record: MedicalRecord) => Promise<void>;
+  onAtomicCheckout?: (invoice: Invoice, cart: any[]) => Promise<void>;
 }
 
 interface CartItem extends InventoryItem {
@@ -48,6 +49,7 @@ export default function POSRegister({
   records = [], 
   onAddInvoice, 
   onUpdateStock,
+  onAtomicCheckout,
   activeShiftId,
   activeShift,
   currentUser 
@@ -185,20 +187,45 @@ export default function POSRegister({
       });
     }
 
-    // 4. AUDIT FIX: Sweep prescribed meds from multi-day boarding records
-    boardingRecords.forEach(rec => {
-      if (rec.prescribedMeds) {
-        rec.prescribedMeds.forEach(med => {
-          const invItem = inventory.find(i => i.id === med.itemId);
-          if (invItem) {
-            const existing = newCartItems.find(i => i.id === invItem.id);
-            if (existing) {
-              existing.cartQuantity += med.quantity;
-            } else {
-              newCartItems.push({ ...invItem, cartQuantity: med.quantity, cartId: crypto.randomUUID() });
-            }
+    // 4. AUDIT FIX: Sweep native billing items from Grooming, Labs, and Boarding
+    const sweepBillingItems = (items: any[]) => {
+      items.forEach(med => {
+        const invItem = inventory.find(i => i.id === med.itemId);
+        if (invItem) {
+          const existing = newCartItems.find(i => i.id === invItem.id);
+          if (existing) {
+            existing.cartQuantity += med.quantity || 1;
+          } else {
+            newCartItems.push({ ...invItem, cartQuantity: med.quantity || 1, cartId: crypto.randomUUID() });
           }
+        }
+      });
+    };
+
+    if (activeRecord) {
+      // Sweep native arrays replacing the prescribedMeds hack
+      if (activeRecord.groomingRecords) {
+        activeRecord.groomingRecords.forEach(log => {
+          if (log.billingItems) sweepBillingItems(log.billingItems);
         });
+      }
+      
+      if (activeRecord.labResults) {
+        activeRecord.labResults.forEach(res => {
+          if (res.billingItems) sweepBillingItems(res.billingItems);
+        });
+      }
+      
+      if (activeRecord.boardingInfo && activeRecord.boardingInfo.billingItems) {
+         sweepBillingItems(activeRecord.boardingInfo.billingItems);
+      }
+    }
+
+    // Also sweep multi-day boarding records
+    boardingRecords.forEach(rec => {
+      if (rec.prescribedMeds) sweepBillingItems(rec.prescribedMeds);
+      if (rec.boardingInfo && rec.boardingInfo.billingItems) {
+        sweepBillingItems(rec.boardingInfo.billingItems);
       }
     });
 
@@ -278,43 +305,23 @@ export default function POSRegister({
       shiftId: activeShiftId
     };
 
-    // Prepare inventory deductions (Ignore infinite stock categories)
-    const updatedInventory = [...inventory];
-    cart.forEach(cartItem => {
-      if (!['service', 'lab_service'].includes(cartItem.category)) {
-        const invIndex = updatedInventory.findIndex(i => i.id === cartItem.id);
-        if (invIndex !== -1) {
-          updatedInventory[invIndex] = {
-            ...updatedInventory[invIndex],
-            stock: Math.max(0, updatedInventory[invIndex].stock - cartItem.cartQuantity)
-          };
-        }
+    try {
+      if (onAtomicCheckout) {
+        await onAtomicCheckout(invoice, cart);
       }
-    });
 
-    // FIXED: Use actual props from App.tsx instead of non-existent onCheckout
-    if (onAddInvoice) await onAddInvoice(invoice);
-    
-    // Deduct stock for physical items
-    if (onUpdateStock) {
-      for (const cartItem of cart) {
-        if (!['service', 'lab_service'].includes(cartItem.category)) {
-          const invItem = inventory.find(i => i.id === cartItem.id);
-          if (invItem) {
-            await onUpdateStock(cartItem.id, -cartItem.cartQuantity, invItem.stock);
-          }
-        }
-      }
+      showToast(`Transaction completed — Invoice #${invoice.id.slice(0,8)}`, 'success');
+      
+      // Reset
+      setCart([]);
+      setDiscount(0);
+      setSelectedAppointment(null);
+      setCustomClientName('');
+      setCustomClientPhone('');
+    } catch (error: any) {
+      console.error('Checkout failed:', error);
+      showToast(error.message || 'Checkout failed', 'error');
     }
-    
-    showToast(`Transaction completed — Invoice #${invoice.id.slice(0,8)}`, 'success');
-    
-    // Reset
-    setCart([]);
-    setDiscount(0);
-    setSelectedAppointment(null);
-    setCustomClientName('');
-    setCustomClientPhone('');
   };
 
   return (

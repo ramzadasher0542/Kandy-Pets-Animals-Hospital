@@ -116,8 +116,10 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
 
     const updatedRecord: MedicalRecord = {
       ...patientRecord,
-      boardingInfo: newBoardingInfo,
-      prescribedMeds: [...(patientRecord.prescribedMeds || []), ...billingItems]
+      boardingInfo: {
+        ...newBoardingInfo,
+        billingItems: billingItems
+      }
     };
 
     onUpdateRecord(updatedRecord);

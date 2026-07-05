@@ -73,11 +73,12 @@ export default function MedicalRecordsManager({ records, inventory, appointments
   const [showQueueOnly, setShowQueueOnly] = useState(true); // Default to Queue
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'pharmacy'>('vitals');
+  const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'treatment' | 'pharmacy'>('vitals');
 
   // Form State
   const [vitals, setVitals] = useState<Vitals>({});
   const [history, setHistory] = useState<PatientHistory>({ diet: [], previousMedicalHistory: [], currentMedications: [] });
+  const [treatmentNotes, setTreatmentNotes] = useState('');
   const [exam, setExam] = useState<PhysicalExamination>({
     general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
     respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
@@ -222,6 +223,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     
     setAssessment(targetRecord.assessment || {});
     setPrescribedMeds(targetRecord.prescribedMeds || []);
+    setTreatmentNotes(targetRecord.treatmentNotes || '');
     setShowModal(true);
   };
 
@@ -231,12 +233,15 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     const compiledSymptoms = Object.values(exam).flatMap((sys: any) => sys.abnormalities || []).join(', ');
     const compiledDiagnosis = `${assessment.diagnosisType || 'Diagnosis'}: ${assessment.notes || ''}`;
 
+    const latestRecord = records.find(r => r.id === editingRecord.id) || editingRecord;
+
     const updatedRecord: MedicalRecord = {
-      ...editingRecord,
+      ...latestRecord,
       vitals,
       patientHistory: history,
       physicalExam: exam,
       assessment,
+      treatmentNotes,
       prescribedMeds,
       symptoms: compiledSymptoms, 
       diagnosis: compiledDiagnosis 
@@ -278,6 +283,20 @@ export default function MedicalRecordsManager({ records, inventory, appointments
             <input type="number" min="1" max="9" value={vitals.bcs || ''} onChange={e => setVitals({...vitals, bcs: parseInt(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" />
           </div>
         </div>
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">CRT</label>
+            <input type="text" value={vitals.crt || ''} onChange={e => setVitals({...vitals, crt: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="e.g. <2s" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Mucous Membrane</label>
+            <input type="text" value={vitals.mucousMembrane || ''} onChange={e => setVitals({...vitals, mucousMembrane: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="e.g. Pink" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Hydration</label>
+            <input type="text" value={vitals.hydration || ''} onChange={e => setVitals({...vitals, hydration: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="e.g. Adequate" />
+          </div>
+        </div>
       </div>
 
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
@@ -303,6 +322,39 @@ export default function MedicalRecordsManager({ records, inventory, appointments
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Diet</label>
+          <div className="flex flex-wrap gap-2">
+            {CLINICAL_TAGS.diet.map(tag => (
+              <button key={tag} onClick={() => setHistory({...history, diet: toggleArrayItem(history.diet, tag)})} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${history.diet?.includes(tag) ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Previous Medical History</label>
+          <textarea 
+            rows={2} 
+            value={history.previousMedicalHistory?.join(', ') || ''} 
+            onChange={e => setHistory({...history, previousMedicalHistory: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
+            placeholder="Separate items with commas..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+          />
+        </div>
+
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Current Medications</label>
+          <textarea 
+            rows={2} 
+            value={history.currentMedications?.join(', ') || ''} 
+            onChange={e => setHistory({...history, currentMedications: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
+            placeholder="Separate items with commas..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+          />
         </div>
       </div>
     </div>
@@ -342,7 +394,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Quick Tags</span>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); setExam({...exam, [systemKey]: { isNormal: true, abnormalities: [] }}); }}
+                      onClick={(e) => { e.stopPropagation(); setExam({...exam, [systemKey]: { ...sysData, isNormal: true, abnormalities: [] }}); }}
                       className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-emerald-100 transition-colors flex items-center gap-1"
                     >
                       <CheckCircle2 className="w-3 h-3"/> Mark All Normal
@@ -357,7 +409,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
                           key={symptom}
                           onClick={() => {
                             const newAbnormals = toggleArrayItem(sysData.abnormalities, symptom);
-                            setExam({...exam, [systemKey]: { isNormal: newAbnormals.length === 0, abnormalities: newAbnormals }});
+                            setExam({...exam, [systemKey]: { ...sysData, isNormal: newAbnormals.length === 0, abnormalities: newAbnormals }});
                           }}
                           className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${isSelected ? 'bg-rose-600 text-white border-rose-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
                         >
@@ -379,6 +431,26 @@ export default function MedicalRecordsManager({ records, inventory, appointments
             </div>
           )
         })}
+      </div>
+    </div>
+  );
+
+  const renderTreatmentTab = () => (
+    <div className="space-y-6 animate-fade-in pb-10">
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+        <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2">
+          <Activity className="w-4 h-4"/> Treatment Plan
+        </h3>
+        <div>
+          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Treatment Notes</label>
+          <textarea 
+            rows={6} 
+            value={treatmentNotes} 
+            onChange={e => setTreatmentNotes(e.target.value)}
+            placeholder="Detailed treatment plan and notes..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+          />
+        </div>
       </div>
     </div>
   );
@@ -658,6 +730,10 @@ export default function MedicalRecordsManager({ records, inventory, appointments
                   <AlertCircle className={`w-4 h-4 ${activeTab === 'assessment' ? 'text-amber-200' : 'text-slate-400'}`}/> Assessment
                 </button>
 
+                <button onClick={() => setActiveTab('treatment')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'treatment' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
+                  <Activity className={`w-4 h-4 ${activeTab === 'treatment' ? 'text-indigo-200' : 'text-slate-400'}`}/> Treatment Plan
+                </button>
+
                 <button onClick={() => setActiveTab('pharmacy')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'pharmacy' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
                   <Pill className={`w-4 h-4 ${activeTab === 'pharmacy' ? 'text-emerald-200' : 'text-slate-400'}`}/> Pharmacy & Rx
                 </button>
@@ -679,6 +755,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
                 {activeTab === 'vitals' && renderVitalsTab()}
                 {activeTab === 'exam' && renderExamTab()}
                 {activeTab === 'assessment' && renderAssessmentTab()}
+                {activeTab === 'treatment' && renderTreatmentTab()}
                 {activeTab === 'pharmacy' && renderPharmacyTab()}
               </div>
             </div>

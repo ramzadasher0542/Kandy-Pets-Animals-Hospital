@@ -108,7 +108,7 @@ export default function LaboratoryManager({ records, inventory, appointments, on
   ).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
   // PHASE 1: Phantom Chart Generation Logic
-  const handleOrderTest = (testItem: InventoryItem) => {
+  const handleOrderTest = async (testItem: InventoryItem) => {
     if (!selectedPatientId) return;
     
     let activeRecord = records.find(r => r.patientId === selectedPatientId && r.visitDate === todayStr);
@@ -142,13 +142,6 @@ export default function LaboratoryManager({ records, inventory, appointments, on
       isNewRecord = true;
     }
 
-    const newLab: LabResult = {
-      id: crypto.randomUUID(),
-      testName: testItem.name,
-      requestDate: todayStr,
-      status: 'pending'
-    };
-
     const billingItem = {
       itemId: testItem.id,
       name: testItem.name,
@@ -156,16 +149,23 @@ export default function LaboratoryManager({ records, inventory, appointments, on
       quantity: 1
     };
 
+    const newLab: LabResult = {
+      id: crypto.randomUUID(),
+      testName: testItem.name,
+      requestDate: todayStr,
+      status: 'pending',
+      billingItems: [billingItem]
+    };
+
     const updatedRecord = {
       ...activeRecord,
-      labResults: [...(activeRecord.labResults || []), newLab],
-      prescribedMeds: [...(activeRecord.prescribedMeds || []), billingItem]
+      labResults: [...(activeRecord.labResults || []), newLab]
     };
 
     if (isNewRecord && onAddRecord) {
-      onAddRecord(updatedRecord);
+      await onAddRecord(updatedRecord);
     } else {
-      onUpdateRecord(updatedRecord);
+      await onUpdateRecord(updatedRecord);
     }
 
     showToast(`${testItem.name} ordered & billed to POS queue.`, 'success');
@@ -182,7 +182,7 @@ export default function LaboratoryManager({ records, inventory, appointments, on
     setShowResultModal(true);
   };
 
-  const handleSaveResult = () => {
+  const handleSaveResult = async () => {
     if (!activeLabResult) return;
     const targetRecord = records.find(r => r.id === activeLabResult.recordId);
     if (!targetRecord) return;
@@ -194,7 +194,7 @@ export default function LaboratoryManager({ records, inventory, appointments, on
         : lab
     );
 
-    onUpdateRecord({ ...targetRecord, labResults: updatedLabs });
+    await onUpdateRecord({ ...targetRecord, labResults: updatedLabs });
     setShowResultModal(false);
     showToast('Laboratory results finalized & locked.', 'success');
   };

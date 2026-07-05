@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import localforage from 'localforage';
 import { Wallet, DollarSign, TrendingUp, TrendingDown, Plus, ArrowDownRight, ArrowUpRight, ShieldCheck, FileText, Download } from 'lucide-react';
 import { showToast } from './Toast';
@@ -26,6 +26,7 @@ interface VaultInvoice {
   sales_total?: number;
   amountCents?: number;
   profit?: number;
+  splitPayments?: Array<{ method: string; amount?: number; amountCents?: number }>;
 }
 
 // --- DB Initialization ---
@@ -57,7 +58,45 @@ export default function ReportsManager() {
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR' }).format(val);
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  const loadData = async () => {
+  const calculateMetrics = useCallback((invs: VaultInvoice[], adjs: CashAdjustment[]) => {
+    let rev = 0; let prof = 0; let cSales = 0;
+    
+    // Only calculate PAID invoices
+    const paidInvs = invs.filter(i => i.status === 'PAID' || i.paymentStatus === 'paid');
+    
+    paidInvs.forEach(inv => {
+      const total = inv.sales_total || (inv.amountCents ? inv.amountCents / 100 : 0);
+      rev += total;
+      prof += inv.profit || 0; // No guessing — only use actual recorded profit
+      
+      const method = (inv.paymentMethod || inv.method || '').toLowerCase();
+      if (method === 'cash') {
+        cSales += total;
+      } else if (method === 'split' && inv.splitPayments) {
+        const cashSplit = inv.splitPayments.find((p: any) => p.method === 'cash');
+        if (cashSplit) {
+          cSales += (cashSplit.amount || (cashSplit.amountCents ? cashSplit.amountCents / 100 : 0));
+        }
+      }
+    });
+
+    let cIn = 0; let cOut = 0;
+    adjs.forEach(a => {
+      if (a.type === 'IN') cIn += a.amount;
+      else cOut += a.amount;
+    });
+
+    setMetrics({
+      totalRevenue: rev,
+      grossProfit: prof,
+      cashSales: cSales,
+      cashIn: cIn,
+      cashOut: cOut,
+      vaultBalance: cSales + cIn - cOut
+    });
+  }, []);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const invs: VaultInvoice[] = [];
@@ -77,40 +116,9 @@ export default function ReportsManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [calculateMetrics]);
 
-  useEffect(() => { loadData(); }, []);
-
-  const calculateMetrics = (invs: VaultInvoice[], adjs: CashAdjustment[]) => {
-    let rev = 0; let prof = 0; let cSales = 0;
-    
-    // Only calculate PAID invoices
-    const paidInvs = invs.filter(i => i.status === 'PAID' || i.paymentStatus === 'paid');
-    
-    paidInvs.forEach(inv => {
-      const total = inv.sales_total || (inv.amountCents ? inv.amountCents / 100 : 0);
-      rev += total;
-      prof += inv.profit || 0; // No guessing — only use actual recorded profit
-      
-      const method = (inv.paymentMethod || inv.method || '').toLowerCase();
-      if (method === 'cash') cSales += total;
-    });
-
-    let cIn = 0; let cOut = 0;
-    adjs.forEach(a => {
-      if (a.type === 'IN') cIn += a.amount;
-      else cOut += a.amount;
-    });
-
-    setMetrics({
-      totalRevenue: rev,
-      grossProfit: prof,
-      cashSales: cSales,
-      cashIn: cIn,
-      cashOut: cOut,
-      vaultBalance: cSales + cIn - cOut
-    });
-  };
+  useEffect(() => { loadData(); }, [loadData]);
 
   const handleSaveAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();

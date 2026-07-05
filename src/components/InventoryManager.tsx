@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, Plus, Edit2, Trash2, AlertTriangle, 
   Package, Activity, X, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
 } from 'lucide-react';
 import { InventoryItem, ItemCategory } from '../types';
-import { fetchInventory, upsertInventoryItem } from '../lib/db';
+import { fetchInventory } from '../lib/db';
 import { db } from '../lib/localDb'; 
 import { showToast } from './Toast';
 
@@ -28,11 +28,12 @@ interface InventoryProps {
   onAddProduct?: any;
   onUpdateStock?: any;
   onUpdatePrice?: any;
-  onUpdateInventory?: (items: InventoryItem[]) => void;
+  onUpdateInventory?: (item: any) => Promise<void>;
+  onDeleteInventory?: (id: string) => Promise<void>;
   systemConfig?: any;
 }
 
-export default function InventoryManager({ onUpdateInventory }: InventoryProps) {
+export default function InventoryManager({ inventory, onUpdateInventory, onDeleteInventory }: InventoryProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<ItemCategory | 'All'>('All');
@@ -49,16 +50,15 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
     sku: '', name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', labParameters: []
   });
 
-  useEffect(() => {
-    loadInventory();
-  }, []);
-
-  const loadInventory = async () => {
+  const loadInventory = useCallback(async () => {
     const data = await fetchInventory();
     const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
     setItems(sorted);
-    if (onUpdateInventory) onUpdateInventory(sorted); // Global Sync Cable active
-  };
+  }, [inventory]);
+
+  useEffect(() => {
+    loadInventory();
+  }, [loadInventory]);
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +84,9 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
       labParameters: isLab ? (formData.labParameters || []) : undefined
     };
 
-    await upsertInventoryItem(payload);
+    if (onUpdateInventory) {
+      await onUpdateInventory(payload);
+    }
     await loadInventory();
     
     setShowAddModal(false);
@@ -100,7 +102,9 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
     if (isNaN(delta) || delta === 0) return;
 
     const updatedItem = { ...adjustItem, stock: adjustItem.stock + delta };
-    await upsertInventoryItem(updatedItem);
+    if (onUpdateInventory) {
+      await onUpdateInventory(updatedItem);
+    }
     await loadInventory();
     
     setAdjustItem(null);
@@ -110,7 +114,9 @@ export default function InventoryManager({ onUpdateInventory }: InventoryProps) 
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to permanently delete this item?')) return;
-    await db.inventory.removeItem(id);
+    if (onDeleteInventory) {
+      await onDeleteInventory(id);
+    }
     await loadInventory();
     showToast('Item deleted from registry.', 'success');
   };

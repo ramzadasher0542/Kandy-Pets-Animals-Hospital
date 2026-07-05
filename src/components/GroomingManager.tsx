@@ -5,12 +5,13 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, Scissors, User, PawPrint, Activity, CheckSquare, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { MedicalRecord, InventoryItem, GroomingLog } from '../types';
+import { MedicalRecord, InventoryItem, GroomingLog, ClinicQueueItem } from '../types';
 import { showToast } from './Toast';
 
 interface GroomingProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
+  clinicQueue: ClinicQueueItem[];
   onUpdateRecord: (record: MedicalRecord) => void;
 }
 
@@ -20,22 +21,32 @@ const GROOMING_SERVICES = [
   { category: 'Medical Add-Ons', items: ['Medicated Bath'] }
 ];
 
-export default function GroomingManager({ records, inventory, onUpdateRecord }: GroomingProps) {
+export default function GroomingManager({ records, inventory, clinicQueue, onUpdateRecord }: GroomingProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'new_session' | 'history'>('new_session');
 
-  // Derive unique patients (keeping the latest record)
+  // Derive unique patients currently in the clinic queue for grooming, or fallback to search
   const uniquePatients = useMemo(() => {
+    // 1. Get IDs of pets currently in the salon queue
+    const salonQueuePatientIds = new Set(
+      clinicQueue
+        .filter(q => ['grooming', 'Grooming'].includes(q.serviceType || '') && q.status !== 'completed')
+        .map(q => q.petId)
+    );
+
     const patientMap = new Map<string, MedicalRecord>();
     records.forEach(r => {
+      // Only include them in the sidebar if they are in the queue OR if we are doing a manual search
       if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId)!.visitDate)) {
-        patientMap.set(r.patientId, r);
+        if (salonQueuePatientIds.has(r.patientId) || searchQuery.length > 0) {
+          patientMap.set(r.patientId, r);
+        }
       }
     });
     return Array.from(patientMap.values());
-  }, [records]);
+  }, [records, clinicQueue, searchQuery]);
 
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
 
@@ -94,13 +105,15 @@ export default function GroomingManager({ records, inventory, onUpdateRecord }: 
       date: new Date().toISOString().split('T')[0],
       services: selectedServices,
       totalBilled: totalBilled,
-      status: 'completed'
+      status: 'completed',
+      // We attach billingItems for the POS Register to sweep seamlessly
+      billingItems: billingItems
     };
 
     const updatedRecord: MedicalRecord = {
       ...selectedRecord,
-      groomingRecords: [...(selectedRecord.groomingRecords || []), newLog],
-      prescribedMeds: [...(selectedRecord.prescribedMeds || []), ...billingItems]
+      groomingRecords: [...(selectedRecord.groomingRecords || []), newLog]
+      // AUDIT FIX: Removed catastrophic hijacking of prescribedMeds array
     };
 
     onUpdateRecord(updatedRecord);
@@ -185,6 +198,12 @@ export default function GroomingManager({ records, inventory, onUpdateRecord }: 
                             const isChecked = selectedServices.includes(item);
                             return (
                               <label key={item} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer select-none ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
+                                <input 
+                                  type="checkbox" 
+                                  className="sr-only" 
+                                  checked={isChecked} 
+                                  onChange={() => toggleService(item)} 
+                                />
                                 <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
                                   {isChecked && <CheckCircle2 className="w-4 h-4" />}
                                 </div>
