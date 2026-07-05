@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { db, safeDbWrite } from './localDb';
+import { db, safeDbWrite, stampRecord } from './localDb';
 import { globalMutex } from './mutex';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import {
@@ -42,8 +42,8 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
     item.minStock = 0; 
   }
   
-  // True Delta Update - No race conditions
-  await db.inventory.setItem(item.id, item);
+  // True Delta Update - No race conditions + Sync Engine dirty stamp
+  await db.inventory.setItem(item.id, stampRecord(item));
 }
 
 export async function deleteInventoryItem(id: string): Promise<void> {
@@ -135,7 +135,7 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
     date: formatDisplayDate(apt.date),
     time: formatDisplayTime(apt.time)
   };
-  await db.appointments.setItem(apt.id, formattedApt);
+  await db.appointments.setItem(apt.id, stampRecord(formattedApt));
 }
 
 export async function fetchVeterinarians(): Promise<User[]> {
@@ -165,7 +165,7 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
     ...rec,
     visitDate: formatDisplayDate(rec.visitDate)
   };
-  await db.records.setItem(rec.id, formattedRec);
+  await db.records.setItem(rec.id, stampRecord(formattedRec));
 }
 
 export async function deleteMedicalRecord(id: string): Promise<void> {
@@ -198,14 +198,14 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
     date: formatDisplayDate(inv.date)
   };
 
-  await db.invoices.setItem(inv.id, formattedInv);
+  await db.invoices.setItem(inv.id, stampRecord(formattedInv));
 
   // Cross-module cascade: Auto-complete appointment
   if (inv.appointmentId) {
     const apt = await db.appointments.getItem<Appointment>(inv.appointmentId);
     if (apt) {
       apt.status = 'completed';
-      await db.appointments.setItem(apt.id, apt);
+      await db.appointments.setItem(apt.id, stampRecord(apt));
     }
   }
 }
@@ -226,7 +226,7 @@ export async function upsertNotification(notif: ClientNotification): Promise<voi
     console.warn('[CeylonPets POS] Rejected malformed or empty notification payload.');
     return;
   }
-  await db.notifications.setItem(notif.id, notif);
+  await db.notifications.setItem(notif.id, stampRecord(notif));
 }
 
 // ==========================================
@@ -245,7 +245,7 @@ export async function upsertAlert(alert: SystemAlert): Promise<void> {
     console.warn('[CeylonPets POS] Rejected malformed or empty system alert payload.');
     return;
   }
-  await db.alerts.setItem(alert.id, alert);
+  await db.alerts.setItem(alert.id, stampRecord(alert));
 }
 
 // ==========================================
@@ -444,7 +444,7 @@ export async function fetchClients(): Promise<Client[]> {
 
 export async function upsertClient(client: Client): Promise<void> {
   if (!client || !client.client_id) return;
-  await db.clients.setItem(client.client_id, client);
+  await db.clients.setItem(client.client_id, stampRecord(client));
 }
 
 // ==========================================
@@ -669,4 +669,125 @@ export async function restoreFullDatabase(jsonData: string): Promise<void> {
   } finally {
     unlock();
   }
+}
+
+// ==========================================
+// MISSION 2: BOOT-OPTIMIZED QUERIES
+// Only load today's operational data into React state on boot.
+// Historical data is queried on-demand via pagination.
+// ==========================================
+
+/**
+ * Boot-optimized: Returns only today's medical records + active boarding.
+ * Prevents loading thousands of historical records into React memory.
+ */
+export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
+  const today = formatDisplayDate(new Date());
+  const records: MedicalRecord[] = [];
+  await db.records.iterate((value: MedicalRecord) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) {
+      // Include today's records AND any active boarding patients (multi-day stays)
+      if (value.visitDate === today || (value.boardingInfo && (value.boardingInfo as any).status === 'active')) {
+        records.push(value);
+      }
+    }
+  });
+  return records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+}
+
+/**
+ * Boot-optimized: Returns only today's invoices.
+ * Prevents loading thousands of historical invoices into React memory.
+ */
+export async function fetchTodaysInvoices(): Promise<Invoice[]> {
+  const today = formatDisplayDate(new Date());
+  const invoices: Invoice[] = [];
+  await db.invoices.iterate((value: Invoice) => {
+    if (value && !Array.isArray(value) && value.date === today) {
+      invoices.push(value);
+    }
+  });
+  return invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+/**
+ * On-demand paginated invoice query for InvoicesManager.
+ * Streams through IndexedDB with optional search and status filter.
+ */
+export async function fetchPaginatedInvoices(
+  page = 0,
+  limit = 50,
+  search?: string,
+  statusFilter?: string
+): Promise<{ invoices: Invoice[]; total: number }> {
+  let filtered: Invoice[] = [];
+  await db.invoices.iterate((value: Invoice) => {
+    if (value && !Array.isArray(value)) {
+      filtered.push(value);
+    }
+  });
+
+  if (statusFilter && statusFilter !== 'All') {
+    filtered = filtered.filter(i => i.paymentStatus === statusFilter);
+  }
+
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = filtered.filter(inv =>
+      (inv.id || '').toLowerCase().includes(q) ||
+      (inv.ownerName || '').toLowerCase().includes(q) ||
+      (inv.petName || '').toLowerCase().includes(q)
+    );
+  }
+
+  filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const total = filtered.length;
+  const start = page * limit;
+  return { invoices: filtered.slice(start, start + limit), total };
+}
+
+/**
+ * On-demand paginated medical records query for MedicalRecordsManager "All History" mode.
+ */
+export async function fetchPaginatedRecords(
+  page = 0,
+  limit = 50,
+  search?: string
+): Promise<{ records: MedicalRecord[]; total: number }> {
+  let filtered: MedicalRecord[] = [];
+  await db.records.iterate((value: MedicalRecord) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) {
+      filtered.push(value);
+    }
+  });
+
+  if (search && search.trim()) {
+    const q = search.trim().toLowerCase();
+    filtered = filtered.filter(r =>
+      r.petName.toLowerCase().includes(q) ||
+      r.ownerName.toLowerCase().includes(q) ||
+      r.ownerPhone.includes(q)
+    );
+  }
+
+  filtered.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+  const total = filtered.length;
+  const start = page * limit;
+  return { records: filtered.slice(start, start + limit), total };
+}
+
+/**
+ * Aggregate invoice KPIs by streaming through IndexedDB.
+ * Used by InvoicesManager for all-time statistics without loading full arrays.
+ */
+export async function fetchInvoiceStats(): Promise<{ total: number; revenue: number; voided: number }> {
+  let total = 0, revenue = 0, voided = 0;
+  await db.invoices.iterate((inv: Invoice) => {
+    if (inv && !Array.isArray(inv)) {
+      total++;
+      if (inv.paymentStatus === 'paid') revenue += inv.sales_total || 0;
+      if (inv.paymentStatus === 'void') voided++;
+    }
+  });
+  return { total, revenue: Math.round(revenue * 100) / 100, voided };
 }

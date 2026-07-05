@@ -82,9 +82,11 @@ import {
   deleteMedicalRecord, upsertInvoice, upsertAlert,
   fetchInventory, fetchAppointments, fetchMedicalRecords,
   fetchInvoices, fetchNotifications, fetchAlerts,
-  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems, atomicStockDecrement, deleteInventoryItem
+  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems, atomicStockDecrement, deleteInventoryItem,
+  fetchTodaysRecords, fetchTodaysInvoices
 } from './lib/db';
 import { globalMutex } from './lib/mutex';
+import { SyncEngine } from './lib/syncEngine';
 
 function hashPin(pin: string): string {
   if (!pin) return '';
@@ -263,11 +265,12 @@ function App() {
         }
 
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
+        // MISSION 2: Only load today's operational data — not the full history
         try {
           const hInventory = await fetchInventory();
           const hAppointments = await fetchAppointments();
-          const hRecords = await fetchMedicalRecords();
-          const hInvoices = await fetchInvoices();
+          const hRecords = await fetchTodaysRecords();
+          const hInvoices = await fetchTodaysInvoices();
 
           const hShifts: any[] = [];
           await db.shifts.iterate((value: any) => { if (value) hShifts.push(value); });
@@ -344,6 +347,15 @@ function App() {
     }
     bootSequence();
     return () => { isMounted = false; };
+  }, []);
+
+  // MISSION 1: Background Sync Engine lifecycle
+  const syncEngineRef = useRef<SyncEngine | null>(null);
+  useEffect(() => {
+    const engine = new SyncEngine({ onStatusChange: (online) => setIsOnline(online) });
+    engine.start();
+    syncEngineRef.current = engine;
+    return () => { engine.stop(); };
   }, []);
 
   // Session states
@@ -555,68 +567,73 @@ function App() {
     }
   }, []);
 
-  // AUDIT FIX: Properly await DB writes instead of fire-and-forget inside setState
+  // MISSION 2 FIX: Iterates IndexedDB directly instead of stale React state arrays.
+  // This ensures ALL historical records are updated, not just today's in-memory subset.
   const handleUpdateCustomer = useCallback(async (oldPhone: string, newPhone: string, newName: string, newEmail: string) => {
     const normOld = oldPhone.replace(/\D/g, '');
     
-    // Collect updates, await DB writes, then batch React state updates
+    // Scan entire DB — not just today's state
     const aptUpdates: Appointment[] = [];
-    appointments.forEach(a => {
-      if (a.ownerPhone.replace(/\D/g, '') === normOld) {
+    await db.appointments.iterate((a: any) => {
+      if (a && !Array.isArray(a) && a.ownerPhone && a.ownerPhone.replace(/\D/g, '') === normOld) {
         aptUpdates.push({ ...a, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail });
       }
     });
     
     const recUpdates: MedicalRecord[] = [];
-    records.forEach(r => {
-      if (r.ownerPhone.replace(/\D/g, '') === normOld) {
+    await db.records.iterate((r: any) => {
+      if (r && !Array.isArray(r) && !(r as any).is_deleted && r.ownerPhone && r.ownerPhone.replace(/\D/g, '') === normOld) {
         recUpdates.push({ ...r, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail });
       }
     });
     
     const invUpdates: Invoice[] = [];
-    invoices.forEach(i => {
-      if (i.ownerPhone.replace(/\D/g, '') === normOld) {
+    await db.invoices.iterate((i: any) => {
+      if (i && !Array.isArray(i) && (i.ownerPhone || '').replace(/\D/g, '') === normOld) {
         invUpdates.push({ ...i, ownerName: newName, ownerPhone: newPhone });
       }
     });
 
     try {
-      const aptResults = await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
-      const recResults = await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
-      const invResults = await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
+      await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
+      await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
+      await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
 
-      if (aptUpdates.length > 0) setAppointments(prev => prev.map(a => { const idx = aptUpdates.findIndex(u => u.id === a.id); return idx > -1 && aptResults[idx].status === 'fulfilled' ? aptUpdates[idx] : a; }));
-      if (recUpdates.length > 0) setRecords(prev => prev.map(r => { const idx = recUpdates.findIndex(u => u.id === r.id); return idx > -1 && recResults[idx].status === 'fulfilled' ? recUpdates[idx] : r; }));
-      if (invUpdates.length > 0) setInvoices(prev => prev.map(i => { const idx = invUpdates.findIndex(u => u.id === i.id); return idx > -1 && invResults[idx].status === 'fulfilled' ? invUpdates[idx] : i; }));
+      // Refresh today's state to reflect any changes
+      setAppointments(await fetchAppointments());
+      setRecords(await fetchTodaysRecords());
+      setInvoices(await fetchTodaysInvoices());
     } catch (error: any) {
       console.error('[CeylonPets] Customer update failed:', error);
       showToast(`Failed to update customer across records: ${error.message}`, 'error');
     }
-  }, [appointments, records, invoices]);
+  }, []);
 
+  // MISSION 2 FIX: Scan full DB for pet identity updates
   const handleUpdatePet = useCallback(async (oldPatientId: string, newPetName: string, newDetails: any) => {
     try {
-      const toUpdate = records.filter(r => r.patientId === oldPatientId).map(r => ({ ...r, petName: newPetName, ...newDetails }));
+      const toUpdate: MedicalRecord[] = [];
+      await db.records.iterate((r: any) => {
+        if (r && !Array.isArray(r) && !(r as any).is_deleted && r.patientId === oldPatientId) {
+          toUpdate.push({ ...r, petName: newPetName, ...newDetails });
+        }
+      });
       if (toUpdate.length === 0) return;
-      const results = await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
-      
-      setRecords(prev => prev.map(r => {
-        const idx = toUpdate.findIndex(u => u.id === r.id);
-        return idx > -1 && results[idx].status === 'fulfilled' ? toUpdate[idx] : r;
-      }));
+      await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
+      setRecords(await fetchTodaysRecords());
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, [records]);
+  }, []);
 
   // AUDIT FIX: Removed redundant double-write of appointment completion.
   // upsertInvoice in db.ts already marks the appointment as 'completed'.
   // Added try-catch for error resilience.
+  // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
   const handleAddInvoice = useCallback(async (invoice: any) => {
     try {
       await upsertInvoice(invoice);
-      const updated = await fetchInvoices();
+      const updated = await fetchTodaysInvoices();
       setInvoices(updated);
 
       // Remove patient from clinic queue after checkout
@@ -639,6 +656,7 @@ function App() {
   }, [clinicQueue]);
 
   // FIXED: No longer mutates React state directly — creates a new object
+  // MISSION 2 FIX: Read from DB directly instead of stale state (old invoices aren't in state)
   const handleVoidInvoice = useCallback(async (id: any) => {
     const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
     if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
@@ -646,23 +664,23 @@ function App() {
       return;
     }
     try {
-      const target = invoices.find(i => i.id === id);
+      const target = await db.invoices.getItem<Invoice>(id);
       if (target) {
         const voided = { ...target, paymentStatus: 'void' as const };
         await upsertInvoice(voided);
-        const updated = await fetchInvoices();
-        setInvoices(updated);
+        setInvoices(await fetchTodaysInvoices());
       }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, [invoices]);
+  }, []);
 
+  // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
     const unlock = await globalMutex.lock();
     try {
       await upsertInvoice(invoice);
-      const updatedInvoices = await fetchInvoices();
+      const updatedInvoices = await fetchTodaysInvoices();
       setInvoices(updatedInvoices);
 
       for (const cartItem of cart) {
@@ -818,7 +836,7 @@ function App() {
               setSystemConfig(config);
             }}
             users={users.map(({ pin, ...safeU }) => safeU)}
-            onForceCloudSync={async () => { }}
+            onForceCloudSync={async () => { if (syncEngineRef.current) await syncEngineRef.current.forceSync(); }}
             onRefreshUsers={async () => { }}
             onAddUser={async (user) => {
               const { pin, ...safeUser } = user;

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, Activity, Edit2, CheckCircle2, X, 
@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment } from '../types';
 import { formatDisplayDate } from '../utils/time';
-import { showToast } from './Toast'; // FIXED: was missing, caused runtime error
+import { showToast } from './Toast';
+import { fetchPaginatedRecords } from '../lib/db';
 
 interface RecordsProps {
   records: MedicalRecord[];
@@ -103,16 +104,79 @@ export default function MedicalRecordsManager({ records, inventory, appointments
   const todayStr = formatDisplayDate(new Date());
 
   // ============================================================================
+  // MISSION 2: ALL HISTORY PAGINATION STATE
+  // When "All History" is active, query IndexedDB on-demand instead of using
+  // the records prop (which now only contains today's data).
+  // ============================================================================
+  const HISTORY_PAGE_SIZE = 50;
+  const [historyRecords, setHistoryRecords] = useState<any[]>([]);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Debounced search for history mode
+  const historyDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedHistorySearch, setDebouncedHistorySearch] = useState('');
+
+  useEffect(() => {
+    if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current);
+    historyDebounceRef.current = setTimeout(() => setDebouncedHistorySearch(searchQuery), 300);
+    return () => { if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current); };
+  }, [searchQuery]);
+
+  // Load history page from IndexedDB
+  const loadHistoryPage = useCallback(async () => {
+    if (showQueueOnly) return; // Only load when in "All History" mode
+    setHistoryLoading(true);
+    try {
+      const result = await fetchPaginatedRecords(historyPage, HISTORY_PAGE_SIZE, debouncedHistorySearch);
+      setHistoryRecords(result.records);
+      setHistoryTotal(result.total);
+    } catch (err) {
+      console.error('[MedicalRecordsManager] History pagination failed:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [showQueueOnly, historyPage, debouncedHistorySearch]);
+
+  useEffect(() => { loadHistoryPage(); }, [loadHistoryPage]);
+  useEffect(() => { setHistoryPage(0); }, [debouncedHistorySearch]);
+  // Reset history when switching modes
+  useEffect(() => { if (!showQueueOnly) { setHistoryPage(0); loadHistoryPage(); } }, [showQueueOnly]);
+
+  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
+
+  // ============================================================================
   // PHASE 2: DUAL-READ IDENTITY AGGREGATOR (THE TRUE QUEUE)
   // ============================================================================
   const displayPatients = useMemo(() => {
+    // MISSION 2: In "All History" mode, use paginated DB results
+    if (!showQueueOnly) {
+      return historyRecords.map(r => ({
+        id: r.id,
+        patientId: r.patientId,
+        petName: r.petName,
+        petType: r.petType,
+        breed: r.breed,
+        weight: r.weight,
+        sex: r.sex,
+        ownerName: r.ownerName,
+        ownerPhone: r.ownerPhone,
+        visitDate: r.visitDate,
+        assessment: r.assessment,
+        diagnosis: r.diagnosis,
+        hasRecordToday: r.visitDate === todayStr
+      }));
+    }
+
+    // "In Clinic" mode: Use today's records prop + active appointments
     const patientMap = new Map<string, any>();
 
-    // Pass 1: Existing Medical Records
+    // Pass 1: Existing Medical Records (today's data from props)
     records.forEach(r => {
       if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId).visitDate)) {
         patientMap.set(r.patientId, {
-          id: r.id, // Store record ID if it exists
+          id: r.id,
           patientId: r.patientId,
           petName: r.petName,
           petType: r.petType,
@@ -130,8 +194,6 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     });
 
     // Pass 2: Active Appointments (Catching un-charted pets in lobby)
-    // FIXED: Only add checked-in (in-progress) appointments to patient map
-    // Booked appointments = pet hasn't arrived, don't show in charting dashboard
     (appointments || []).forEach(a => {
       if (a.status !== 'in-progress') return;
       const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
@@ -159,11 +221,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     });
 
     let activeList = Array.from(patientMap.values());
-
-    if (showQueueOnly) {
-      // FIXED: Only pets actively in the clinicQueue are "In Clinic"
-      activeList = activeList.filter(p => (clinicQueue || []).some(q => q.petId === p.patientId));
-    }
+    activeList = activeList.filter(p => (clinicQueue || []).some(q => q.petId === p.patientId));
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -171,7 +229,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     }
 
     return activeList.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
-  }, [records, appointments, showQueueOnly, searchQuery, todayStr]);
+  }, [records, appointments, showQueueOnly, searchQuery, todayStr, historyRecords, clinicQueue]);
 
   // ============================================================================
 
@@ -667,7 +725,9 @@ export default function MedicalRecordsManager({ records, inventory, appointments
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayPatients.length === 0 ? (
+              {(!showQueueOnly && historyLoading) ? (
+                <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold animate-pulse">Loading history...</td></tr>
+              ) : displayPatients.length === 0 ? (
                 <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold">No patients found in current view.</td></tr>
               ) : displayPatients.map((patient: any) => (
                 <tr key={patient.patientId} className="hover:bg-slate-50 transition-colors group">
@@ -703,6 +763,34 @@ export default function MedicalRecordsManager({ records, inventory, appointments
             </tbody>
           </table>
         </div>
+
+        {/* PAGINATION CONTROLS — All History mode only */}
+        {!showQueueOnly && historyTotalPages > 1 && (
+          <div className="border-t border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 bg-slate-50/50">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              Showing {historyPage * HISTORY_PAGE_SIZE + 1}–{Math.min((historyPage + 1) * HISTORY_PAGE_SIZE, historyTotal)} of {historyTotal}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setHistoryPage(p => Math.max(0, p - 1))}
+                disabled={historyPage === 0}
+                className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${historyPage === 0 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+              >
+                Previous
+              </button>
+              <span className="text-xs font-black text-slate-700 min-w-[80px] text-center">
+                Page {historyPage + 1} / {historyTotalPages}
+              </span>
+              <button
+                onClick={() => setHistoryPage(p => Math.min(historyTotalPages - 1, p + 1))}
+                disabled={historyPage >= historyTotalPages - 1}
+                className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${historyPage >= historyTotalPages - 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* EHR COMMAND CENTER MODAL */}

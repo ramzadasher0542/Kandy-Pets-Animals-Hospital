@@ -2,59 +2,42 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Supabase Client Configuration (MOCKED)
+ * Supabase Client Configuration
  * ---------------------------------------------------------------
- * Isolated local development mode. Cloud sync disabled completely.
+ * When VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are present,
+ * a real Supabase client is created and SYNC_ENABLED = true.
+ * Otherwise the client is null and sync is completely dormant.
  */
 /// <reference types="vite/client" />
 
-// Suppress expected console warnings from db.ts and auth.ts falling back to cache
-const originalWarn = console.warn;
-console.warn = (...args) => {
-  if (
-    args.length >= 2 &&
-    typeof args[0] === 'string' &&
-    args[0].includes('[CeylonPets]') &&
-    args[1]?.message === 'Offline mode'
-  ) {
-    return;
-  }
-  originalWarn(...args);
-};
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Provide a robust mock offline client that absorbs chained calls
-const mockPromise = Promise.resolve({ data: null, error: { message: 'Offline mode' } });
-const createMockChain = () => {
-  const chain: any = new Proxy(function() {}, {
-    get: function(target, prop) {
-      if (prop === 'then') return mockPromise.then.bind(mockPromise);
-      if (prop === 'catch') return mockPromise.catch.bind(mockPromise);
-      if (prop === 'finally') return mockPromise.finally.bind(mockPromise);
-      return chain;
-    },
-    apply: function() {
-      return chain;
-    }
-  });
-  return chain;
-};
+// ---------------------------------------------------------------------------
+// Environment detection
+// ---------------------------------------------------------------------------
+const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase = {
-  from: () => createMockChain(),
-  channel: () => ({
-    on: () => ({ subscribe: () => ({ unsubscribe: () => {} }) })
-  }),
-  storage: {
-    from: () => ({
-      upload: () => Promise.resolve({ data: null, error: { message: 'Offline mode' } }),
-      getPublicUrl: () => ({ data: { publicUrl: '' } })
-    })
-  }
-} as any;
+const hasValidConfig =
+  typeof url === 'string' && url.length > 0 &&
+  typeof key === 'string' && key.length > 0;
 
-// ---------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Client & flag exports
+// ---------------------------------------------------------------------------
+export const SYNC_ENABLED: boolean = hasValidConfig;
+
+export const supabase: SupabaseClient | null = hasValidConfig
+  ? createClient(url!, key!)
+  : null;
+
+if (!SYNC_ENABLED) {
+  console.info('[Supabase] No credentials detected — cloud sync is dormant.');
+}
+
+// ---------------------------------------------------------------------------
 // Constants
-// ---------------------------------------------------------------
+// ---------------------------------------------------------------------------
 export const DB_TABLES = {
   INVENTORY:     'inventory',
   APPOINTMENTS:  'appointments',
@@ -65,6 +48,10 @@ export const DB_TABLES = {
   USERS:         'staff_users',
   SYSTEM_CONFIG: 'system_config',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Image upload helper
+// ---------------------------------------------------------------------------
 
 /**
  * Uploads a file. In this isolated offline mode, it converts the file to base64

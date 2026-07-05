@@ -14,6 +14,7 @@ import { fetchInvoices, upsertInvoice } from '../lib/db';
 import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
+import POSReceipt from './POSReceipt';
 
 interface POSProps {
   inventory: InventoryItem[];
@@ -52,7 +53,8 @@ export default function POSRegister({
   onAtomicCheckout,
   activeShiftId,
   activeShift,
-  currentUser 
+  currentUser,
+  systemConfig 
 }: POSProps) {
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,6 +67,7 @@ export default function POSRegister({
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [customClientName, setCustomClientName] = useState('');
   const [customClientPhone, setCustomClientPhone] = useState('');
+  const [lastCompletedInvoice, setLastCompletedInvoice] = useState<Invoice | null>(null);
 
   const todayStr = formatDisplayDate(new Date());
 
@@ -311,6 +314,13 @@ export default function POSRegister({
       }
 
       showToast(`Transaction completed — Invoice #${invoice.id.slice(0,8)}`, 'success');
+
+      // Thermal receipt print trigger
+      setLastCompletedInvoice(invoice);
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => setLastCompletedInvoice(null), 1000);
+      }, 150);
       
       // Reset
       setCart([]);
@@ -573,6 +583,8 @@ export default function POSRegister({
 
         </div>
       </main>
+
+      <POSReceipt invoice={lastCompletedInvoice} systemConfig={systemConfig || {}} />
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

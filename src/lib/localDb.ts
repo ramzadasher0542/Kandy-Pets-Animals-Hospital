@@ -68,6 +68,19 @@ export async function initializeDatabaseVault() {
 }
 
 /**
+ * SYNC ENGINE: Stamps a record as dirty with an updated_at timestamp.
+ * The sync engine reads _dirty to know which records need to be pushed to Supabase.
+ * After successful push, _dirty is cleared by the sync engine.
+ */
+export function stampRecord<T extends Record<string, any>>(record: T): T & { _dirty: boolean; updated_at: string } {
+  return {
+    ...record,
+    updated_at: new Date().toISOString(),
+    _dirty: true
+  };
+}
+
+/**
  * AUDIT FIX: Safe DB write wrapper that catches QuotaExceededError
  * and other IndexedDB failures gracefully instead of crashing the chain.
  * Returns true on success, false on failure.

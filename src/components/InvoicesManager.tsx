@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, FileText, Printer, ShieldAlert, X, DollarSign, 
-  Calendar, CheckCircle2, AlertTriangle, ArrowRight
+  Calendar, CheckCircle2, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-// AUDIT FIX: Removed direct DB imports — InvoicesManager now uses props from App.tsx
+import { fetchPaginatedInvoices, fetchInvoiceStats } from '../lib/db';
 
 interface InvoicesProps {
   invoices: any[];
@@ -19,33 +19,59 @@ interface InvoicesProps {
   systemConfig?: any;
 }
 
+const PAGE_SIZE = 50;
+
 export default function InvoicesManager({ invoices = [], onVoidInvoice, systemConfig }: InvoicesProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'paid' | 'void'>('All');
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
 
-  // High-Speed Filtering Engine
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter(inv => {
-      if (statusFilter !== 'All' && inv.paymentStatus !== statusFilter) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        // ARMOR: Catch any variation of the invoice ID
-        const invNum = (inv.invoiceNumber || inv.invoice_number || inv.id || '').toLowerCase();
-        return (
-          invNum.includes(q) ||
-          (inv.ownerName || '').toLowerCase().includes(q) ||
-          (inv.petName || '').toLowerCase().includes(q)
-        );
-      }
-      return true;
-    }); 
-  }, [invoices, searchQuery, statusFilter]);
+  // MISSION 2: Internal paginated state — queries IndexedDB directly
+  const [pageInvoices, setPageInvoices] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // KPI Calculations
-  const validInvoices = invoices.filter(i => i.paymentStatus === 'paid');
-  const totalRevenue = validInvoices.reduce((sum, inv) => sum + (inv.sales_total || 0), 0);
-  const voidedCount = invoices.filter(i => i.paymentStatus === 'void').length;
+  // KPI state from DB aggregate (all-time, not just today)
+  const [stats, setStats] = useState({ total: 0, revenue: 0, voided: 0 });
+
+  // Debounced search
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery]);
+
+  // Load paginated invoices from IndexedDB on-demand
+  const loadPage = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await fetchPaginatedInvoices(currentPage, PAGE_SIZE, debouncedSearch, statusFilter);
+      setPageInvoices(result.invoices);
+      setTotalCount(result.total);
+    } catch (err) {
+      console.error('[InvoicesManager] Pagination query failed:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, debouncedSearch, statusFilter]);
+
+  // Load KPI stats from DB aggregate (all-time)
+  const loadStats = useCallback(async () => {
+    try { setStats(await fetchInvoiceStats()); } catch (err) { console.error('[InvoicesManager] Stats failed:', err); }
+  }, []);
+
+  // Reload on filter/page/search change
+  useEffect(() => { loadPage(); }, [loadPage]);
+  // Reload stats on mount + when today's invoices change (prop trigger for void/add)
+  useEffect(() => { loadStats(); }, [invoices.length]);
+  // Reset to page 0 when filters change
+  useEffect(() => { setCurrentPage(0); }, [debouncedSearch, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const currencySign = systemConfig?.currencySymbol || 'Rs.';
 
   const handleVoid = async () => {
@@ -65,6 +91,9 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
       
       showToast(`Invoice ${invId} successfully voided.`, 'success');
       setSelectedInvoice(null);
+      // Refresh paginated data after void
+      loadPage();
+      loadStats();
     }
   };
 
@@ -85,7 +114,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600"><FileText className="w-6 h-6" /></div>
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Transactions</div>
-              <div className="text-xl font-black text-slate-800">{invoices.length} <span className="text-xs text-slate-500 font-bold ml-1">Records</span></div>
+              <div className="text-xl font-black text-slate-800">{stats.total} <span className="text-xs text-slate-500 font-bold ml-1">Records</span></div>
             </div>
           </div>
           
@@ -94,19 +123,19 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gross Revenue (Paid)</div>
               <div className="text-xl font-black font-mono text-slate-800">
-                {currencySign}{(totalRevenue).toFixed(2)}
+                {currencySign}{(stats.revenue).toFixed(2)}
               </div>
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className={`${voidedCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400'} p-3 rounded-xl`}>
-              {voidedCount > 0 ? <AlertTriangle className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
+            <div className={`${stats.voided > 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400'} p-3 rounded-xl`}>
+              {stats.voided > 0 ? <AlertTriangle className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
             </div>
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Voided Receipts</div>
-              <div className={`text-xl font-black ${voidedCount > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
-                {voidedCount} <span className="text-xs font-bold ml-1">Nullified</span>
+              <div className={`text-xl font-black ${stats.voided > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                {stats.voided} <span className="text-xs font-bold ml-1">Nullified</span>
               </div>
             </div>
           </div>
@@ -159,14 +188,20 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredInvoices.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center">
+                    <div className="text-sm font-black text-slate-400 animate-pulse">Loading invoices...</div>
+                  </td>
+                </tr>
+              ) : pageInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-16 text-center">
                     <FileText className="w-12 h-12 text-slate-200 mx-auto mb-3" />
                     <div className="text-sm font-black text-slate-500">No invoices match the current filter.</div>
                   </td>
                 </tr>
-              ) : filteredInvoices.map(inv => {
+              ) : pageInvoices.map(inv => {
                 const isVoid = inv.paymentStatus === 'void';
                 const d = new Date(inv.date);
                 
@@ -219,6 +254,34 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             </tbody>
           </table>
         </div>
+
+        {/* PAGINATION CONTROLS */}
+        {totalPages > 1 && (
+          <div className="border-t border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 bg-slate-50/50">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              Showing {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className={`p-2 rounded-lg border transition-all ${currentPage === 0 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-black text-slate-700 min-w-[80px] text-center">
+                Page {currentPage + 1} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className={`p-2 rounded-lg border transition-all ${currentPage >= totalPages - 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* RECEIPT INSPECTOR MODAL */}
