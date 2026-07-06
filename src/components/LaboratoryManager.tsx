@@ -6,12 +6,14 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, TestTube, Activity, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
-import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet } from '../types';
+import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet, Client } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
 import { fetchPets, fetchLabResults, upsertLabResult } from '../lib/db';
 
 interface LabProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
   inventory: InventoryItem[];
   appointments?: Appointment[]; // PHASE 1: Added to detect lobby queue
@@ -21,17 +23,15 @@ interface LabProps {
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function LaboratoryManager({ records, inventory, appointments, onUpdateRecord, onAddRecord }: LabProps) {
+export default function LaboratoryManager({ clients, pets, records, inventory, appointments, onUpdateRecord, onAddRecord }: LabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'order' | 'results'>('order');
   const [showQueueOnly, setShowQueueOnly] = useState(true);
 
-  const [pets, setPets] = useState<Pet[]>([]);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
 
   React.useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
     fetchLabResults().then(setLabResults).catch(console.error);
   }, []);
 

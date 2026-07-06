@@ -76,14 +76,33 @@ import BoardingManager from './components/BoardingManager';
 import GroomingManager from './components/GroomingManager';
 import ShiftManager from './components/ShiftManager';
 
-import {
-  fetchClients, upsertClient, reconstituteSystemState,
-  upsertInventoryItem, upsertAppointment, upsertMedicalRecord,
-  deleteMedicalRecord, upsertInvoice, upsertAlert,
-  fetchInventory, fetchAppointments, fetchMedicalRecords,
-  fetchInvoices, fetchNotifications, fetchAlerts,
-  fetchClinicQueue, addToClinicQueue, updateQueueItemStatus, removeFromClinicQueue, getActiveQueueItems, atomicStockDecrement, deleteInventoryItem,
-  fetchTodaysRecords, fetchTodaysInvoices
+import { 
+  fetchAppointments, 
+  fetchMedicalRecords, 
+  fetchInventory, 
+  fetchInvoices, 
+  fetchShiftMetrics,
+  fetchNotifications,
+  fetchAlerts,
+  fetchClinicQueue,
+  fetchPets,
+  fetchClients,
+  upsertClient, 
+  reconstituteSystemState,
+  upsertInventoryItem, 
+  upsertAppointment, 
+  upsertMedicalRecord,
+  deleteMedicalRecord, 
+  upsertInvoice, 
+  upsertAlert,
+  addToClinicQueue, 
+  updateQueueItemStatus, 
+  removeFromClinicQueue, 
+  getActiveQueueItems, 
+  atomicStockDecrement, 
+  deleteInventoryItem,
+  fetchTodaysRecords, 
+  fetchTodaysInvoices
 } from './lib/db';
 import { globalMutex } from './lib/mutex';
 import { SyncEngine } from './lib/syncEngine';
@@ -111,17 +130,17 @@ function App() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [records, setRecords] = useState<MedicalRecord[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [clinicQueue, setClinicQueue] = useState<ClinicQueueItem[]>([]);
+  const [pets, setPets] = useState<import('./types').Pet[]>([]);
+  const [clients, setClients] = useState<import('./types').Client[]>([]);
   const [notifications, setNotifications] = useState<ClientNotification[]>([]);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [shiftLogs, setShiftLogs] = useState<ShiftReconciliation[]>([]);
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [syncQueue, setSyncQueue] = useState<OfflineSyncItem[]>([]);
   const [pinCache, setPinCache] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<any[]>([]);
-
-  // THE LIVING FLOOR: Real-time clinic queue state
-  const [clinicQueue, setClinicQueue] = useState<ClinicQueueItem[]>([]);
 
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     appName: 'Ceylon Pets POS',
@@ -267,10 +286,16 @@ function App() {
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
         // MISSION 2: Only load today's operational data — not the full history
         try {
-          const hInventory = await fetchInventory();
-          const hAppointments = await fetchAppointments();
-          const hRecords = await fetchTodaysRecords();
-          const hInvoices = await fetchTodaysInvoices();
+          const [appts, recs, inv, invs, metrics, queue, fetchedPets, fetchedClients] = await Promise.all([
+            fetchAppointments(),
+            fetchMedicalRecords(),
+            fetchInventory(),
+            fetchInvoices(),
+            fetchShiftMetrics(),
+            fetchClinicQueue(),
+            fetchPets(),
+            fetchClients()
+          ]);
 
           const hShifts: any[] = [];
           await db.shifts.iterate((value: any) => { if (value) hShifts.push(value); });
@@ -284,23 +309,22 @@ function App() {
           const hUsers: any[] = [];
           await db.users.iterate((value: any) => { if (value) hUsers.push(value); });
 
-          const hClinicQueue: ClinicQueueItem[] = [];
-          await db.clinicQueue.iterate((value: any) => { if (value) hClinicQueue.push(value); });
-
           const hActiveShift = await db.system.getItem('active_shift') || null;
           const hConfig = await db.system.getItem('config');
 
           if (isMounted) {
-            setInventory(Array.isArray(hInventory) ? hInventory as any : []);
-            setAppointments(Array.isArray(hAppointments) ? hAppointments as any : []);
-            setRecords(Array.isArray(hRecords) ? hRecords as any : []);
-            setInvoices(Array.isArray(hInvoices) ? hInvoices as any : []);
+            setInventory(Array.isArray(inv) ? inv as any : []);
+            setAppointments(Array.isArray(appts) ? appts as any : []);
+            setRecords(Array.isArray(recs) ? recs as any : []);
+            setInvoices(Array.isArray(invs) ? invs as any : []);
             setShiftLogs(Array.isArray(hShifts) ? hShifts as any : []);
             setSyncQueue(Array.isArray(hSyncQueue) ? hSyncQueue as any : []);
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
-            setClinicQueue(Array.isArray(hClinicQueue) ? hClinicQueue as any : []);
+            setClinicQueue(Array.isArray(queue) ? queue as any : []);
+            setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
+            setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
             setActiveShift(hActiveShift as any);
 
             const cache: Record<string, string> = {};
@@ -484,14 +508,22 @@ function App() {
 
         // LIVING FLOOR: When appointment is checked-in (in-progress), add to clinic queue
         if (status === 'in-progress') {
+          // FIX 3: Look up the real Pet UUID by matching Name AND Owner Phone
+          const normalize = (p: string) => (p || '').replace(/\D/g, '');
+          const matchedPet = pets.find(p => {
+            if (p.name.toLowerCase() !== (apt.petName || '').trim().toLowerCase()) return false;
+            const client = clients.find(c => c.client_id === p.clientId);
+            if (!client) return false;
+            return normalize(client.primary_phone) === normalize(apt.ownerPhone) || client.primary_phone === apt.ownerPhone;
+          });
           const queueItem: ClinicQueueItem = {
             id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
-            petId: `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
+            petId: matchedPet ? matchedPet.id : `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
             petName: apt.petName,
             ownerName: apt.ownerName,
             ownerPhone: apt.ownerPhone,
             appointmentId: apt.id,
-            serviceType: apt.admissionType === 'Vaccination' ? 'Vaccine' : apt.admissionType === 'Pet Boarding' ? 'Boarding' : 'Examination',
+            serviceType: apt.admissionType === 'Vaccination' ? 'Vaccination' : apt.admissionType === 'Pet Boarding' ? 'Boarding' : apt.admissionType === 'Grooming Salon' ? 'Grooming' : 'Examination',
             checkInTime: new Date().toISOString(),
             status: 'active',
             assignedVet: apt.veterinarian
@@ -502,8 +534,8 @@ function App() {
 
         // FIXED: Remove from queue when appointment is completed or cancelled
         if (status === 'completed' || status === 'cancelled') {
-          const matchPetId = `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`;
-          const queueItem = clinicQueue.find(q => q.petId === matchPetId);
+          // FIX 3: Match by appointment ID first (reliable), then fallback to compound string
+          const queueItem = clinicQueue.find(q => q.appointmentId === apt.id);
           if (queueItem) {
             await removeFromClinicQueue(queueItem.id);
             setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
@@ -516,7 +548,7 @@ function App() {
         showToast(`Failed to update appointment status: ${error.message}`, 'error');
       }
     }
-  }, [appointments, clinicQueue]);
+  }, [appointments, clinicQueue, pets]);
 
   const handleAddRecord = useCallback(async (newRec: MedicalRecord) => {
     try {
@@ -555,9 +587,15 @@ function App() {
     }
   }, []);
 
+  // FIX 2: Update local state after DB write so UI reflects changes immediately
   const handleUpdateClient = useCallback(async (client: any) => {
     try {
       await upsertClient(client);
+      setClients(prev => {
+        const exists = prev.some(c => c.client_id === client.client_id);
+        if (exists) return prev.map(c => c.client_id === client.client_id ? client : c);
+        return [...prev, client];
+      });
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
@@ -590,7 +628,7 @@ function App() {
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, []);
+  }, [systemConfig]);
 
   const handleDeleteRecord = useCallback(async (id: string) => {
     const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
@@ -605,7 +643,7 @@ function App() {
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, []);
+  }, [systemConfig]);
 
   // MISSION 2 FIX: Iterates IndexedDB directly instead of stale React state arrays.
   // This ensures ALL historical records are updated, not just today's in-memory subset.
@@ -639,10 +677,10 @@ function App() {
       await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
       await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
 
-      // Refresh today's state to reflect any changes
-      setAppointments(await fetchAppointments());
-      setRecords(await fetchTodaysRecords());
-      setInvoices(await fetchTodaysInvoices());
+      // Refresh state without destructive fetches
+      setAppointments(prev => prev.map(a => aptUpdates.find(u => u.id === a.id) || a));
+      setRecords(prev => prev.map(r => recUpdates.find(u => u.id === r.id) || r));
+      setInvoices(prev => prev.map(i => invUpdates.find(u => u.id === i.id) || i));
     } catch (error: any) {
       console.error('[CeylonPets] Customer update failed:', error);
       showToast(`Failed to update customer across records: ${error.message}`, 'error');
@@ -660,7 +698,7 @@ function App() {
       });
       if (toUpdate.length === 0) return;
       await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
-      setRecords(await fetchTodaysRecords());
+      setRecords(prev => prev.map(r => toUpdate.find(u => u.id === r.id) || r));
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
@@ -673,8 +711,7 @@ function App() {
   const handleAddInvoice = useCallback(async (invoice: any) => {
     try {
       await upsertInvoice(invoice);
-      const updated = await fetchTodaysInvoices();
-      setInvoices(updated);
+      setInvoices(prev => [invoice, ...prev]);
 
       // Remove patient from clinic queue after checkout
       if (invoice.patientId && invoice.patientId !== 'RETAIL') {
@@ -704,39 +741,57 @@ function App() {
       return;
     }
     try {
+      // FIX 4: Use functional state update instead of destructive re-fetch
       const target = await db.invoices.getItem<Invoice>(id);
       if (target) {
         const voided = { ...target, paymentStatus: 'void' as const };
         await upsertInvoice(voided);
-        setInvoices(await fetchTodaysInvoices());
+        setInvoices(prev => {
+          const exists = prev.some(i => i.id === id);
+          if (exists) return prev.map(i => i.id === id ? voided : i);
+          return [voided, ...prev];
+        });
       }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, []);
+  }, [systemConfig]);
 
   // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
   // BUG #1 FIX: Removed outer globalMutex.lock() — atomicStockDecrement already
   // acquires the mutex internally. Double-locking caused a deadlock that froze checkout.
+  // FIX 4: Use functional state updates instead of destructive re-fetches
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
     try {
       await upsertInvoice(invoice);
-      const updatedInvoices = await fetchTodaysInvoices();
-      setInvoices(updatedInvoices);
+      setInvoices(prev => [invoice, ...prev]);
 
       for (const cartItem of cart) {
         if (!['service', 'lab_service'].includes(cartItem.category)) {
-          await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
+          const newStock = await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
+          setInventory(prev => prev.map(item => item.id === cartItem.id ? { ...item, stock: newStock } : item));
         }
       }
-      const updatedInv = await fetchInventory();
-      setInventory(updatedInv);
+
+      // Sync appointment status if linked
+      if (invoice.appointmentId) {
+        setAppointments(prev => prev.map(a => a.id === invoice.appointmentId ? { ...a, status: 'completed' as const, updated_at: new Date().toISOString() } : a));
+      }
+
+      // Remove patient from clinic queue after checkout
+      if (invoice.patientId && invoice.patientId !== 'RETAIL') {
+        const queueItem = clinicQueue.find(q => q.petId === invoice.patientId);
+        if (queueItem) {
+          await removeFromClinicQueue(queueItem.id);
+          setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+        }
+      }
     } catch (error: any) {
       console.error('Checkout failed:', error);
       showToast(`Checkout Error: ${error.message}`, 'error');
-      throw error; // Rethrow so POSRegister knows it failed
+      throw error;
     }
-  }, []);
+  }, [clinicQueue]);
 
   const handlePurgeDatabases = useCallback(async () => {
     try {
@@ -750,6 +805,12 @@ function App() {
       await db.users.clear();
       await db.clients.clear();
       await db.clinicQueue.clear();
+      // FIX 5: Clear all new relational stores that were missed
+      await db.pets.clear();
+      await db.vaccinations.clear();
+      await db.labResults.clear();
+      await db.groomingLogs.clear();
+      await db.boardingRecords.clear();
       localStorage.clear(); sessionStorage.clear();
       window.location.reload();
     } catch (error: any) {
@@ -846,27 +907,29 @@ function App() {
         return (
           <POSRegister
             inventory={inventory} 
-            appointments={appointments} // ADD THIS LINE
+            appointments={appointments}
             records={records}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
             onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
             onVerifyMasterPin={handleVerifyMasterPin} onTriggerInventorySync={async () => { }}
             activeShift={activeShift} incomingClient={viewPayload?.client ? { phone: viewPayload.client.primary_phone || '', name: viewPayload.client.full_name || '', id: viewPayload.client.client_id || '' } : null}
             onUpdateRecord={handleUpdateRecord}
+            onAtomicCheckout={handleAtomicCheckout}
           />
         );
       }
       case 'appointments': return <AppointmentsManager appointments={appointments} records={records} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
-      case 'boarding': return <BoardingManager records={records} onUpdateRecord={handleUpdateRecord} />;
-      case 'grooming': return <GroomingManager records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} />;
+      case 'boarding': return <BoardingManager clients={clients} pets={pets} records={records} onUpdateRecord={handleUpdateRecord} />;
+      case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shifts.setItem(log.id, log); setShiftLogs(prev => [log, ...prev]); }} />;
       case 'dashboard':
-        return <DashboardAnalytics inventory={inventory} appointments={appointments} activeShift={activeShift} onNavigate={(tab) => { setViewPayload(null); setActiveView(tab); setHistoryStack(prev => [...prev, tab]); }} />;
+        // FIX 8: Pass activeShift and onNavigate props
+        return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
         return <ReportsManager />;
-      case 'examinations': return <MedicalRecordsManager clinicQueue={clinicQueue} records={records} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
+      case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
         return (
@@ -916,10 +979,11 @@ function App() {
           />
         );
       }
-      case 'pets': return <PatientPortal records={records} appointments={appointments} clinicQueue={clinicQueue} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
-      case 'vaccinations': return <VaccinationsManager records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
-      case 'laboratory': return <LaboratoryManager records={records} inventory={inventory as any} onUpdateRecord={handleUpdateRecord} />;
-      case 'customers': return <CustomersManager records={records} invoices={invoices} appointments={appointments} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
+      case 'pets': return <PatientPortal clients={clients} pets={pets} records={records} appointments={appointments} clinicQueue={clinicQueue} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
+      case 'vaccinations': return <VaccinationsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
+      // FIX 8: Pass appointments prop to Lab
+      case 'laboratory': return <LaboratoryManager clients={clients} pets={pets} records={records} inventory={inventory as any} appointments={appointments} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} />;
+      case 'customers': return <CustomersManager clients={clients} pets={pets} records={records} invoices={invoices} appointments={appointments} clinicQueue={clinicQueue} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       default: return null;
     }
   };
@@ -1082,9 +1146,10 @@ function App() {
                 {historyStack.length > 1 && (
                   <button
                     onClick={() => {
-                      const prev = historyStack[historyStack.length - 2];
-                      setHistoryStack(prev => prev.slice(0, -1));
-                      setActiveView(prev);
+                      // FIX 10: Renamed to avoid variable shadowing with setter callback
+                      const prevView = historyStack[historyStack.length - 2];
+                      setHistoryStack(s => s.slice(0, -1));
+                      setActiveView(prevView);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
                   >

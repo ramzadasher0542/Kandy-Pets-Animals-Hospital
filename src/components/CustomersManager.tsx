@@ -18,9 +18,12 @@ import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
 
 interface CustomersManagerProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
   invoices: Invoice[];
   appointments: Appointment[];
+  clinicQueue: any[];
   onGoToPOS?: (client: Client) => void;
   onGoToAppointments?: (client: Client, pet?: any) => void;
   onGoToRecords?: (patientId: string) => void;
@@ -33,9 +36,12 @@ interface CustomersManagerProps {
 }
 
 export default function CustomersManager({ 
+  clients,
+  pets,
   records, 
   invoices, 
   appointments,
+  clinicQueue,
   onGoToPOS,
   onGoToAppointments,
   onGoToRecords,
@@ -47,8 +53,6 @@ export default function CustomersManager({
   onUpdateClient
 }: CustomersManagerProps) {
   
-  const [clients, setClients] = useState<Client[]>([]);
-  const [pets, setPets] = useState<Pet[]>([]);
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -79,19 +83,8 @@ export default function CustomersManager({
     petName: '', petType: 'Canine' as PetClassification, breed: '', sex: 'Unknown', weight: 0, age: ''
   });
 
-  const loadClients = useCallback(async () => {
-    const data = await fetchClients();
-    setClients(data);
-    setPets(await fetchPets());
-    setVaccinations(await fetchVaccinations());
-    setLabResults(await fetchLabResults());
-  }, [records, appointments]);
-
-  useEffect(() => {
-    loadClients();
-  }, [loadClients]);
-
-  // BUG #12 FIX: When a client is selected, load ALL their records/invoices from IndexedDB
+  // MISSION 4 FIX: Load records securely using UUID foreign keys from the pre-loaded global props
+  // Completely eliminates O(N) DB table scans and dangerous phone number slicing.
   useEffect(() => {
     if (!selectedClientId) {
       setAllClientRecords([]);
@@ -100,26 +93,21 @@ export default function CustomersManager({
     }
     const selected = clients.find(c => c.client_id === selectedClientId);
     if (!selected) return;
-    const phone9 = normalizePhone(selected.primary_phone).slice(-9);
+    
+    const cPets = pets.filter(p => p.clientId === selected.client_id || selected.petIds?.includes(p.id));
+    const cPetIds = cPets.map(p => p.id);
 
-    (async () => {
-      const recs: MedicalRecord[] = [];
-      await db.records.iterate((v: any) => {
-        if (v && !Array.isArray(v) && !v.is_deleted && normalizePhone(v.ownerPhone || '').slice(-9) === phone9) {
-          recs.push(v);
-        }
-      });
-      setAllClientRecords(recs.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()));
+    const recs = records.filter(r => !r.is_deleted && cPetIds.includes(r.patientId));
+    setAllClientRecords(recs.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()));
 
-      const invs: Invoice[] = [];
-      await db.invoices.iterate((v: any) => {
-        if (v && !Array.isArray(v) && normalizePhone(v.ownerPhone || '').slice(-9) === phone9) {
-          invs.push(v);
-        }
-      });
-      setAllClientInvoices(invs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    })();
-  }, [selectedClientId, clients]);
+    // For invoices, if invoice.patientId matches one of the client's pets, or if phone matches (fallback)
+    const invs = invoices.filter(inv => {
+       if (inv.patientId && cPetIds.includes(inv.patientId)) return true;
+       if (selected.primary_phone && normalizePhone(inv.ownerPhone || '') === normalizePhone(selected.primary_phone)) return true;
+       return false;
+    });
+    setAllClientInvoices(invs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+  }, [selectedClientId, clients, pets, records, invoices]);
 
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
 
@@ -183,8 +171,6 @@ export default function CustomersManager({
       newClient.petIds = [newPetId];
       if (onUpdateClient) await onUpdateClient(newClient);
     }
-
-    await loadClients();
     setShowAddModal(false);
     setSelectedClientId(newClient.client_id);
     showToast('Client and Companion successfully registered.', 'success');
@@ -210,7 +196,6 @@ export default function CustomersManager({
     };
     
     if (onUpdateClient) await onUpdateClient(updatedClient);
-    await loadClients();
     
     if (onUpdateCustomer) onUpdateCustomer(oldPhone, formData.primary_phone, formData.full_name, formData.email_address);
     
@@ -256,7 +241,8 @@ export default function CustomersManager({
     };
 
     await upsertPet(updatedPet);
-    setPets(prev => prev.map(p => p.id === updatedPet.id ? updatedPet : p));
+    // @ts-ignore
+    if (props.onUpdatePet) props.onUpdatePet(activePet.id, updatedPet.name, updatedPet);
 
     setShowEditPetModal(false);
     showToast('Patient Identity synchronized across all medical records.', 'success');
@@ -266,11 +252,11 @@ export default function CustomersManager({
   // AGGREGATORS FOR CLIENT DASHBOARD
   // ---------------------------------------------------------
   // BUG #12 FIX: Use full historical data from DB, not today-only props
-  const clientPets = selectedClient && selectedClient.petIds ? pets.filter(p => selectedClient.petIds?.includes(p.id)) : [];
-  const petMap = new Map<string, any>();
+  const clientPets = selectedClient ? pets.filter(p => p.clientId === selectedClient.client_id || selectedClient.petIds?.includes(p.id)) : [];
+  const petMap = new Map<string, Pet & { patientId: string, petName: string }>();
   
   clientPets.forEach(p => {
-    petMap.set(p.id, { ...p, patientId: p.id });
+    petMap.set(p.id, { ...p, patientId: p.id, petName: p.name });
   });
   
   const uniqueClientPets = Array.from(petMap.values());
@@ -280,6 +266,48 @@ export default function CustomersManager({
   // =========================================================
   // VIEW BUILDERS
   // =========================================================
+
+  const renderActiveQueue = () => {
+    const activeQueue = clinicQueue?.filter(q => q.status === 'active') || [];
+    
+    if (activeQueue.length === 0) return null;
+
+    return (
+      <div className="p-4 border-b border-slate-100 bg-indigo-50/50 shrink-0">
+        <h3 className="text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5"/> Active Clinic Queue
+        </h3>
+        <div className="space-y-2">
+          {activeQueue.map(q => {
+            const pet = pets.find(p => p.id === q.petId);
+            const isSelected = pet && selectedClientId === pet.clientId;
+            return (
+              <div 
+                key={q.id}
+                onClick={() => {
+                  if (pet) {
+                    setSelectedClientId(pet.clientId);
+                    setSelectedPetId(q.petId);
+                  }
+                }}
+                className={`p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
+              >
+                <div className="flex justify-between items-center mb-1">
+                  <div className="font-bold text-sm truncate">{q.petName}</div>
+                  <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                    {q.serviceType}
+                  </div>
+                </div>
+                <div className={`text-[10px] font-medium ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>
+                  {q.ownerName}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const renderClientDashboard = () => {
     if (!selectedClient) return null;
@@ -348,20 +376,28 @@ export default function CustomersManager({
                 No active companions registered.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {uniqueClientPets.map(pet => (
-                  <div key={pet.patientId} onClick={() => setSelectedPetId(pet.patientId)} className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col justify-between h-full cursor-pointer relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-indigo-50 rounded-bl-full -z-10 transition-transform group-hover:scale-110"></div>
-                    <div>
-                      <div className="font-extrabold text-slate-800 text-sm">{pet.petName}</div>
-                      <div className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">
-                        {pet.petType} {pet.breed ? ' • ' + pet.breed : ''}
+                  <div 
+                    key={pet.patientId} 
+                    onClick={() => setSelectedPetId(pet.patientId)} 
+                    className="p-4 rounded-xl relative overflow-hidden bg-white border border-slate-200 group cursor-pointer transition-all hover:shadow-md hover:border-indigo-300"
+                  >
+                    
+                    <div className="relative z-10 flex flex-col h-full">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-md">{pet.petType}</div>
+                        <PawPrint className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
                       </div>
-                    </div>
-                    <div className="mt-4 flex gap-2 w-full z-10">
-                      <button className="flex-1 py-1.5 bg-indigo-600 text-white text-[10px] font-extrabold rounded-lg shadow-sm">
-                        Open Passport
-                      </button>
+                      <div className="font-bold text-slate-800 text-lg tracking-tight truncate">{pet.petName || pet.name}</div>
+                      <div className="text-xs font-semibold text-slate-500 truncate mb-1">{pet.breed || 'Unknown Breed'}</div>
+                      <div className="text-[10px] font-medium text-slate-400 truncate mb-4">Age: {pet.age || 'Unknown'}</div>
+                      
+                      <div className="mt-auto">
+                        <button className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-colors cursor-pointer border border-indigo-100 flex items-center justify-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5" /> Open Passport
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -704,6 +740,8 @@ export default function CustomersManager({
             />
           </div>
         </div>
+
+        {renderActiveQueue()}
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {filteredClients.map(c => {

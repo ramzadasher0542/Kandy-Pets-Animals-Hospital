@@ -8,20 +8,22 @@ import { createPortal } from 'react-dom';
 import { 
   Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock
 } from 'lucide-react';
-import { MedicalRecord, BoardingRecord, Pet } from '../types';
+import { MedicalRecord, BoardingRecord, Pet, Client } from '../types';
 import { showToast } from './Toast';
 import { fetchBoardingRecords, upsertBoardingRecord, fetchPets } from '../lib/db';
 
-interface BoardingManagerProps {
+interface BoardingProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
-  onUpdateRecord?: (record: MedicalRecord) => void;
+  onUpdateRecord: (record: MedicalRecord) => void;
 }
 
 const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ records, onUpdateRecord }: BoardingManagerProps) {
+export default function BoardingManager({ clients, pets = [], records, onUpdateRecord }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
@@ -33,22 +35,21 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
   // Guardrail State
   const [showDepositGuard, setShowDepositGuard] = useState(false);
 
-  const [pets, setPets] = useState<Pet[]>([]);
   const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
 
   React.useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
     fetchBoardingRecords().then(setBoardingRecords).catch(console.error);
   }, []);
 
   // Derive unique patients & active boarding map
   const { uniquePatients, activeBoardingMap } = useMemo(() => {
-    const cageMap = new Map<string, { boarding: BoardingRecord, pet: Pet | undefined }>();
+    const cageMap = new Map<string, { boarding: BoardingRecord, pet: Pet | undefined, ownerName: string }>();
 
     boardingRecords.forEach(b => {
       if (b.status === 'active') {
         const pet = pets.find(p => p.id === b.petId);
-        cageMap.set(b.cageNumber, { boarding: b, pet });
+        const client = pet ? clients.find(c => c.client_id === pet.clientId) : null;
+        cageMap.set(b.cageNumber, { boarding: b, pet, ownerName: client ? client.full_name : 'Unknown Owner' });
       }
     });
 
@@ -56,23 +57,23 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
       uniquePatients: pets,
       activeBoardingMap: cageMap
     };
-  }, [boardingRecords, pets]);
+  }, [boardingRecords, pets, clients]);
 
-  // FIXED: Discharge handler
+  const [dischargeModalCage, setDischargeModalCage] = useState<string | null>(null);
+
   const handleDischarge = async (cage: string) => {
     const occupant = activeBoardingMap.get(cage);
     if (!occupant || !occupant.boarding) return;
-    const petName = occupant.pet?.name || 'Unknown';
-    if (!window.confirm(`Discharge ${petName} from ${cage}? This will free the cage.`)) return;
-
+    
     const updatedBoarding: BoardingRecord = {
       ...occupant.boarding,
       status: 'discharged'
     };
     await upsertBoardingRecord(updatedBoarding);
     setBoardingRecords(prev => prev.map(b => b.id === updatedBoarding.id ? updatedBoarding : b));
-    showToast(`${petName} discharged from ${cage}. Cage is now available.`, 'success');
+    showToast(`${occupant.pet?.name || 'Unknown'} discharged from ${cage}. Cage is now available.`, 'success');
     setSelectedCage(null);
+    setDischargeModalCage(null);
   };
 
   const handleOpenGuard = (e: React.FormEvent) => {
@@ -100,8 +101,8 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
     const boardingDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 
     const billingItems = [
-      { itemId: 'boarding_deposit', name: '[DEPOSIT] Admission Hold', dosage: '1', quantity: 1 },
-      { itemId: 'boarding_rate', name: `[BOARDING] Base Rate (${boardingDays} Day${boardingDays > 1 ? 's' : ''})`, dosage: `${boardingDays} Day${boardingDays > 1 ? 's' : ''}`, quantity: boardingDays }
+      { itemId: 'boarding_deposit', name: '[DEPOSIT] Admission Hold', dosage: 'N/A', quantity: 1 },
+      { itemId: 'boarding_rate', name: `[BOARDING] Base Rate (${boardingDays} Day${boardingDays > 1 ? 's' : ''})`, dosage: 'N/A', quantity: boardingDays }
     ];
 
     const newBoardingInfo: BoardingRecord = {
@@ -154,13 +155,21 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 
                 if (occupant) {
                   return (
-                    <div key={cage} className="p-3 border-2 border-rose-200 bg-rose-50 rounded-xl relative overflow-hidden">
-                      <div className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">{cage}</div>
-                      <div className="font-extrabold text-slate-800 text-sm truncate">{occupant.petName}</div>
-                      <div className="text-[10px] font-bold text-slate-500 truncate">{occupant.ownerName}</div>
-                      <button onClick={() => handleDischarge(cage)} className="mt-2 w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Discharge</button>
-                      <div className="absolute top-0 right-0 w-8 h-8 bg-rose-100 flex items-center justify-center rounded-bl-xl">
-                        <Lock className="w-3 h-3 text-rose-500" />
+                    <div key={cage} className="p-4 rounded-2xl relative overflow-hidden bg-gradient-to-br from-rose-500 to-rose-700 shadow-lg border border-rose-400 group">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none group-hover:scale-110 transition-transform duration-500"></div>
+                      <div className="absolute bottom-0 left-0 w-16 h-16 bg-black/10 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none"></div>
+                      
+                      <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="text-[10px] font-black text-rose-100 uppercase tracking-widest bg-black/20 px-2 py-1 rounded-md backdrop-blur-sm border border-white/10">{cage}</div>
+                          <Lock className="w-4 h-4 text-rose-200" />
+                        </div>
+                        <div className="font-black text-white text-lg tracking-tight truncate drop-shadow-sm">{occupant.pet?.name || 'Unknown Pet'}</div>
+                        <div className="text-xs font-bold text-rose-100 truncate opacity-90">{occupant.pet?.breed || 'Unknown Breed'}</div>
+                        <div className="text-[10px] font-bold text-rose-200 truncate mt-0.5">Owner: {occupant.ownerName || 'Unknown'}</div>
+                        <div className="mt-auto pt-3">
+                          <button onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg">Discharge</button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -169,11 +178,15 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 return (
                   <div 
                     key={cage} onClick={() => setSelectedCage(cage)}
-                    className={`p-3 border-2 rounded-xl transition-all cursor-pointer ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md transform scale-[1.02]' : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'}`}
+                    className={`p-4 rounded-2xl transition-all cursor-pointer relative overflow-hidden group ${isSelected ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-xl border-indigo-400 scale-[1.02] text-white' : 'bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 hover:shadow-md hover:border-emerald-300'}`}
                   >
-                    <div className="text-[9px] font-black text-emerald-700 uppercase tracking-widest mb-1">{cage}</div>
-                    <div className="font-extrabold text-emerald-900 text-sm flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Empty</div>
-                    <div className="text-[10px] font-bold text-emerald-600 opacity-70">Ready for admission</div>
+                    <div className={`absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-8 -mt-8 pointer-events-none transition-transform duration-500 group-hover:scale-110 ${isSelected ? 'bg-white/20' : 'bg-emerald-200/50'}`}></div>
+                    
+                    <div className="relative z-10 flex flex-col h-full">
+                      <div className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isSelected ? 'text-indigo-100' : 'text-emerald-600'}`}>{cage}</div>
+                      <div className={`font-black text-lg flex items-center gap-1.5 ${isSelected ? 'text-white' : 'text-emerald-900'}`}><CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-indigo-200' : 'text-emerald-500'}`} /> Empty</div>
+                      <div className={`text-xs font-bold mt-1 ${isSelected ? 'text-indigo-200' : 'text-emerald-600/70'}`}>Ready for admission</div>
+                    </div>
                   </div>
                 );
               })}
@@ -190,13 +203,21 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 
                 if (occupant) {
                   return (
-                    <div key={cage} className="p-3 border-2 border-rose-200 bg-rose-50 rounded-xl relative overflow-hidden">
-                      <div className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">{cage}</div>
-                      <div className="font-extrabold text-slate-800 text-sm truncate">{occupant.petName}</div>
-                      <div className="text-[10px] font-bold text-slate-500 truncate">{occupant.ownerName}</div>
-                      <button onClick={() => handleDischarge(cage)} className="mt-2 w-full py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Discharge</button>
-                      <div className="absolute top-0 right-0 w-8 h-8 bg-rose-100 flex items-center justify-center rounded-bl-xl">
-                        <Lock className="w-3 h-3 text-rose-500" />
+                    <div key={cage} className="p-4 rounded-2xl relative overflow-hidden bg-gradient-to-br from-rose-500 to-rose-700 shadow-lg border border-rose-400 group">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none group-hover:scale-110 transition-transform duration-500"></div>
+                      <div className="absolute bottom-0 left-0 w-16 h-16 bg-black/10 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none"></div>
+                      
+                      <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="text-[10px] font-black text-rose-100 uppercase tracking-widest bg-black/20 px-2.5 py-1 rounded-md backdrop-blur-sm border border-white/10 shadow-sm">{cage}</div>
+                          <Lock className="w-5 h-5 text-rose-200 drop-shadow-sm" />
+                        </div>
+                        <div className="font-black text-white text-xl tracking-tight truncate drop-shadow-md">{occupant.pet?.name || 'Unknown Pet'}</div>
+                        <div className="text-xs font-bold text-rose-100 truncate mb-1 opacity-90 drop-shadow-sm">{occupant.pet?.breed || 'Unknown Breed'}</div>
+                        <div className="text-[10px] font-bold text-white/80 bg-black/20 px-2 py-0.5 rounded-full inline-block mb-3 border border-white/10 w-max mt-1">Owner: {occupant.ownerName}</div>
+                        <div className="mt-auto">
+                          <button onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg">Discharge</button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -205,10 +226,15 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 return (
                   <div 
                     key={cage} onClick={() => setSelectedCage(cage)}
-                    className={`p-3 border-2 rounded-xl transition-all cursor-pointer ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-md transform scale-[1.02]' : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100'}`}
+                    className={`p-4 rounded-2xl transition-all cursor-pointer relative overflow-hidden group ${isSelected ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-xl border-indigo-400 scale-[1.02] text-white' : 'bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 hover:shadow-md hover:border-emerald-300'}`}
                   >
-                    <div className="text-[9px] font-black text-emerald-700 uppercase tracking-widest mb-1">{cage}</div>
-                    <div className="font-extrabold text-emerald-900 text-sm flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Empty</div>
+                    <div className={`absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-8 -mt-8 pointer-events-none transition-transform duration-500 group-hover:scale-110 ${isSelected ? 'bg-white/20' : 'bg-emerald-200/50'}`}></div>
+                    
+                    <div className="relative z-10 flex flex-col h-full">
+                      <div className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isSelected ? 'text-indigo-100' : 'text-emerald-600'}`}>{cage}</div>
+                      <div className={`font-black text-lg flex items-center gap-1.5 ${isSelected ? 'text-white' : 'text-emerald-900'}`}><CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-indigo-200' : 'text-emerald-500'}`} /> Empty</div>
+                      <div className={`text-xs font-bold mt-1 ${isSelected ? 'text-indigo-200' : 'text-emerald-600/70'}`}>Ready for admission</div>
+                    </div>
                   </div>
                 );
               })}
@@ -238,18 +264,25 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               
               <div className="space-y-4">
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block">Select Patient *</label>
-                  <select 
-                    value={selectedPatientId} 
-                    onChange={e => setSelectedPatientId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  >
-                    <option value="">-- Select Patient --</option>
+                  <input 
+                    type="text"
+                    list="patient-list"
+                    value={selectedPatientId ? uniquePatients.find(p => p.id === selectedPatientId)?.name : ''}
+                    onChange={(e) => {
+                      const selected = uniquePatients.find(p => p.name === e.target.value);
+                      if (selected) setSelectedPatientId(selected.id);
+                      else setSelectedPatientId('');
+                    }}
+                    placeholder="Search by Patient Name..."
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-all"
+                  />
+                  <datalist id="patient-list">
                     {uniquePatients.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.breed})</option>
+                      <option key={p.id} value={p.name}>{p.breed}</option>
                     ))}
-                  </select>
+                  </datalist>
                 </div>
 
                 <div className="space-y-2">
@@ -326,6 +359,26 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
             <div className="flex gap-2 pt-2">
               <button onClick={() => setShowDepositGuard(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
               <button onClick={handleConfirmBooking} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors">Collect & Lock Cage</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL: Discharge Confirmation */}
+      {dischargeModalCage && createPortal(
+        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDischargeModalCage(null)}>
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-6 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><CheckCircle2 className="w-10 h-10" /></div>
+            
+            <div>
+              <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Confirm Discharge</h3>
+              <p className="text-slate-500 text-xs font-semibold mt-2 px-2">Are you sure you want to discharge {activeBoardingMap.get(dischargeModalCage)?.pet?.name || 'this patient'} from {dischargeModalCage}? This will free the cage immediately.</p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setDischargeModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+              <button onClick={() => handleDischarge(dischargeModalCage)} className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Confirm Discharge</button>
             </div>
           </div>
         </div>,

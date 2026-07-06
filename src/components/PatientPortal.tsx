@@ -9,12 +9,14 @@ import {
   Search, PawPrint, Activity, HeartPulse, TestTube, Syringe, 
   Edit2, CheckCircle2, X, User, PenTool, Database, Clock, AlertTriangle
 } from 'lucide-react';
-import { MedicalRecord, PetClassification, Appointment, Pet, Vaccination, LabResult } from '../types';
+import { MedicalRecord, Appointment, Pet, Vaccination, LabResult, Client, PetClassification } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { fetchPets, fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
+import { fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
 
 interface PatientPortalProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
   appointments?: Appointment[]; 
   onUpdateRecord?: (record: MedicalRecord) => void;
@@ -34,9 +36,18 @@ interface PatientPortalProps {
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
 export default function PatientPortal({ 
+  clients,
+  pets,
   records, 
   appointments,
   clinicQueue,
+  onBookAppointment,
+  systemConfig,
+  viewPayload,
+  onAddRecord,
+  onGoToCustomers,
+  onGoToAppointments,
+  onUpdatePet,
   onUpdateRecord, 
   onUpdateRecordsBulk,
   onGoToRecords, 
@@ -47,12 +58,10 @@ export default function PatientPortal({
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [passportTab, setPassportTab] = useState<'timeline' | 'exams' | 'labs' | 'vaccines'>('timeline');
 
-  const [pets, setPets] = useState<Pet[]>([]);
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
   const [labResults, setLabResults] = useState<LabResult[]>([]);
 
   useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
     fetchVaccinations().then(setVaccinations).catch(console.error);
     fetchLabResults().then(setLabResults).catch(console.error);
   }, []);
@@ -68,43 +77,27 @@ export default function PatientPortal({
   const displayPets = useMemo(() => {
     const petMap = new Map<string, any>();
 
-    records.forEach(r => {
-      if (!petMap.has(r.patientId) || new Date(r.visitDate) > new Date(petMap.get(r.patientId).visitDate)) {
-        const p = pets.find(pet => pet.id === r.patientId);
-        petMap.set(r.patientId, {
-          patientId: r.patientId,
-          petName: p?.name || 'Unknown',
-          petType: p?.petType || 'Canine',
-          breed: p?.breed || '',
-          weight: p?.weight || 0,
-          sex: p?.sex || 'Unknown',
-          ownerName: r.ownerName,
-          ownerPhone: r.ownerPhone,
-          visitDate: r.visitDate,
-          source: 'record'
-        });
-      }
-    });
+    // MISSION 3 FIX: Map from global pets array to guarantee 100% visibility of all registered pets
+    // instead of only pets with existing medical records.
+    pets.forEach(p => {
+      const owner = clients.find(c => c.client_id === p.clientId);
+      
+      // Find latest record for visitDate sorting
+      const petRecords = records.filter(r => r.patientId === p.id);
+      const latestRecord = petRecords.length > 0 ? petRecords.sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime())[0] : null;
 
-    // FIXED: Only add checked-in (in-progress) appointments to pet map
-    // Booked appointments = pet hasn't arrived yet, don't pollute the portal
-    (appointments || []).forEach(a => {
-      if (a.status !== 'in-progress') return;
-      const pid = `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}`;
-      if (!petMap.has(pid)) {
-        petMap.set(pid, {
-          patientId: pid,
-          petName: a.petName,
-          petType: a.petType,
-          breed: a.breed,
-          weight: a.weight,
-          sex: a.sex,
-          ownerName: a.ownerName,
-          ownerPhone: a.ownerPhone,
-          visitDate: a.date,
-          source: 'appointment'
-        });
-      }
+      petMap.set(p.id, {
+        patientId: p.id,
+        petName: p.name || 'Unknown',
+        petType: p.petType || 'Canine',
+        breed: p.breed || '',
+        weight: p.weight || 0,
+        sex: p.sex || 'Unknown',
+        ownerName: owner ? owner.full_name : 'Unknown Owner',
+        ownerPhone: owner ? owner.primary_phone : '',
+        visitDate: latestRecord ? latestRecord.visitDate : (p.created_at || new Date().toISOString()),
+        source: 'database'
+      });
     });
 
     let activeList = Array.from(petMap.values());
@@ -126,13 +119,14 @@ export default function PatientPortal({
     }
 
     return activeList.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
-  }, [records, appointments, showQueueOnly, searchQuery, todayStr, pets]);
+  }, [pets, clients, records, showQueueOnly, clinicQueue, searchQuery, todayStr]);
 
   const petRecords = selectedPatientId 
     ? records.filter(r => r.patientId === selectedPatientId).sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()) 
     : [];
   
   const activePet = selectedPatientId ? pets.find(p => p.id === selectedPatientId) : null;
+  const activeDisplayPet = selectedPatientId ? displayPets.find(p => p.patientId === selectedPatientId) : null;
 
   const allPetLabs = selectedPatientId ? labResults.filter(l => l.petId === selectedPatientId) : [];
   const allPetVax = selectedPatientId ? vaccinations.filter(v => v.petId === selectedPatientId) : [];
@@ -166,7 +160,7 @@ export default function PatientPortal({
     };
 
     await upsertPet(updatedPet);
-    setPets(prev => prev.map(p => p.id === updatedPet.id ? updatedPet : p));
+    if (onUpdatePet) onUpdatePet(activePet.id, updatedPet.name, updatedPet);
 
     setShowEditPetModal(false);
     showToast('Patient Identity synchronized across all medical records.', 'success');
@@ -231,13 +225,13 @@ export default function PatientPortal({
             <div className="bg-white border-b border-slate-200 shrink-0 shadow-sm z-10">
               <div className="px-6 py-4 flex items-center justify-end border-b border-slate-100 bg-slate-50/50">
                 <div className="flex gap-2">
-                   {onGoToRecords && petRecords.length > 0 && (
-                     <button onClick={() => onGoToRecords(activePet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                   {onGoToRecords && petRecords.length > 0 && activeDisplayPet && (
+                     <button onClick={() => onGoToRecords(activeDisplayPet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                        <Activity className="w-3.5 h-3.5"/> Open Current E.H.R
                      </button>
                    )}
-                   {onGenerateConsent && (
-                     <button onClick={() => onGenerateConsent(activePet.ownerName, activePet.petName)} className="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                   {onGenerateConsent && activeDisplayPet && (
+                     <button onClick={() => onGenerateConsent(activeDisplayPet.ownerName, activePet.name)} className="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                        <PenTool className="w-3.5 h-3.5"/> Sign Waiver
                      </button>
                    )}
@@ -258,7 +252,7 @@ export default function PatientPortal({
                       <span>{activePet.petType}</span>
                       {activePet.breed && <><span className="w-1 h-1 rounded-full bg-slate-300"></span><span>{activePet.breed}</span></>}
                       <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                      <span className="flex items-center gap-1"><User className="w-3 h-3"/> {activePet.ownerName}</span>
+                      <span className="flex items-center gap-1"><User className="w-3 h-3"/> {activeDisplayPet?.ownerName || 'Unknown'}</span>
                     </div>
                   </div>
                 </div>

@@ -9,12 +9,14 @@ import {
   Search, Activity, Edit2, CheckCircle2, X, 
   HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock
 } from 'lucide-react';
-import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment, Pet } from '../types';
+import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment, Pet, Client } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 import { fetchPaginatedRecords, fetchPets } from '../lib/db';
 
 interface RecordsProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
   inventory: InventoryItem[];
   appointments?: Appointment[];
@@ -69,17 +71,12 @@ const SYSTEM_LABELS: Record<keyof PhysicalExamination, string> = {
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function MedicalRecordsManager({ records, inventory, appointments, clinicQueue, onAddRecord, onUpdateRecord }: RecordsProps) {
+export default function MedicalRecordsManager({ clients, pets, records, inventory, appointments, clinicQueue, systemConfig, viewPayload, onAddRecord, onUpdateRecord, onUpdateRecordsBulk }: RecordsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showQueueOnly, setShowQueueOnly] = useState(true); // Default to Queue
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
   const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'treatment' | 'pharmacy'>('vitals');
-  const [pets, setPets] = useState<Pet[]>([]);
-
-  useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
-  }, []);
 
   // Form State
   const [vitals, setVitals] = useState<Vitals>({});

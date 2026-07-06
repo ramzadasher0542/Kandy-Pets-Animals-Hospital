@@ -61,7 +61,7 @@ export interface Appointment {
   veterinarian: string; 
   reason: string; 
   status: AppointmentStatus; 
-  admissionType?: 'OPD' | 'Pet Boarding' | 'Hospital Admission' | 'Vaccination'; 
+  admissionType?: 'OPD' | 'Pet Boarding' | 'Hospital Admission' | 'Vaccination' | 'Grooming Salon'; 
   assignedVet?: string; 
   created_at?: string; 
   updated_at?: string; 

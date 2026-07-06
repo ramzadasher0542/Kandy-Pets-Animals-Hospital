@@ -5,61 +5,59 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, Syringe, ShieldCheck, Activity, User, ShieldAlert, PawPrint } from 'lucide-react';
-import { MedicalRecord, InventoryItem, Pet, Vaccination } from '../types';
+import { MedicalRecord, InventoryItem, Pet, Vaccination, ClinicQueueItem, Client } from '../types';
 import { showToast } from './Toast';
 import { fetchPets, fetchVaccinations, upsertVaccination } from '../lib/db';
 
 interface VaccinationsProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
   inventory: InventoryItem[];
-  onUpdateRecord?: (record: MedicalRecord) => void;
-  onUpdateStock?: (itemId: string, qtyDelta: number) => Promise<void>;
+  clinicQueue?: ClinicQueueItem[];
+  onUpdateRecord: (record: MedicalRecord) => void;
+  onUpdateStock: (itemId: string, qtyDelta: number) => Promise<void>;
 }
 
-export default function VaccinationsManager({ records, inventory, onUpdateRecord, onUpdateStock }: VaccinationsProps) {
+export default function VaccinationsManager({ clients, pets, records, inventory, clinicQueue = [], onUpdateRecord, onUpdateStock }: VaccinationsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [pets, setPets] = useState<Pet[]>([]);
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
 
   React.useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
     fetchVaccinations().then(setVaccinations).catch(console.error);
   }, []);
 
   const vaccineInventory = useMemo(() => inventory.filter(i => i.category === 'vaccine'), [inventory]);
 
-  const uniquePatients = useMemo(() => {
-    const patientMap = new Map<string, MedicalRecord>();
-    records.forEach(r => {
-      if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId)!.visitDate)) {
-        patientMap.set(r.patientId, r);
-      }
+  const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
+
+  const filteredPatients = useMemo(() => {
+    return pets.map(p => {
+      const client = clients.find(c => c.client_id === p.clientId);
+      return {
+        patientId: p.id,
+        pet: p,
+        ownerName: client?.full_name || 'Unknown',
+        ownerPhone: client?.primary_phone || ''
+      };
+    }).filter(p => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (p.pet?.name || 'Unknown').toLowerCase().includes(q) || 
+             p.ownerName.toLowerCase().includes(q) || 
+             normalizePhone(p.ownerPhone).includes(normalizePhone(q));
     });
-    return Array.from(patientMap.values());
-  }, [records]);
+  }, [pets, clients, searchQuery]);
 
-  const normalizePhone = (p: string) => p.replace(/\D/g, '');
-
-  const filteredPatients = uniquePatients.map(r => {
-    const pet = pets.find(p => p.id === r.patientId);
-    return { ...r, pet };
-  }).filter(p => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (p.pet?.name || 'Unknown').toLowerCase().includes(q) || 
-           p.ownerName.toLowerCase().includes(q) || 
-           normalizePhone(p.ownerPhone).includes(normalizePhone(q));
-  });
-
-  const selectedRecord = filteredPatients.find(p => p.patientId === selectedPatientId);
-  const selectedPet = pets.find(p => p.id === selectedPatientId);
+  const selectedPatient = filteredPatients.find(p => p.patientId === selectedPatientId);
+  const selectedPet = selectedPatient?.pet;
   
   // Flatten all historical vaccinations for the active passport
   const historicalVaccines = selectedPatientId ? vaccinations.filter(v => v.petId === selectedPatientId).sort((a, b) => new Date(b.dateAdministered).getTime() - new Date(a.dateAdministered).getTime()) : [];
 
   const handleAdminister = async (vaccine: InventoryItem) => {
-    if (!selectedRecord) return;
+    if (!selectedPatient) return;
     if (vaccine.stock <= 0) {
       showToast('Cannot administer: Out of stock.', 'error');
       return;
@@ -89,6 +87,42 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
     showToast(`${vaccine.name} administered & billed to POS.`, 'success');
   };
 
+  const renderActiveQueue = () => {
+    const activeQueue = clinicQueue.filter(q => 
+      (q.serviceType === 'Vaccination' || q.serviceType === 'vaccination') && 
+      q.status === 'active'
+    );
+    
+    if (activeQueue.length === 0) return null;
+
+    return (
+      <div className="p-4 border-b border-slate-100 bg-emerald-50/50 shrink-0">
+        <h3 className="text-[10px] font-black text-emerald-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5"/> Active Vaccination Queue
+        </h3>
+        <div className="space-y-2">
+          {activeQueue.map(q => (
+            <div 
+              key={q.id}
+              onClick={() => setSelectedPatientId(q.petId)}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-emerald-600 border-emerald-700 text-white shadow-md' : 'bg-white border-emerald-100 hover:border-emerald-300 shadow-sm'}`}
+            >
+              <div className="flex justify-between items-center mb-1">
+                <div className="font-bold text-sm truncate">{q.petName}</div>
+                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                  Waiting
+                </div>
+              </div>
+              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-emerald-200' : 'text-slate-500'}`}>
+                {q.ownerName}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full w-full gap-4 overflow-hidden" id="vaccinations-module-container">
       
@@ -110,6 +144,8 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
           </div>
         </div>
 
+        {renderActiveQueue()}
+
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {filteredPatients.map(patient => (
             <div 
@@ -128,7 +164,7 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
 
       {/* RIGHT PANE: Vaccine Passport */}
       <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
-        {!selectedRecord ? (
+        {!selectedPatient ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
             <Syringe className="h-12 w-12 text-slate-300 mb-3" />
             <h3 className="text-sm font-extrabold text-slate-500">Select a Patient</h3>
@@ -141,7 +177,7 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
                 <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center border border-emerald-200"><PawPrint className="w-6 h-6 text-emerald-600" /></div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800 tracking-tight">{selectedPet?.name || 'Unknown'}'s Immunization Profile</h2>
-                  <p className="text-xs font-bold text-slate-500 mt-0.5">{selectedRecord.ownerName} • {selectedRecord.ownerPhone}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-0.5">{selectedPatient.ownerName} • {selectedPatient.ownerPhone}</p>
                 </div>
               </div>
             </div>

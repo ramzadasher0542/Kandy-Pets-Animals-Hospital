@@ -1,15 +1,19 @@
 import React from 'react';
 import { Activity, Clock, Users, AlertTriangle, PackageX, Calendar, CreditCard, ChevronRight } from 'lucide-react';
-import { Appointment, InventoryItem, ActiveShift } from '../types';
+import { Appointment, InventoryItem, ActiveShift, Invoice, MedicalRecord } from '../types';
 
 interface DashboardProps {
-  appointments?: Appointment[];
-  inventory?: InventoryItem[];
+  invoices: Invoice[];
+  records: MedicalRecord[];
+  inventory: InventoryItem[];
+  appointments: Appointment[];
   activeShift?: ActiveShift | null;
   onNavigate?: (tab: string) => void;
 }
 
 export default function DashboardAnalytics({ 
+  invoices = [],
+  records = [],
   appointments = [], 
   inventory = [], 
   activeShift = null, 
@@ -25,6 +29,11 @@ export default function DashboardAnalytics({
   const waiting = todaysAppointments.filter(a => a.status === 'booked'); // FIXED: was 'scheduled' which doesn't match AppointmentStatus type
   const inSession = todaysAppointments.filter(a => a.status === 'in-progress');
   const completed = todaysAppointments.filter(a => a.status === 'completed');
+
+  // FIX 6: Financial Calculations from invoices prop (was never computed before)
+  const todaysInvoices = invoices.filter(i => i.date?.startsWith(todayStr) && i.paymentStatus === 'paid');
+  const todaysRevenue = todaysInvoices.reduce((sum, i) => sum + (i.sales_total || 0), 0);
+  const todaysRecords = records.filter(r => r.visitDate?.startsWith(todayStr));
 
   // Inventory SOS (Items at or below minimum stock threshold)
   const lowStockItems = inventory.filter(item => !['service', 'lab_service'].includes(item.category) && item.stock <= item.minStock);
@@ -44,7 +53,7 @@ export default function DashboardAnalytics({
       <main className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
         
         {/* KPI Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Shift Status */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5 transition-all hover:shadow-md group">
             <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${activeShift ? 'bg-emerald-100' : 'bg-rose-100'}`}>
@@ -53,7 +62,20 @@ export default function DashboardAnalytics({
             <div>
               <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Active Register</h3>
               <div className={`text-xl font-black ${activeShift ? 'text-slate-800' : 'text-rose-600'}`}>
-                {activeShift ? activeShift.openedBy : 'REGISTER CLOSED'}
+                {activeShift ? activeShift.openedByName || activeShift.openedBy : 'REGISTER CLOSED'}
+              </div>
+            </div>
+          </div>
+
+          {/* Today's Revenue */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5 transition-all hover:shadow-md group">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 transition-transform group-hover:scale-110">
+              <CreditCard className="w-7 h-7 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Today's Revenue</h3>
+              <div className="text-xl font-black text-slate-800 font-mono">
+                {todaysRevenue.toLocaleString()} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">({todaysInvoices.length} txns)</span>
               </div>
             </div>
           </div>
@@ -66,7 +88,7 @@ export default function DashboardAnalytics({
             <div>
               <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Today's Traffic</h3>
               <div className="text-xl font-black text-slate-800 font-mono">
-                {todaysAppointments.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">Total Clients</span>
+                {todaysAppointments.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">Appointments</span>
               </div>
             </div>
           </div>

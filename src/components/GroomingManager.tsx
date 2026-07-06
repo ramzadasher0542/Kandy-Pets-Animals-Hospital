@@ -5,15 +5,17 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, Scissors, User, PawPrint, Activity, CheckSquare, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { MedicalRecord, InventoryItem, GroomingLog, ClinicQueueItem, Pet } from '../types';
+import { GroomingLog, MedicalRecord, Pet, InventoryItem, ClinicQueueItem, Client } from '../types';
 import { showToast } from './Toast';
 import { fetchPets, fetchGroomingLogs, upsertGroomingLog } from '../lib/db';
 
 interface GroomingProps {
+  clients: Client[];
+  pets: Pet[];
   records: MedicalRecord[];
   inventory: InventoryItem[];
-  clinicQueue: ClinicQueueItem[];
-  onUpdateRecord?: (record: MedicalRecord) => void;
+  clinicQueue?: ClinicQueueItem[];
+  onUpdateRecord: (record: MedicalRecord) => void;
 }
 
 const GROOMING_SERVICES = [
@@ -22,56 +24,50 @@ const GROOMING_SERVICES = [
   { category: 'Medical Add-Ons', items: ['Medicated Bath'] }
 ];
 
-export default function GroomingManager({ records, inventory, clinicQueue, onUpdateRecord }: GroomingProps) {
+export default function GroomingManager({ clients, pets, records, inventory, clinicQueue = [], onUpdateRecord }: GroomingProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'new_session' | 'history'>('new_session');
 
-  const [pets, setPets] = useState<Pet[]>([]);
   const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
 
   React.useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
     fetchGroomingLogs().then(setGroomingLogs).catch(console.error);
   }, []);
 
-  // Derive unique patients currently in the clinic queue for grooming, or fallback to search
-  const uniquePatients = useMemo(() => {
-    // 1. Get IDs of pets currently in the salon queue
+  const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
+
+  const filteredPatients = useMemo(() => {
     const salonQueuePatientIds = new Set(
       clinicQueue
         .filter(q => ['grooming', 'Grooming'].includes(q.serviceType || '') && q.status !== 'completed')
         .map(q => q.petId)
     );
 
-    const patientMap = new Map<string, MedicalRecord>();
-    records.forEach(r => {
-      // Only include them in the sidebar if they are in the queue OR if we are doing a manual search
-      if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId)!.visitDate)) {
-        if (salonQueuePatientIds.has(r.patientId) || searchQuery.length > 0) {
-          patientMap.set(r.patientId, r);
-        }
-      }
+    return pets.map(p => {
+      const client = clients.find(c => c.client_id === p.clientId);
+      return {
+        patientId: p.id,
+        pet: p,
+        ownerName: client?.full_name || 'Unknown',
+        ownerPhone: client?.primary_phone || ''
+      };
+    }).filter(p => {
+      // Show if they are in the grooming queue OR if there's a search query match
+      const inQueue = salonQueuePatientIds.has(p.patientId);
+      if (!searchQuery && !inQueue) return false;
+      if (!searchQuery && inQueue) return true;
+
+      const q = searchQuery.toLowerCase();
+      return (p.pet?.name || 'Unknown').toLowerCase().includes(q) || 
+             p.ownerName.toLowerCase().includes(q) || 
+             normalizePhone(p.ownerPhone).includes(normalizePhone(q));
     });
-    return Array.from(patientMap.values());
-  }, [records, clinicQueue, searchQuery]);
+  }, [pets, clients, clinicQueue, searchQuery]);
 
-  const normalizePhone = (p: string) => p.replace(/\D/g, '');
-
-  const filteredPatients = uniquePatients.map(r => {
-    const pet = pets.find(p => p.id === r.patientId);
-    return { ...r, pet };
-  }).filter(p => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (p.pet?.name || 'Unknown').toLowerCase().includes(q) || 
-           p.ownerName.toLowerCase().includes(q) || 
-           normalizePhone(p.ownerPhone).includes(normalizePhone(q));
-  });
-
-  const selectedRecord = filteredPatients.find(p => p.patientId === selectedPatientId);
-  const selectedPet = pets.find(p => p.id === selectedPatientId);
+  const selectedPatient = filteredPatients.find(p => p.patientId === selectedPatientId);
+  const selectedPet = selectedPatient?.pet;
   
   // Aggregate history across all versions of the patient's records
   const historicalGroomingLogs = selectedPatientId ? groomingLogs.filter(l => l.petId === selectedPatientId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
@@ -81,7 +77,7 @@ export default function GroomingManager({ records, inventory, clinicQueue, onUpd
   };
 
   const handleFinalizeAndBill = () => {
-    if (!selectedRecord || selectedServices.length === 0) return;
+    if (!selectedPatient || selectedServices.length === 0) return;
 
     let totalBilled = 0;
     const missingServices: string[] = [];
@@ -130,6 +126,42 @@ export default function GroomingManager({ records, inventory, clinicQueue, onUpd
     setActiveTab('history');
   };
 
+  const renderActiveQueue = () => {
+    const activeQueue = clinicQueue.filter(q => 
+      (q.serviceType === 'Grooming' || q.serviceType === 'grooming') && 
+      q.status === 'active'
+    );
+    
+    if (activeQueue.length === 0) return null;
+
+    return (
+      <div className="p-4 border-b border-slate-100 bg-indigo-50/50 shrink-0">
+        <h3 className="text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5"/> Active Grooming Queue
+        </h3>
+        <div className="space-y-2">
+          {activeQueue.map(q => (
+            <div 
+              key={q.id}
+              onClick={() => { setSelectedPatientId(q.petId); setSelectedServices([]); setActiveTab('new_session'); }}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
+            >
+              <div className="flex justify-between items-center mb-1">
+                <div className="font-bold text-sm truncate">{q.petName}</div>
+                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                  Waiting
+                </div>
+              </div>
+              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
+                {q.ownerName}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-[calc(100vh-140px)] w-full gap-4 overflow-hidden" id="grooming-module-container">
       
@@ -149,6 +181,8 @@ export default function GroomingManager({ records, inventory, clinicQueue, onUpd
           </div>
         </div>
 
+        {renderActiveQueue()}
+
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {filteredPatients.map(patient => (
             <div 
@@ -167,7 +201,7 @@ export default function GroomingManager({ records, inventory, clinicQueue, onUpd
 
       {/* RIGHT PANE: Grooming Dashboard */}
       <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
-        {!selectedRecord ? (
+        {!selectedPatient ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
             <Scissors className="h-12 w-12 text-slate-300 mb-3" />
             <h3 className="text-sm font-extrabold text-slate-500">Select a Patient</h3>
@@ -181,7 +215,7 @@ export default function GroomingManager({ records, inventory, clinicQueue, onUpd
                 <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center border border-indigo-200"><PawPrint className="w-6 h-6 text-indigo-600" /></div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800 tracking-tight">{selectedPet?.name || 'Unknown'}</h2>
-                  <div className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">{selectedRecord.ownerName} • {selectedRecord.ownerPhone}</div>
+                  <div className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">{selectedPatient.ownerName} • {selectedPatient.ownerPhone}</div>
                 </div>
               </div>
             </div>
