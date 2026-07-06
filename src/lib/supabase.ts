@@ -27,8 +27,17 @@ const hasValidConfig =
 // ---------------------------------------------------------------------------
 export const SYNC_ENABLED: boolean = hasValidConfig;
 
+const syncSecret = import.meta.env.VITE_SUPABASE_SYNC_SECRET as string | undefined;
+
 export const supabase: SupabaseClient | null = hasValidConfig
-  ? createClient(url!, key!)
+  ? createClient(url!, key!, {
+      global: {
+        headers: {
+          // RLS policies check this header to authorize write operations
+          ...(syncSecret ? { 'x-sync-secret': syncSecret } : {}),
+        },
+      },
+    })
   : null;
 
 if (!SYNC_ENABLED) {
