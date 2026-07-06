@@ -15,7 +15,7 @@ import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import PhoneInput from './PhoneInput'; 
 import { db } from '../lib/localDb'; 
-import { fetchPets, fetchClients } from '../lib/db';
+import { fetchPets, fetchClients, upsertPet } from '../lib/db';
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -391,6 +391,24 @@ export default function AppointmentsManager({
     const targetPhone = normalizeSearchPhone(apt.ownerPhone);
     const targetPetName = (apt.petName || '').trim().toLowerCase();
     const deterministicPatientId = `${targetPetName}_${targetPhone}`;
+
+    // Fix: Create the relational Pet entity if it doesn't exist
+    const petExistsInDb = pets.some(p => p.id === deterministicPatientId);
+    if (!petExistsInDb) {
+      const newPet: Pet = {
+        id: deterministicPatientId,
+        clientId: `client_${targetPhone}`,
+        name: apt.petName.trim(),
+        petType: apt.petType,
+        breed: apt.breed || 'Mixed breed',
+        weight: apt.weight || 0,
+        sex: apt.sex || 'Unknown',
+        age: apt.age || 'Unknown',
+        created_at: new Date().toISOString()
+      };
+      await upsertPet(newPet);
+      setPets(prev => [...prev, newPet]);
+    }
 
     const patientExists = records.some(r => 
       normalizeSearchPhone(r.ownerPhone) === targetPhone && 
