@@ -10,8 +10,9 @@
  * - When SYNC_ENABLED is false, the engine is entirely dormant.
  */
 
-import { db } from './localDb';
+import { db, safeDbWrite } from './localDb';
 import { supabase, SYNC_ENABLED, DB_TABLES } from './supabase';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 // ---------------------------------------------------------------------------
 // Store ↔ Table mapping
@@ -61,6 +62,7 @@ export class SyncEngine {
   private running = false;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private initialTimerId: ReturnType<typeof setTimeout> | null = null;
+  private realtimeChannel: RealtimeChannel | null = null;
   private lastSyncTime = 0; // epoch-ms of last completed cycle
   private onStatusChange?: (online: boolean) => void;
 
@@ -86,6 +88,9 @@ export class SyncEngine {
     window.addEventListener('online', this.handleOnline);
     window.addEventListener('offline', this.handleOffline);
 
+    // Initialize Realtime subscriptions
+    this.setupRealtime();
+
     // Initial sync after short delay
     this.initialTimerId = setTimeout(() => {
       this.tick();
@@ -110,6 +115,11 @@ export class SyncEngine {
     if (this.intervalId !== null) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+
+    if (this.realtimeChannel) {
+      this.realtimeChannel.unsubscribe();
+      this.realtimeChannel = null;
     }
 
     window.removeEventListener('online', this.handleOnline);
@@ -143,6 +153,56 @@ export class SyncEngine {
   };
 
   // -----------------------------------------------------------------------
+  // Realtime
+  // -----------------------------------------------------------------------
+  private setupRealtime(): void {
+    if (!supabase) return;
+    
+    this.realtimeChannel = supabase.channel('sync-engine-channel');
+    
+    // Subscribe to all mapped tables
+    STORE_MAPPINGS.forEach(mapping => {
+      this.realtimeChannel!.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: mapping.table },
+        async (payload) => {
+          this.handleRealtimeEvent(mapping, payload);
+        }
+      );
+    });
+
+    this.realtimeChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.info(`${TAG} Realtime synced to Supabase channels.`);
+      }
+    });
+  }
+
+  private async handleRealtimeEvent(mapping: StoreMapping, payload: any): Promise<void> {
+    const store = (db as any)[mapping.storeKey];
+    if (!store) return;
+
+    try {
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const cloudRecord = payload.new;
+        const localRecord = await store.getItem(cloudRecord[mapping.idField]);
+        
+        // Conflict resolution: only overwrite if cloud is newer or local doesn't exist
+        if (!localRecord || new Date(cloudRecord.updated_at).getTime() >= new Date(localRecord.updated_at).getTime()) {
+          // Keep _dirty false because this came from the cloud
+          cloudRecord._dirty = false;
+          await safeDbWrite(store, cloudRecord[mapping.idField], cloudRecord);
+        }
+      } else if (payload.eventType === 'DELETE') {
+        const cloudRecord = payload.old;
+        await store.removeItem(cloudRecord[mapping.idField]);
+      }
+    } catch (err) {
+      console.error(`${TAG} Realtime event error [${mapping.table}]:`, err);
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Tick (rate-limited entry point)
   // -----------------------------------------------------------------------
 
@@ -164,15 +224,15 @@ export class SyncEngine {
     let pulled = 0;
 
     try {
-      pushed = await this.pushAll();
-    } catch (err) {
-      console.error(`${TAG} Push phase error:`, err);
-    }
-
-    try {
       pulled = await this.pullAll();
     } catch (err) {
       console.error(`${TAG} Pull phase error:`, err);
+    }
+
+    try {
+      pushed = await this.pushAll();
+    } catch (err) {
+      console.error(`${TAG} Push phase error:`, err);
     }
 
     console.info(`${TAG} Cycle complete — pushed: ${pushed}, pulled: ${pulled}`);
