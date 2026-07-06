@@ -9,8 +9,8 @@ import {
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
   PenTool, CheckCircle2 // FIXED: Added missing icons
 } from 'lucide-react';
-import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord } from '../types';
-import { fetchInvoices, upsertInvoice } from '../lib/db';
+import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet } from '../types';
+import { fetchInvoices, upsertInvoice, fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
 import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
@@ -59,7 +59,21 @@ export default function POSRegister({
   
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [discount, setDiscount] = useState<number>(0);
+  const [discount, setDiscount] = useState(0);
+
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [activeBoarding, setActiveBoarding] = useState<BoardingRecord[]>([]);
+  const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+
+  React.useEffect(() => {
+    fetchPets().then(setPets).catch(console.error);
+    fetchBoardingRecords().then(setActiveBoarding).catch(console.error);
+    fetchGroomingLogs().then(setGroomingLogs).catch(console.error);
+    fetchLabResults().then(setLabResults).catch(console.error);
+    fetchVaccinations().then(setVaccinations).catch(console.error);
+  }, []);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer' | 'split'>('cash');
   const [splitAmounts, setSplitAmounts] = useState({ cash: 0, card: 0, bank_transfer: 0 });
   
@@ -142,16 +156,14 @@ export default function POSRegister({
     setCustomClientPhone('');
     
     // Auto-Scrape Logic
-    const targetPid = `${(apt.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(apt.ownerPhone)}`;
-    // AUDIT FIX: Multi-day charge sweep — find today's record OR any record with active boarding
+    // AUDIT FIX: Multi-day charge sweep — find today's record
+    const petStub = pets.find(p => p.name.toLowerCase() === (apt.petName || '').trim().toLowerCase());
+    const targetPid = petStub ? petStub.id : `${(apt.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(apt.ownerPhone)}`;
+
     const allPatientRecords = records.filter(r => r.patientId === targetPid);
-    const activeRecord = allPatientRecords.find(r => r.visitDate === todayStr)
-      || allPatientRecords.find(r => r.boardingInfo && r.boardingInfo.status === 'active');
-    
-    // AUDIT FIX: Sweep charges from ALL records with active boarding (multi-day hospitalization)
-    const boardingRecords = allPatientRecords.filter(r => 
-      r.boardingInfo && r.boardingInfo.status === 'active' && r.visitDate !== todayStr
-    );
+    const activeRecord = allPatientRecords.find(r => r.visitDate === todayStr);
+
+    const targetBoarding = activeBoarding.filter(b => b.petId === targetPid && b.status === 'active');
 
     let newCartItems: CartItem[] = [];
 
@@ -179,16 +191,13 @@ export default function POSRegister({
     }
 
     // 3. Scrape Unbilled Vaccinations
-    if (activeRecord && activeRecord.vaccinations) {
-      activeRecord.vaccinations.forEach(vax => {
-        if (!vax.billed) {
-          const invItem = inventory.find(i => i.id === vax.itemId);
-          if (invItem) {
-            newCartItems.push({ ...invItem, cartQuantity: 1, cartId: crypto.randomUUID() });
-          }
-        }
-      });
-    }
+    const unbilledVax = vaccinations.filter(v => v.petId === targetPid && !v.billed);
+    unbilledVax.forEach(vax => {
+      const invItem = inventory.find(i => i.id === vax.itemId);
+      if (invItem) {
+        newCartItems.push({ ...invItem, cartQuantity: 1, cartId: crypto.randomUUID() });
+      }
+    });
 
     // 4. AUDIT FIX: Sweep native billing items from Grooming, Labs, and Boarding
     const sweepBillingItems = (items: any[]) => {
@@ -205,31 +214,19 @@ export default function POSRegister({
       });
     };
 
-    if (activeRecord) {
-      // Sweep native arrays replacing the prescribedMeds hack
-      if (activeRecord.groomingRecords) {
-        activeRecord.groomingRecords.forEach(log => {
-          if (log.billingItems) sweepBillingItems(log.billingItems);
-        });
-      }
-      
-      if (activeRecord.labResults) {
-        activeRecord.labResults.forEach(res => {
-          if (res.billingItems) sweepBillingItems(res.billingItems);
-        });
-      }
-      
-      if (activeRecord.boardingInfo && activeRecord.boardingInfo.billingItems) {
-         sweepBillingItems(activeRecord.boardingInfo.billingItems);
-      }
-    }
+    // Sweep native arrays replacing the prescribedMeds hack
+    const patientGrooming = groomingLogs.filter(l => l.petId === targetPid && l.date === todayStr);
+    patientGrooming.forEach(log => {
+      if (log.billingItems) sweepBillingItems(log.billingItems);
+    });
+    
+    const patientLabs = labResults.filter(l => l.petId === targetPid && l.requestDate === todayStr);
+    patientLabs.forEach(res => {
+      if (res.billingItems) sweepBillingItems(res.billingItems);
+    });
 
-    // Also sweep multi-day boarding records
-    boardingRecords.forEach(rec => {
-      if (rec.prescribedMeds) sweepBillingItems(rec.prescribedMeds);
-      if (rec.boardingInfo && rec.boardingInfo.billingItems) {
-        sweepBillingItems(rec.boardingInfo.billingItems);
-      }
+    targetBoarding.forEach(rec => {
+      if (rec.billingItems) sweepBillingItems(rec.billingItems);
     });
 
     if (newCartItems.length > 0) {

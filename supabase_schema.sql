@@ -366,6 +366,165 @@ CREATE POLICY "Allow anon write access on staff_users"
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
   WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
 
+-- ---------------------------------------------------------------------------
+-- 11. PETS
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS pets CASCADE;
+CREATE TABLE pets (
+  "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "clientId"        TEXT NOT NULL DEFAULT '',
+  "name"            TEXT NOT NULL DEFAULT '',
+  "petType"         TEXT NOT NULL DEFAULT 'Canine',
+  "breed"           TEXT NOT NULL DEFAULT '',
+  "weight"          NUMERIC NOT NULL DEFAULT 0,
+  "sex"             TEXT NOT NULL DEFAULT 'Unknown',
+  "age"             TEXT NOT NULL DEFAULT '',
+  "recordIds"       JSONB DEFAULT '[]'::jsonb,
+  "vaccineIds"      JSONB DEFAULT '[]'::jsonb,
+  "labIds"          JSONB DEFAULT '[]'::jsonb,
+  "groomingIds"     JSONB DEFAULT '[]'::jsonb,
+  "boardingIds"     JSONB DEFAULT '[]'::jsonb,
+  "created_at"      TIMESTAMPTZ DEFAULT now(),
+  "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"      BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"          BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_pets_updated_at ON pets ("updated_at");
+ALTER TABLE pets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon full access on pets" ON pets;
+DROP POLICY IF EXISTS "Allow anon read access on pets" ON pets;
+DROP POLICY IF EXISTS "Allow anon write access on pets" ON pets;
+CREATE POLICY "Allow anon read access on pets"
+  ON pets FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on pets"
+  ON pets FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+
+-- ---------------------------------------------------------------------------
+-- 12. VACCINATIONS
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS vaccinations CASCADE;
+CREATE TABLE vaccinations (
+  "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "petId"            TEXT NOT NULL DEFAULT '',
+  "itemId"           TEXT NOT NULL DEFAULT '',
+  "name"             TEXT NOT NULL DEFAULT '',
+  "price"            NUMERIC NOT NULL DEFAULT 0,
+  "billed"           BOOLEAN NOT NULL DEFAULT false,
+  "dateAdministered" TEXT NOT NULL DEFAULT '',
+  "nextDueDate"      TEXT NOT NULL DEFAULT '',
+  "status"           TEXT NOT NULL DEFAULT 'active',
+  "created_at"       TIMESTAMPTZ DEFAULT now(),
+  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"       BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"           BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_vaccinations_updated_at ON vaccinations ("updated_at");
+ALTER TABLE vaccinations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon full access on vaccinations" ON vaccinations;
+DROP POLICY IF EXISTS "Allow anon read access on vaccinations" ON vaccinations;
+DROP POLICY IF EXISTS "Allow anon write access on vaccinations" ON vaccinations;
+CREATE POLICY "Allow anon read access on vaccinations"
+  ON vaccinations FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on vaccinations"
+  ON vaccinations FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+
+-- ---------------------------------------------------------------------------
+-- 13. LAB RESULTS
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS lab_results CASCADE;
+CREATE TABLE lab_results (
+  "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "petId"            TEXT NOT NULL DEFAULT '',
+  "testName"         TEXT NOT NULL DEFAULT '',
+  "requestDate"      TEXT NOT NULL DEFAULT '',
+  "resultDate"       TEXT DEFAULT '',
+  "status"           TEXT NOT NULL DEFAULT 'pending',
+  "value"            TEXT DEFAULT '',
+  "referenceRange"   TEXT DEFAULT '',
+  "notes"            TEXT DEFAULT '',
+  "billingItems"     JSONB DEFAULT '[]'::jsonb,
+  "created_at"       TIMESTAMPTZ DEFAULT now(),
+  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"       BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"           BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_lab_results_updated_at ON lab_results ("updated_at");
+ALTER TABLE lab_results ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon full access on lab_results" ON lab_results;
+DROP POLICY IF EXISTS "Allow anon read access on lab_results" ON lab_results;
+DROP POLICY IF EXISTS "Allow anon write access on lab_results" ON lab_results;
+CREATE POLICY "Allow anon read access on lab_results"
+  ON lab_results FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on lab_results"
+  ON lab_results FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+
+-- ---------------------------------------------------------------------------
+-- 14. GROOMING LOGS
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS grooming_logs CASCADE;
+CREATE TABLE grooming_logs (
+  "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "petId"            TEXT NOT NULL DEFAULT '',
+  "date"             TEXT NOT NULL DEFAULT '',
+  "services"         JSONB DEFAULT '[]'::jsonb,
+  "totalBilled"      NUMERIC NOT NULL DEFAULT 0,
+  "status"           TEXT NOT NULL DEFAULT 'pending',
+  "billingItems"     JSONB DEFAULT '[]'::jsonb,
+  "created_at"       TIMESTAMPTZ DEFAULT now(),
+  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"       BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"           BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_grooming_logs_updated_at ON grooming_logs ("updated_at");
+ALTER TABLE grooming_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon full access on grooming_logs" ON grooming_logs;
+DROP POLICY IF EXISTS "Allow anon read access on grooming_logs" ON grooming_logs;
+DROP POLICY IF EXISTS "Allow anon write access on grooming_logs" ON grooming_logs;
+CREATE POLICY "Allow anon read access on grooming_logs"
+  ON grooming_logs FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on grooming_logs"
+  ON grooming_logs FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+
+-- ---------------------------------------------------------------------------
+-- 15. BOARDING RECORDS
+-- ---------------------------------------------------------------------------
+DROP TABLE IF EXISTS boarding_records CASCADE;
+CREATE TABLE boarding_records (
+  "id"               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "petId"            TEXT NOT NULL DEFAULT '',
+  "cageNumber"       TEXT NOT NULL DEFAULT '',
+  "checkInDate"      TEXT NOT NULL DEFAULT '',
+  "expectedCheckOut" TEXT NOT NULL DEFAULT '',
+  "status"           TEXT NOT NULL DEFAULT 'active',
+  "foodType"         TEXT NOT NULL DEFAULT 'without_food',
+  "medicalBoarding"  BOOLEAN NOT NULL DEFAULT false,
+  "depositPaid"      BOOLEAN NOT NULL DEFAULT false,
+  "billingItems"     JSONB DEFAULT '[]'::jsonb,
+  "created_at"       TIMESTAMPTZ DEFAULT now(),
+  "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"       BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"           BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_boarding_records_updated_at ON boarding_records ("updated_at");
+ALTER TABLE boarding_records ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon full access on boarding_records" ON boarding_records;
+DROP POLICY IF EXISTS "Allow anon read access on boarding_records" ON boarding_records;
+DROP POLICY IF EXISTS "Allow anon write access on boarding_records" ON boarding_records;
+CREATE POLICY "Allow anon read access on boarding_records"
+  ON boarding_records FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on boarding_records"
+  ON boarding_records FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+
 -- =============================================================================
 -- END OF SCHEMA
 -- =============================================================================

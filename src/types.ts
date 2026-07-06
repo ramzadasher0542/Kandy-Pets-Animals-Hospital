@@ -68,11 +68,30 @@ export interface Appointment {
   is_deleted?: boolean; 
 }
 
-export interface Vaccination { itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; }
-export interface LabResult { id: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; }
+export interface Pet {
+  id: string;
+  clientId: string;
+  name: string;
+  petType: PetClassification;
+  breed: string;
+  weight: number;
+  sex: string;
+  age: string;
+  created_at?: string;
+  updated_at?: string;
+  is_deleted?: boolean;
+  recordIds?: string[];
+  vaccineIds?: string[];
+  labIds?: string[];
+  groomingIds?: string[];
+  boardingIds?: string[];
+}
+
+export interface Vaccination { id: string; petId: string; itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface LabResult { id: string; petId: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: string; frequency?: string; remarks?: string; vetId: string; }
-export interface GroomingLog { id: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; }
-export interface BoardingRecord { id: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; billingItems?: any[]; }
+export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; billingItems?: any[]; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 
 // ============================================================================
 // PHASE 1: ENTERPRISE EHR MATRIX
@@ -129,12 +148,6 @@ export interface ClinicalAssessment {
 export interface MedicalRecord { 
   id: string; 
   patientId: string; 
-  petName: string; 
-  petType: PetClassification; 
-  breed: string; 
-  age: string; 
-  weight: number; 
-  sex?: string;
   ownerName: string; 
   ownerPhone: string; 
   ownerEmail: string; 
@@ -153,11 +166,7 @@ export interface MedicalRecord {
   diagnosis: string; 
   treatmentNotes: string; 
   prescribedMeds: Array<{ itemId: string; name: string; dosage: string; quantity: number; frequency?: string; duration?: string; instructions?: string; }>; 
-  vaccinations: Vaccination[]; 
-  labResults: LabResult[]; 
   inpatientLogs?: InpatientLog[]; 
-  groomingRecords?: GroomingLog[]; 
-  boardingInfo?: BoardingRecord; 
   createdDate: string; 
   attendingVet?: string; 
   appointmentId?: string; 
@@ -184,4 +193,4 @@ export interface OfflineSyncItem { id: string; action: 'create_appointment' | 'c
 
 export const CATEGORY_DISPLAY_MAP: Record<string, string> = { 'service': 'Clinical Care', 'lab_service': 'Labs & Diagnostics', 'vaccine': 'Vaccinations', 'prescription': 'Pharmacy Rx', 'retail': 'Pet Supplies Shop', 'Taxes & Adjustments': 'Taxes & Adjustments', 'other': 'Other / Uncategorized' };
 
-export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; created_at?: string; updated_at?: string; is_deleted?: boolean; petIds?: string[]; }

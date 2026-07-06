@@ -26,6 +26,12 @@ export const db = {
   users: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'users' }),
   clients: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'clients' }),
   
+  pets: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'pets' }),
+  vaccinations: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'vaccinations' }),
+  labResults: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'lab_results' }),
+  groomingLogs: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'grooming_logs' }),
+  boardingRecords: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'boarding_records' }),
+
   // The original sync queue for cloud handoffs
   syncQueue: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'sync_queue' }),
   

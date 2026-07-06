@@ -10,11 +10,12 @@ import {
   Activity, X, ChevronLeft, ChevronRight, List as ListIcon, 
   Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, PawPrint, History, SearchCode
 } from 'lucide-react';
-import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser } from '../types';
+import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import PhoneInput from './PhoneInput'; 
 import { db } from '../lib/localDb'; 
+import { fetchPets, fetchClients } from '../lib/db';
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -109,6 +110,8 @@ export default function AppointmentsManager({
   // Identity Scanner State
   const [identitySearch, setIdentitySearch] = useState('');
   const [knownPets, setKnownPets] = useState<any[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [pets, setPets] = useState<Pet[]>([]);
 
   const [selectedPopoverApt, setSelectedPopoverApt] = useState<Appointment | null>(null);
   const [overflowPopover, setOverflowPopover] = useState<{date: string, apts: Appointment[]} | null>(null);
@@ -144,6 +147,8 @@ export default function AppointmentsManager({
 
   useEffect(() => {
     fetchVets();
+    fetchClients().then(setClients).catch(console.error);
+    fetchPets().then(setPets).catch(console.error);
   }, [fetchVets]);
 
   useEffect(() => {
@@ -171,26 +176,25 @@ export default function AppointmentsManager({
     setIdentitySearch(query);
     const target = normalizeSearchPhone(query);
     if (target.length >= 7) {
-      const matches = records.filter(r => normalizeSearchPhone(r.ownerPhone) === target);
+      const matches = clients.filter(c => normalizeSearchPhone(c.primary_phone) === target);
       if (matches.length > 0) {
         const latest = matches[matches.length - 1]; 
-        setOwnerName(latest.ownerName);
-        setOwnerPhone(enforcePhoneFormat(latest.ownerPhone));
-        setOwnerEmail(latest.ownerEmail || '');
+        setOwnerName(latest.full_name);
+        setOwnerPhone(enforcePhoneFormat(latest.primary_phone));
+        setOwnerEmail(latest.email_address || '');
         
-        const uniquePetsMap = new Map();
-        matches.forEach(m => {
-          if (!uniquePetsMap.has(m.petName.toLowerCase())) {
-            uniquePetsMap.set(m.petName.toLowerCase(), { 
-              name: m.petName, 
-              type: m.petType, 
-              breed: m.breed,
-              weight: m.weight || '',
-              sex: m.sex || 'Unknown'
-            });
-          }
-        });
-        setKnownPets(Array.from(uniquePetsMap.values()));
+        if (latest.petIds && latest.petIds.length > 0) {
+          const clientPets = pets.filter(p => latest.petIds?.includes(p.id));
+          setKnownPets(clientPets.map(p => ({
+              name: p.name, 
+              type: p.petType, 
+              breed: p.breed,
+              weight: p.weight || '',
+              sex: p.sex || 'Unknown'
+          })));
+        } else {
+          setKnownPets([]);
+        }
       } else {
         setKnownPets([]);
       }
@@ -390,19 +394,13 @@ export default function AppointmentsManager({
 
     const patientExists = records.some(r => 
       normalizeSearchPhone(r.ownerPhone) === targetPhone && 
-      (r.petName || '').trim().toLowerCase() === targetPetName
+      r.patientId === deterministicPatientId
     );
     
     if (!patientExists) {
       const newRecord: MedicalRecord = {
         id: crypto.randomUUID(),
         patientId: deterministicPatientId,
-        petName: apt.petName.trim(),
-        petType: apt.petType,
-        breed: apt.breed || 'Mixed breed',
-        age: apt.age || 'Unknown',
-        weight: apt.weight || 0,
-        sex: apt.sex || 'Unknown',
         ownerName: apt.ownerName.trim(),
         ownerPhone: enforcePhoneFormat(apt.ownerPhone),
         ownerEmail: apt.ownerEmail || 'not-provided@example.com',
@@ -413,8 +411,6 @@ export default function AppointmentsManager({
         diagnosis: '',
         treatmentNotes: '',
         prescribedMeds: [],
-        vaccinations: [],
-        labResults: [],
         createdDate: new Date().toISOString().split('T')[0],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

@@ -10,8 +10,8 @@ import {
   ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity, 
   Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe
 } from 'lucide-react';
-import { Client, MedicalRecord, Invoice, Appointment, PetClassification } from '../types';
-import { fetchClients } from '../lib/db';
+import { Client, MedicalRecord, Invoice, Appointment, PetClassification, Pet, Vaccination, LabResult } from '../types';
+import { fetchClients, fetchPets, fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
 import { db } from '../lib/localDb';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
@@ -48,6 +48,9 @@ export default function CustomersManager({
 }: CustomersManagerProps) {
   
   const [clients, setClients] = useState<Client[]>([]);
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null); 
   const [passportTab, setPassportTab] = useState<'timeline' | 'exams' | 'labs' | 'vaccines'>('timeline');
@@ -79,6 +82,9 @@ export default function CustomersManager({
   const loadClients = useCallback(async () => {
     const data = await fetchClients();
     setClients(data);
+    setPets(await fetchPets());
+    setVaccinations(await fetchVaccinations());
+    setLabResults(await fetchLabResults());
   }, [records, appointments]);
 
   useEffect(() => {
@@ -123,8 +129,10 @@ export default function CustomersManager({
     if (c.full_name.toLowerCase().includes(q)) return true;
     if (c.primary_phone.includes(q)) return true;
     
-    const clientPets = records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(c.primary_phone));
-    if (clientPets.some(p => p.petName.toLowerCase().includes(q))) return true;
+    if (c.petIds && c.petIds.length > 0) {
+      const clientPets = pets.filter(p => c.petIds?.includes(p.id));
+      if (clientPets.some(p => p.name.toLowerCase().includes(q))) return true;
+    }
     
     return false;
   });
@@ -158,33 +166,22 @@ export default function CustomersManager({
 
     if (onUpdateClient) await onUpdateClient(newClient);
 
-    if (newPetData.petName && onAddRecord) {
-      const targetPhone = normalizePhone(formData.primary_phone);
-      const targetPetName = newPetData.petName.trim().toLowerCase();
-      
-      const newRecord: MedicalRecord = {
-        id: crypto.randomUUID(),
-        patientId: crypto.randomUUID(),
-        petName: newPetData.petName.trim(),
+    if (newPetData.petName) {
+      const newPetId = crypto.randomUUID();
+      const newPet: Pet = {
+        id: newPetId,
+        clientId: newClient.client_id,
+        name: newPetData.petName.trim(),
         petType: newPetData.petType as any,
         breed: newPetData.breed || 'Mixed breed',
-        age: newPetData.age || 'Unknown',
         weight: newPetData.weight || 0,
         sex: newPetData.sex || 'Unknown',
-        ownerName: formData.full_name.trim(),
-        ownerPhone: formData.primary_phone.trim(),
-        ownerEmail: formData.email_address || 'not-provided@example.com',
-        visitDate: new Date().toISOString().split('T')[0],
-        attendingVet: 'System Admin',
-        symptoms: '',
-        diagnosis: 'Initial Registration',
-        treatmentNotes: 'Patient profile established via CRM Onboarding.',
-        prescribedMeds: [],
-        vaccinations: [],
-        labResults: [],
-        createdDate: new Date().toISOString().split('T')[0]
+        age: newPetData.age || 'Unknown',
+        created_at: new Date().toISOString()
       };
-      onAddRecord(newRecord);
+      await upsertPet(newPet);
+      newClient.petIds = [newPetId];
+      if (onUpdateClient) await onUpdateClient(newClient);
     }
 
     await loadClients();
@@ -224,16 +221,16 @@ export default function CustomersManager({
   // ---------------------------------------------------------
   // PET PASSPORT DATA & LOGIC
   // ---------------------------------------------------------
-  const petRecords = selectedPetId ? records.filter(r => r.patientId === selectedPetId).sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()) : [];
-  const activePet = petRecords.length > 0 ? petRecords[0] : null;
+  const activePet = selectedPetId ? pets.find(p => p.id === selectedPetId) : null;
+  const petRecords = selectedPetId ? allClientRecords.filter(r => r.patientId === selectedPetId).sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()) : [];
 
-  const allPetLabs = petRecords.flatMap(r => (r.labResults || []).map(l => ({ ...l, visitDate: r.visitDate })));
-  const allPetVax = petRecords.flatMap(r => (r.vaccinations || []).map(v => ({ ...v, visitDate: r.visitDate })));
+  const allPetLabs = selectedPetId ? labResults.filter(l => l.petId === selectedPetId) : [];
+  const allPetVax = selectedPetId ? vaccinations.filter(v => v.petId === selectedPetId) : [];
 
   const handleOpenEditPet = () => {
     if (!activePet) return;
     setEditPetData({
-      petName: activePet.petName,
+      petName: activePet.name,
       petType: activePet.petType,
       breed: activePet.breed || '',
       sex: activePet.sex || 'Unknown',
@@ -246,36 +243,20 @@ export default function CustomersManager({
   // PHASE 3: BULK SYNC RACE-CONDITION ARMOR
   const handleSavePetEdits = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPetId) return;
+    if (!activePet) return;
 
-    if (petRecords.length === 0) {
-      showToast('No medical records found to sync identity against.', 'warning');
-      setShowEditPetModal(false);
-      return;
-    }
-
-    const updatedRecords = petRecords.map(record => ({
-      ...record,
-      petName: editPetData.petName,
+    const updatedPet: Pet = {
+      ...activePet,
+      name: editPetData.petName,
       petType: editPetData.petType,
       breed: editPetData.breed,
       sex: editPetData.sex,
       weight: editPetData.weight,
       age: editPetData.age
-    }));
+    };
 
-    if (onUpdateRecordsBulk) {
-      // Optimal Route: Fire single payload to App.tsx
-      await onUpdateRecordsBulk(updatedRecords);
-    } else if (onUpdateRecord) {
-      // Fallback Route: Micro-throttled loop to prevent IndexedDB lockup
-      for (const record of updatedRecords) {
-        await onUpdateRecord(record);
-      }
-    } else {
-      showToast('Record update engine unavailable.', 'error');
-      return;
-    }
+    await upsertPet(updatedPet);
+    setPets(prev => prev.map(p => p.id === updatedPet.id ? updatedPet : p));
 
     setShowEditPetModal(false);
     showToast('Patient Identity synchronized across all medical records.', 'success');
@@ -285,18 +266,11 @@ export default function CustomersManager({
   // AGGREGATORS FOR CLIENT DASHBOARD
   // ---------------------------------------------------------
   // BUG #12 FIX: Use full historical data from DB, not today-only props
-  const clientPets = selectedClient ? allClientRecords.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(selectedClient.primary_phone)) : [];
+  const clientPets = selectedClient && selectedClient.petIds ? pets.filter(p => selectedClient.petIds?.includes(p.id)) : [];
   const petMap = new Map<string, any>();
   
   clientPets.forEach(p => {
-    if (!petMap.has(p.patientId)) {
-      petMap.set(p.patientId, { ...p });
-    } else {
-      const existing = petMap.get(p.patientId);
-      if (new Date(p.visitDate) > new Date(existing.visitDate)) {
-        petMap.set(p.patientId, { ...p }); // Overwrite with newest
-      }
-    }
+    petMap.set(p.id, { ...p, patientId: p.id });
   });
   
   const uniqueClientPets = Array.from(petMap.values());
@@ -485,14 +459,9 @@ export default function CustomersManager({
             <button onClick={() => setSelectedPetId(null)} className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1 cursor-pointer transition-colors uppercase tracking-widest">
               <ChevronLeft className="w-4 h-4"/> Back to {selectedClient.full_name}'s Profile
             </button>
-            <div className="flex gap-2">
-               {onGoToRecords && (
-                 <button onClick={() => onGoToRecords(activePet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
-                   <Activity className="w-3.5 h-3.5"/> Open E.H.R
-                 </button>
-               )}
+            <div className="flex items-center gap-2">
                {onGenerateConsent && (
-                 <button onClick={() => onGenerateConsent(selectedClient.full_name, activePet.petName)} className="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                 <button onClick={() => onGenerateConsent(selectedClient.full_name, activePet.name)} className="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                    <PenTool className="w-3.5 h-3.5"/> Sign Waiver
                  </button>
                )}
@@ -506,8 +475,8 @@ export default function CustomersManager({
               </div>
               <div>
                 <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                  {activePet.petName}
-                  <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border border-slate-200">Patient ID: {activePet.patientId.split('_')[0].toUpperCase()}</span>
+                  {activePet.name}
+                  <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border border-slate-200">Patient ID: {activePet.id.split('-')[0].toUpperCase()}</span>
                 </h2>
                 <div className="flex items-center gap-3 mt-1.5 text-xs font-bold text-slate-500 uppercase tracking-widest">
                   <span>{activePet.petType}</span>
@@ -606,7 +575,7 @@ export default function CustomersManager({
               {petRecords.filter(r => r.physicalExam).length === 0 && <div className="text-center py-10 text-slate-400 font-bold text-xs">No systemic examinations recorded.</div>}
               {petRecords.filter(r => r.physicalExam).map(record => {
                 const exam = record.physicalExam!;
-                const abnormalSystems = Object.entries(exam).filter(([_, data]) => !data.isNormal || (data.abnormalities && data.abnormalities.length > 0));
+                const abnormalSystems = Object.entries(exam).filter(([_, data]: [string, any]) => !data.isNormal || (data.abnormalities && data.abnormalities.length > 0));
                 
                 return (
                   <div key={record.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -618,11 +587,11 @@ export default function CustomersManager({
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {abnormalSystems.map(([systemKey, data]) => (
+                        {abnormalSystems.map(([systemKey, data]: [string, any]) => (
                           <div key={systemKey} className="bg-rose-50/50 p-3 rounded-xl border border-rose-100">
                             <div className="text-[10px] font-black text-rose-800 uppercase tracking-widest mb-2">{systemKey.replace(/([A-Z])/g, ' $1').trim()}</div>
                             <ul className="list-disc list-inside text-xs font-bold text-rose-600 pl-2 space-y-1">
-                              {data.abnormalities?.map((ab, i) => <li key={i}>{ab}</li>)}
+                              {data.abnormalities?.map((ab: string, i: number) => <li key={i}>{ab}</li>)}
                             </ul>
                             {data.notes && <div className="text-[10px] font-medium text-rose-700 mt-2 italic">"{data.notes}"</div>}
                           </div>
@@ -738,8 +707,7 @@ export default function CustomersManager({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
           {filteredClients.map(c => {
-            const clientRecs = records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(c.primary_phone));
-            const petCount = new Set(clientRecs.map(r => (r.petName || 'Unknown').trim().toLowerCase())).size;
+            const petCount = c.petIds ? c.petIds.length : 0;
             const isSelected = selectedClientId === c.client_id;
             
             return (

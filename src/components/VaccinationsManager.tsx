@@ -5,19 +5,27 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, Syringe, ShieldCheck, Activity, User, ShieldAlert, PawPrint } from 'lucide-react';
-import { MedicalRecord, InventoryItem } from '../types';
+import { MedicalRecord, InventoryItem, Pet, Vaccination } from '../types';
 import { showToast } from './Toast';
+import { fetchPets, fetchVaccinations, upsertVaccination } from '../lib/db';
 
 interface VaccinationsProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
-  onUpdateRecord: (record: MedicalRecord) => void;
-  onUpdateStock: (itemId: string, qtyDelta: number) => Promise<void>;
+  onUpdateRecord?: (record: MedicalRecord) => void;
+  onUpdateStock?: (itemId: string, qtyDelta: number) => Promise<void>;
 }
 
 export default function VaccinationsManager({ records, inventory, onUpdateRecord, onUpdateStock }: VaccinationsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+
+  React.useEffect(() => {
+    fetchPets().then(setPets).catch(console.error);
+    fetchVaccinations().then(setVaccinations).catch(console.error);
+  }, []);
 
   const vaccineInventory = useMemo(() => inventory.filter(i => i.category === 'vaccine'), [inventory]);
 
@@ -33,19 +41,22 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
 
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
 
-  const filteredPatients = uniquePatients.filter(p => {
+  const filteredPatients = uniquePatients.map(r => {
+    const pet = pets.find(p => p.id === r.patientId);
+    return { ...r, pet };
+  }).filter(p => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
-    return p.petName.toLowerCase().includes(q) || 
+    return (p.pet?.name || 'Unknown').toLowerCase().includes(q) || 
            p.ownerName.toLowerCase().includes(q) || 
            normalizePhone(p.ownerPhone).includes(normalizePhone(q));
   });
 
-  const selectedRecord = uniquePatients.find(p => p.patientId === selectedPatientId);
-  const allPatientRecords = selectedPatientId ? records.filter(r => r.patientId === selectedPatientId) : [];
+  const selectedRecord = filteredPatients.find(p => p.patientId === selectedPatientId);
+  const selectedPet = pets.find(p => p.id === selectedPatientId);
   
   // Flatten all historical vaccinations for the active passport
-  const historicalVaccines = allPatientRecords.flatMap(r => r.vaccinations || []).sort((a, b) => new Date(b.dateAdministered).getTime() - new Date(a.dateAdministered).getTime());
+  const historicalVaccines = selectedPatientId ? vaccinations.filter(v => v.petId === selectedPatientId).sort((a, b) => new Date(b.dateAdministered).getTime() - new Date(a.dateAdministered).getTime()) : [];
 
   const handleAdminister = async (vaccine: InventoryItem) => {
     if (!selectedRecord) return;
@@ -57,7 +68,9 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
     const nextYear = new Date();
     nextYear.setFullYear(nextYear.getFullYear() + 1);
 
-    const newVaccination = {
+    const newVaccination: Vaccination = {
+      id: crypto.randomUUID(),
+      petId: selectedPatientId!,
       itemId: vaccine.id,
       name: vaccine.name,
       price: vaccine.price,
@@ -67,14 +80,12 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
       status: 'active' as const
     };
 
-    const updatedRecord: MedicalRecord = {
-      ...selectedRecord,
-      vaccinations: [...(selectedRecord.vaccinations || []), newVaccination]
-    };
-
+    upsertVaccination(newVaccination).then(() => {
+      setVaccinations(prev => [...prev, newVaccination]);
+    });
+    
     // Bug #1 Fix: Stock deduction removed. POSRegister.tsx exclusively handles
     // inventory deduction at the moment of financial checkout to prevent double-deduction.
-    onUpdateRecord(updatedRecord);
     showToast(`${vaccine.name} administered & billed to POS.`, 'success');
   };
 
@@ -105,12 +116,10 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
               key={patient.patientId} onClick={() => setSelectedPatientId(patient.patientId)}
               className={`p-3 rounded-xl cursor-pointer transition-all border ${selectedPatientId === patient.patientId ? 'bg-emerald-50 border-emerald-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
             >
-              <div className="flex justify-between items-start mb-1">
-                <div className={`font-extrabold truncate text-sm ${selectedPatientId === patient.patientId ? 'text-emerald-900' : 'text-slate-800'}`}>{patient.petName}</div>
-              </div>
-              <div className="text-[10px] font-bold text-slate-500">{patient.petType} • {patient.breed}</div>
-              <div className="text-[10px] font-semibold text-slate-400 mt-1.5 pt-1.5 border-t border-slate-100 flex items-center gap-1">
-                <User className="w-3 h-3" /> {patient.ownerName}
+              <div className="font-extrabold truncate text-sm text-slate-800 mb-1">{patient.pet?.name || 'Unknown'}</div>
+              <div className="text-[10px] font-bold text-slate-500 flex items-center justify-between">
+                <span>{patient.pet?.petType} • {patient.pet?.breed}</span>
+                <span className="flex items-center gap-1 text-slate-400"><User className="w-3 h-3"/> {patient.ownerName}</span>
               </div>
             </div>
           ))}
@@ -131,7 +140,7 @@ export default function VaccinationsManager({ records, inventory, onUpdateRecord
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center border border-emerald-200"><PawPrint className="w-6 h-6 text-emerald-600" /></div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-800 tracking-tight">{selectedRecord.petName}'s Passport</h2>
+                  <h2 className="text-xl font-black text-slate-800 tracking-tight">{selectedPet?.name || 'Unknown'}'s Immunization Profile</h2>
                   <p className="text-xs font-bold text-slate-500 mt-0.5">{selectedRecord.ownerName} • {selectedRecord.ownerPhone}</p>
                 </div>
               </div>

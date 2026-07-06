@@ -8,12 +8,13 @@ import { createPortal } from 'react-dom';
 import { 
   Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock
 } from 'lucide-react';
-import { MedicalRecord, BoardingRecord } from '../types';
+import { MedicalRecord, BoardingRecord, Pet } from '../types';
 import { showToast } from './Toast';
+import { fetchBoardingRecords, upsertBoardingRecord, fetchPets } from '../lib/db';
 
 interface BoardingManagerProps {
   records: MedicalRecord[];
-  onUpdateRecord: (record: MedicalRecord) => void;
+  onUpdateRecord?: (record: MedicalRecord) => void;
 }
 
 const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
@@ -32,43 +33,45 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
   // Guardrail State
   const [showDepositGuard, setShowDepositGuard] = useState(false);
 
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
+
+  React.useEffect(() => {
+    fetchPets().then(setPets).catch(console.error);
+    fetchBoardingRecords().then(setBoardingRecords).catch(console.error);
+  }, []);
+
   // Derive unique patients & active boarding map
   const { uniquePatients, activeBoardingMap } = useMemo(() => {
-    const patientMap = new Map<string, MedicalRecord>();
-    const cageMap = new Map<string, MedicalRecord>();
+    const cageMap = new Map<string, { boarding: BoardingRecord, pet: Pet | undefined }>();
 
-    records.forEach(r => {
-      // Keep latest record for patient dropdown
-      if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId)!.visitDate)) {
-        patientMap.set(r.patientId, r);
-      }
-      // Check active boarding
-      if (r.boardingInfo && r.boardingInfo.status === 'active') {
-        cageMap.set(r.boardingInfo.cageNumber, r);
+    boardingRecords.forEach(b => {
+      if (b.status === 'active') {
+        const pet = pets.find(p => p.id === b.petId);
+        cageMap.set(b.cageNumber, { boarding: b, pet });
       }
     });
 
     return { 
-      uniquePatients: Array.from(patientMap.values()),
+      uniquePatients: pets,
       activeBoardingMap: cageMap
     };
-  }, [records]);
+  }, [boardingRecords, pets]);
 
-  // FIXED: Discharge handler — was completely missing, pets were trapped forever
-  const handleDischarge = (cage: string) => {
-    const occupantRecord = activeBoardingMap.get(cage);
-    if (!occupantRecord || !occupantRecord.boardingInfo) return;
-    if (!window.confirm(`Discharge ${occupantRecord.petName} from ${cage}? This will free the cage.`)) return;
+  // FIXED: Discharge handler
+  const handleDischarge = async (cage: string) => {
+    const occupant = activeBoardingMap.get(cage);
+    if (!occupant || !occupant.boarding) return;
+    const petName = occupant.pet?.name || 'Unknown';
+    if (!window.confirm(`Discharge ${petName} from ${cage}? This will free the cage.`)) return;
 
-    const updatedRecord: MedicalRecord = {
-      ...occupantRecord,
-      boardingInfo: {
-        ...occupantRecord.boardingInfo,
-        status: 'discharged'
-      }
+    const updatedBoarding: BoardingRecord = {
+      ...occupant.boarding,
+      status: 'discharged'
     };
-    onUpdateRecord(updatedRecord);
-    showToast(`${occupantRecord.petName} discharged from ${cage}. Cage is now available.`, 'success');
+    await upsertBoardingRecord(updatedBoarding);
+    setBoardingRecords(prev => prev.map(b => b.id === updatedBoarding.id ? updatedBoarding : b));
+    showToast(`${petName} discharged from ${cage}. Cage is now available.`, 'success');
     setSelectedCage(null);
   };
 
@@ -85,45 +88,38 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
     setShowDepositGuard(true);
   };
 
-  const handleConfirmBooking = () => {
+  const handleConfirmBooking = async () => {
     if (!selectedCage || !selectedPatientId) return;
 
-    const patientRecord = uniquePatients.find(p => p.patientId === selectedPatientId);
-    if (!patientRecord) return;
+    const patient = uniquePatients.find(p => p.id === selectedPatientId);
+    if (!patient) return;
+
+    const checkIn = new Date();
+    const checkOut = new Date(checkOutDate);
+    const diffMs = checkOut.getTime() - checkIn.getTime();
+    const boardingDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+    const billingItems = [
+      { itemId: 'boarding_deposit', name: '[DEPOSIT] Admission Hold', dosage: '1', quantity: 1 },
+      { itemId: 'boarding_rate', name: `[BOARDING] Base Rate (${boardingDays} Day${boardingDays > 1 ? 's' : ''})`, dosage: `${boardingDays} Day${boardingDays > 1 ? 's' : ''}`, quantity: boardingDays }
+    ];
 
     const newBoardingInfo: BoardingRecord = {
       id: crypto.randomUUID(),
+      petId: selectedPatientId,
       cageNumber: selectedCage,
       checkInDate: new Date().toISOString().split('T')[0],
       expectedCheckOut: checkOutDate,
       status: 'active',
       foodType,
       medicalBoarding,
-      depositPaid: true
+      depositPaid: true,
+      billingItems: billingItems
     };
 
-    // Bug #2 Fix: Calculate actual boarding days from check-in to expected checkout
-    const checkIn = new Date(newBoardingInfo.checkInDate);
-    const checkOut = new Date(checkOutDate);
-    const diffMs = checkOut.getTime() - checkIn.getTime();
-    const boardingDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-
-    // POS Billing Trap Injection
-    const billingItems = [
-      { itemId: 'boarding_deposit', name: '[DEPOSIT] Admission Hold', dosage: '1', quantity: 1 },
-      { itemId: 'boarding_rate', name: `[BOARDING] Base Rate (${boardingDays} Day${boardingDays > 1 ? 's' : ''})`, dosage: `${boardingDays} Day${boardingDays > 1 ? 's' : ''}`, quantity: boardingDays }
-    ];
-
-    const updatedRecord: MedicalRecord = {
-      ...patientRecord,
-      boardingInfo: {
-        ...newBoardingInfo,
-        billingItems: billingItems
-      }
-    };
-
-    onUpdateRecord(updatedRecord);
-    showToast(`Patient booked into ${selectedCage}. POS queue updated.`, 'success');
+    await upsertBoardingRecord(newBoardingInfo);
+    setBoardingRecords(prev => [...prev, newBoardingInfo]);
+    showToast(`Patient booked into ${selectedCage}.`, 'success');
     
     // Reset
     setShowDepositGuard(false);
@@ -245,12 +241,13 @@ export default function BoardingManager({ records, onUpdateRecord }: BoardingMan
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block">Select Patient *</label>
                   <select 
-                    value={selectedPatientId} onChange={e => setSelectedPatientId(e.target.value)} required
-                    className="w-full px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-xl text-sm font-black text-indigo-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    value={selectedPatientId} 
+                    onChange={e => setSelectedPatientId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   >
-                    <option value="" disabled>-- Choose registered patient --</option>
+                    <option value="">-- Select Patient --</option>
                     {uniquePatients.map(p => (
-                      <option key={p.patientId} value={p.patientId}>{p.petName} (Owner: {p.ownerName} - {p.ownerPhone})</option>
+                      <option key={p.id} value={p.id}>{p.name} ({p.breed})</option>
                     ))}
                   </select>
                 </div>

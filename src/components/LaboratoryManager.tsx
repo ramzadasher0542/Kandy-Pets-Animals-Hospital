@@ -6,9 +6,10 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, TestTube, Activity, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
-import { MedicalRecord, LabResult, InventoryItem, Appointment } from '../types';
+import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
+import { fetchPets, fetchLabResults, upsertLabResult } from '../lib/db';
 
 interface LabProps {
   records: MedicalRecord[];
@@ -25,6 +26,14 @@ export default function LaboratoryManager({ records, inventory, appointments, on
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'order' | 'results'>('order');
   const [showQueueOnly, setShowQueueOnly] = useState(true);
+
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
+
+  React.useEffect(() => {
+    fetchPets().then(setPets).catch(console.error);
+    fetchLabResults().then(setLabResults).catch(console.error);
+  }, []);
 
   const [showResultModal, setShowResultModal] = useState(false);
   const [activeLabResult, setActiveLabResult] = useState<{ result: LabResult, recordId: string } | null>(null);
@@ -44,13 +53,14 @@ export default function LaboratoryManager({ records, inventory, appointments, on
     // Pass 1: Load from Medical Records
     records.forEach(r => {
       if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId).visitDate)) {
+        const p = pets.find(pet => pet.id === r.patientId);
         patientMap.set(r.patientId, {
           patientId: r.patientId,
-          petName: r.petName,
-          petType: r.petType,
-          breed: r.breed,
-          weight: r.weight,
-          sex: r.sex,
+          petName: p?.name || 'Unknown',
+          petType: p?.petType || 'Canine',
+          breed: p?.breed || '',
+          weight: p?.weight || 0,
+          sex: p?.sex || 'Unknown',
           ownerName: r.ownerName,
           ownerPhone: r.ownerPhone,
           visitDate: r.visitDate,
@@ -103,9 +113,7 @@ export default function LaboratoryManager({ records, inventory, appointments, on
   const selectedRecord = displayPatients.find(p => p.patientId === selectedPatientId);
   const allPatientRecords = selectedPatientId ? records.filter(r => r.patientId === selectedPatientId) : [];
   
-  const allLabResults = allPatientRecords.flatMap(r => 
-    (r.labResults || []).map(lab => ({ ...lab, recordId: r.id }))
-  ).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+  const allLabResults = selectedPatientId ? labResults.filter(l => l.petId === selectedPatientId).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()) : [];
 
   // PHASE 1: Phantom Chart Generation Logic
   const handleOrderTest = async (testItem: InventoryItem) => {
@@ -120,12 +128,6 @@ export default function LaboratoryManager({ records, inventory, appointments, on
       activeRecord = {
         id: crypto.randomUUID(),
         patientId: stub.patientId,
-        petName: stub.petName,
-        petType: stub.petType as any,
-        breed: stub.breed || 'Mixed',
-        age: 'Unknown',
-        weight: stub.weight || 0,
-        sex: stub.sex || 'Unknown',
         ownerName: stub.ownerName,
         ownerPhone: stub.ownerPhone,
         ownerEmail: 'not-provided@example.com',
@@ -135,8 +137,6 @@ export default function LaboratoryManager({ records, inventory, appointments, on
         diagnosis: 'Direct Lab Intake',
         treatmentNotes: '',
         prescribedMeds: [],
-        vaccinations: [],
-        labResults: [],
         createdDate: new Date().toISOString().split('T')[0]
       };
       isNewRecord = true;
@@ -151,21 +151,18 @@ export default function LaboratoryManager({ records, inventory, appointments, on
 
     const newLab: LabResult = {
       id: crypto.randomUUID(),
+      petId: selectedPatientId,
       testName: testItem.name,
       requestDate: todayStr,
       status: 'pending',
       billingItems: [billingItem]
     };
 
-    const updatedRecord = {
-      ...activeRecord,
-      labResults: [...(activeRecord.labResults || []), newLab]
-    };
+    await upsertLabResult(newLab);
+    setLabResults(prev => [...prev, newLab]);
 
     if (isNewRecord && onAddRecord) {
-      await onAddRecord(updatedRecord);
-    } else {
-      await onUpdateRecord(updatedRecord);
+      await onAddRecord(activeRecord);
     }
 
     showToast(`${testItem.name} ordered & billed to POS queue.`, 'success');
@@ -184,17 +181,19 @@ export default function LaboratoryManager({ records, inventory, appointments, on
 
   const handleSaveResult = async () => {
     if (!activeLabResult) return;
-    const targetRecord = records.find(r => r.id === activeLabResult.recordId);
-    if (!targetRecord) return;
 
     const stringifiedValues = JSON.stringify(parameterValues);
-    const updatedLabs = targetRecord.labResults.map(lab => 
-      lab.id === activeLabResult.result.id 
-        ? { ...lab, status: 'completed' as const, notes: resultNotes, value: stringifiedValues, resultDate: todayStr } 
-        : lab
-    );
+    const updatedLab = { 
+      ...activeLabResult.result, 
+      status: 'completed' as const, 
+      notes: resultNotes, 
+      value: stringifiedValues, 
+      resultDate: todayStr 
+    };
 
-    await onUpdateRecord({ ...targetRecord, labResults: updatedLabs });
+    await upsertLabResult(updatedLab);
+    setLabResults(prev => prev.map(l => l.id === updatedLab.id ? updatedLab : l));
+
     setShowResultModal(false);
     showToast('Laboratory results finalized & locked.', 'success');
   };

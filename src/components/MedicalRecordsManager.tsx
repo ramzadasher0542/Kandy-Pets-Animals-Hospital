@@ -9,10 +9,10 @@ import {
   Search, Activity, Edit2, CheckCircle2, X, 
   HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock
 } from 'lucide-react';
-import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment } from '../types';
+import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment, Pet } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { fetchPaginatedRecords } from '../lib/db';
+import { fetchPaginatedRecords, fetchPets } from '../lib/db';
 
 interface RecordsProps {
   records: MedicalRecord[];
@@ -75,6 +75,11 @@ export default function MedicalRecordsManager({ records, inventory, appointments
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
   const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'treatment' | 'pharmacy'>('vitals');
+  const [pets, setPets] = useState<Pet[]>([]);
+
+  useEffect(() => {
+    fetchPets().then(setPets).catch(console.error);
+  }, []);
 
   // Form State
   const [vitals, setVitals] = useState<Vitals>({});
@@ -152,21 +157,24 @@ export default function MedicalRecordsManager({ records, inventory, appointments
   const displayPatients = useMemo(() => {
     // MISSION 2: In "All History" mode, use paginated DB results
     if (!showQueueOnly) {
-      return historyRecords.map(r => ({
-        id: r.id,
-        patientId: r.patientId,
-        petName: r.petName,
-        petType: r.petType,
-        breed: r.breed,
-        weight: r.weight,
-        sex: r.sex,
-        ownerName: r.ownerName,
-        ownerPhone: r.ownerPhone,
-        visitDate: r.visitDate,
-        assessment: r.assessment,
-        diagnosis: r.diagnosis,
-        hasRecordToday: r.visitDate === todayStr
-      }));
+      return historyRecords.map(r => {
+        const p = pets.find(pet => pet.id === r.patientId);
+        return {
+          id: r.id,
+          patientId: r.patientId,
+          petName: p?.name || 'Unknown',
+          petType: p?.petType || 'Canine',
+          breed: p?.breed || '',
+          weight: p?.weight || 0,
+          sex: p?.sex || 'Unknown',
+          ownerName: r.ownerName,
+          ownerPhone: r.ownerPhone,
+          visitDate: r.visitDate,
+          assessment: r.assessment,
+          diagnosis: r.diagnosis,
+          hasRecordToday: r.visitDate === todayStr
+        };
+      });
     }
 
     // "In Clinic" mode: Use today's records prop + active appointments
@@ -175,14 +183,15 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     // Pass 1: Existing Medical Records (today's data from props)
     records.forEach(r => {
       if (!patientMap.has(r.patientId) || new Date(r.visitDate) > new Date(patientMap.get(r.patientId).visitDate)) {
+        const p = pets.find(pet => pet.id === r.patientId);
         patientMap.set(r.patientId, {
           id: r.id,
           patientId: r.patientId,
-          petName: r.petName,
-          petType: r.petType,
-          breed: r.breed,
-          weight: r.weight,
-          sex: r.sex,
+          petName: p?.name || 'Unknown',
+          petType: p?.petType || 'Canine',
+          breed: p?.breed || '',
+          weight: p?.weight || 0,
+          sex: p?.sex || 'Unknown',
           ownerName: r.ownerName,
           ownerPhone: r.ownerPhone,
           visitDate: r.visitDate,
@@ -241,12 +250,6 @@ export default function MedicalRecordsManager({ records, inventory, appointments
       targetRecord = {
         id: crypto.randomUUID(),
         patientId: patientStub.patientId,
-        petName: patientStub.petName,
-        petType: patientStub.petType,
-        breed: patientStub.breed || 'Mixed breed',
-        age: 'Unknown',
-        weight: patientStub.weight || 0,
-        sex: patientStub.sex || 'Unknown',
         ownerName: patientStub.ownerName,
         ownerPhone: patientStub.ownerPhone,
         ownerEmail: 'not-provided@example.com',
@@ -256,11 +259,13 @@ export default function MedicalRecordsManager({ records, inventory, appointments
         diagnosis: '',
         treatmentNotes: '',
         prescribedMeds: [],
-        vaccinations: [],
-        labResults: [],
-        createdDate: new Date().toISOString().split('T')[0]
+        createdDate: todayStr
       };
-      // NOTE: Do NOT call onAddRecord here — defer DB write to saveRecord
+      // ONLY trigger App.tsx upstream save if we actually originated from the clinic queue check-in
+      // (This prevents aggressive blank saves when just opening history)
+      if (showQueueOnly) {
+        onAddRecord(targetRecord);
+      }
     }
 
     setEditingRecord(targetRecord);

@@ -17,7 +17,12 @@ import {
   Shift,
   Client,
   PaymentMethod,
-  ClinicQueueItem
+  ClinicQueueItem,
+  Pet,
+  Vaccination,
+  LabResult,
+  GroomingLog,
+  BoardingRecord
 } from '../types';
 
 // Clients DB is imported from localDb.ts
@@ -166,6 +171,17 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
     visitDate: formatDisplayDate(rec.visitDate)
   };
   await db.records.setItem(rec.id, stampRecord(formattedRec));
+  
+  if (rec.patientId) {
+    const pet = await db.pets.getItem<Pet>(rec.patientId);
+    if (pet) {
+      if (!pet.recordIds) pet.recordIds = [];
+      if (!pet.recordIds.includes(rec.id)) {
+        pet.recordIds.push(rec.id);
+        await db.pets.setItem(rec.patientId, stampRecord(pet));
+      }
+    }
+  }
 }
 
 export async function deleteMedicalRecord(id: string): Promise<void> {
@@ -458,6 +474,16 @@ export async function fetchFullSystemState(): Promise<any> {
   await db.clients.iterate((value: Client) => { if (value && !Array.isArray(value)) clients.push(value); });
   const queue: ClinicQueueItem[] = [];
   await db.clinicQueue.iterate((value: ClinicQueueItem) => { if (value && !Array.isArray(value)) queue.push(value); });
+  const pets: Pet[] = [];
+  await db.pets.iterate((value: Pet) => { if (value && !Array.isArray(value)) pets.push(value); });
+  const vaccinations: Vaccination[] = [];
+  await db.vaccinations.iterate((value: Vaccination) => { if (value && !Array.isArray(value)) vaccinations.push(value); });
+  const labResults: LabResult[] = [];
+  await db.labResults.iterate((value: LabResult) => { if (value && !Array.isArray(value)) labResults.push(value); });
+  const groomingLogs: GroomingLog[] = [];
+  await db.groomingLogs.iterate((value: GroomingLog) => { if (value && !Array.isArray(value)) groomingLogs.push(value); });
+  const boardingRecords: BoardingRecord[] = [];
+  await db.boardingRecords.iterate((value: BoardingRecord) => { if (value && !Array.isArray(value)) boardingRecords.push(value); });
 
   const state: any = {
     app: 'CeylonPets',
@@ -472,7 +498,12 @@ export async function fetchFullSystemState(): Promise<any> {
       clients: clients,
       clinicQueue: queue,
       system_alerts: await fetchAlerts(),
-      notifications: await fetchNotifications()
+      notifications: await fetchNotifications(),
+      pets,
+      vaccinations,
+      labResults,
+      groomingLogs,
+      boardingRecords
     }
   };
   return state;
@@ -486,7 +517,12 @@ export async function masterSystemPurge(): Promise<void> {
     db.invoices.clear(),
     db.alerts.clear(),
     db.notifications.clear(),
-    db.clients.clear()
+    db.clients.clear(),
+    db.pets.clear(),
+    db.vaccinations.clear(),
+    db.labResults.clear(),
+    db.groomingLogs.clear(),
+    db.boardingRecords.clear()
   ]);
   localStorage.removeItem('ceylon_active_shift_id');
 }
@@ -527,6 +563,21 @@ export async function reconstituteSystemState(payload: any): Promise<void> {
   }
   if (payload.collections.pos_shifts) {
     payload.collections.pos_shifts.forEach((s: any) => writePromises.push(db.shifts.setItem(s.id, s)));
+  }
+  if (payload.collections.pets) {
+    payload.collections.pets.forEach((p: any) => writePromises.push(db.pets.setItem(p.id, p)));
+  }
+  if (payload.collections.vaccinations) {
+    payload.collections.vaccinations.forEach((v: any) => writePromises.push(db.vaccinations.setItem(v.id, v)));
+  }
+  if (payload.collections.labResults) {
+    payload.collections.labResults.forEach((l: any) => writePromises.push(db.labResults.setItem(l.id, l)));
+  }
+  if (payload.collections.groomingLogs) {
+    payload.collections.groomingLogs.forEach((g: any) => writePromises.push(db.groomingLogs.setItem(g.id, g)));
+  }
+  if (payload.collections.boardingRecords) {
+    payload.collections.boardingRecords.forEach((b: any) => writePromises.push(db.boardingRecords.setItem(b.id, b)));
   }
 
   await Promise.all(writePromises);
@@ -606,7 +657,12 @@ export async function exportFullDatabase(): Promise<string> {
       alerts: [],
       notifications: [],
       clinicQueue: [],
-      system: []
+      system: [],
+      pets: [],
+      vaccinations: [],
+      labResults: [],
+      groomingLogs: [],
+      boardingRecords: []
     };
 
     await db.clients.iterate((value: any, key: string) => { data.clients.push(value); });
@@ -619,6 +675,11 @@ export async function exportFullDatabase(): Promise<string> {
     await db.notifications.iterate((value: any, key: string) => { data.notifications.push(value); });
     await db.clinicQueue.iterate((value: any, key: string) => { data.clinicQueue.push(value); });
     await db.system.iterate((value: any, key: string) => { data.system.push({ key, value }); });
+    await db.pets.iterate((value: any, key: string) => { data.pets.push(value); });
+    await db.vaccinations.iterate((value: any, key: string) => { data.vaccinations.push(value); });
+    await db.labResults.iterate((value: any, key: string) => { data.labResults.push(value); });
+    await db.groomingLogs.iterate((value: any, key: string) => { data.groomingLogs.push(value); });
+    await db.boardingRecords.iterate((value: any, key: string) => { data.boardingRecords.push(value); });
 
     return JSON.stringify(data);
   } finally {
@@ -640,6 +701,11 @@ export async function restoreFullDatabase(jsonData: string): Promise<void> {
     await db.notifications.clear();
     await db.clinicQueue.clear();
     await db.system.clear();
+    await db.pets.clear();
+    await db.vaccinations.clear();
+    await db.labResults.clear();
+    await db.groomingLogs.clear();
+    await db.boardingRecords.clear();
 
     const writePromises: Promise<any>[] = [];
 
@@ -673,6 +739,21 @@ export async function restoreFullDatabase(jsonData: string): Promise<void> {
     if (data.system) {
       data.system.forEach((item: any) => writePromises.push(db.system.setItem(item.key, item.value)));
     }
+    if (data.pets) {
+      data.pets.forEach((item: any) => writePromises.push(db.pets.setItem(item.id, item)));
+    }
+    if (data.vaccinations) {
+      data.vaccinations.forEach((item: any) => writePromises.push(db.vaccinations.setItem(item.id, item)));
+    }
+    if (data.labResults) {
+      data.labResults.forEach((item: any) => writePromises.push(db.labResults.setItem(item.id, item)));
+    }
+    if (data.groomingLogs) {
+      data.groomingLogs.forEach((item: any) => writePromises.push(db.groomingLogs.setItem(item.id, item)));
+    }
+    if (data.boardingRecords) {
+      data.boardingRecords.forEach((item: any) => writePromises.push(db.boardingRecords.setItem(item.id, item)));
+    }
 
     await Promise.all(writePromises);
   } finally {
@@ -695,8 +776,8 @@ export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
   const records: MedicalRecord[] = [];
   await db.records.iterate((value: MedicalRecord) => {
     if (value && !Array.isArray(value) && !(value as any).is_deleted) {
-      // Include today's records AND any active boarding patients (multi-day stays)
-      if (value.visitDate === today || (value.boardingInfo && (value.boardingInfo as any).status === 'active')) {
+      // Include today's records
+      if (value.visitDate === today) {
         records.push(value);
       }
     }
@@ -773,9 +854,8 @@ export async function fetchPaginatedRecords(
   if (search && search.trim()) {
     const q = search.trim().toLowerCase();
     filtered = filtered.filter(r =>
-      r.petName.toLowerCase().includes(q) ||
-      r.ownerName.toLowerCase().includes(q) ||
-      r.ownerPhone.includes(q)
+      (r.ownerName || '').toLowerCase().includes(q) ||
+      (r.ownerPhone || '').includes(q)
     );
   }
 
@@ -799,4 +879,142 @@ export async function fetchInvoiceStats(): Promise<{ total: number; revenue: num
     }
   });
   return { total, revenue: Math.round(revenue * 100) / 100, voided };
+}
+
+// ==========================================
+// NEW ARCHITECTURE DATA STORES (PETS & RELATED)
+// ==========================================
+
+// PETS
+export async function fetchPets(): Promise<Pet[]> {
+  const items: Pet[] = [];
+  await db.pets.iterate((value: Pet) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
+  });
+  return items;
+}
+
+export async function upsertPet(pet: Pet): Promise<void> {
+  if (!pet || !pet.id) return;
+  await db.pets.setItem(pet.id, stampRecord(pet));
+  
+  if (pet.clientId) {
+    const client = await db.clients.getItem<Client>(pet.clientId);
+    if (client) {
+      if (!client.petIds) client.petIds = [];
+      if (!client.petIds.includes(pet.id)) {
+        client.petIds.push(pet.id);
+        await db.clients.setItem(pet.clientId, stampRecord(client));
+      }
+    }
+  }
+}
+
+export async function deletePet(id: string): Promise<void> {
+  if (!id) return;
+  const item = await db.pets.getItem<Pet>(id);
+  if (item) {
+    (item as any).is_deleted = true;
+    await db.pets.setItem(id, stampRecord(item));
+  }
+}
+
+// VACCINATIONS
+export async function fetchVaccinations(): Promise<Vaccination[]> {
+  const items: Vaccination[] = [];
+  await db.vaccinations.iterate((value: Vaccination) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
+  });
+  return items;
+}
+
+export async function upsertVaccination(vaccine: Vaccination): Promise<void> {
+  if (!vaccine || !vaccine.id) return;
+  await db.vaccinations.setItem(vaccine.id, stampRecord(vaccine));
+  
+  if (vaccine.petId) {
+    const pet = await db.pets.getItem<Pet>(vaccine.petId);
+    if (pet) {
+      if (!pet.vaccineIds) pet.vaccineIds = [];
+      if (!pet.vaccineIds.includes(vaccine.id)) {
+        pet.vaccineIds.push(vaccine.id);
+        await db.pets.setItem(vaccine.petId, stampRecord(pet));
+      }
+    }
+  }
+}
+
+// LAB RESULTS
+export async function fetchLabResults(): Promise<LabResult[]> {
+  const items: LabResult[] = [];
+  await db.labResults.iterate((value: LabResult) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
+  });
+  return items;
+}
+
+export async function upsertLabResult(result: LabResult): Promise<void> {
+  if (!result || !result.id) return;
+  await db.labResults.setItem(result.id, stampRecord(result));
+  
+  if (result.petId) {
+    const pet = await db.pets.getItem<Pet>(result.petId);
+    if (pet) {
+      if (!pet.labIds) pet.labIds = [];
+      if (!pet.labIds.includes(result.id)) {
+        pet.labIds.push(result.id);
+        await db.pets.setItem(result.petId, stampRecord(pet));
+      }
+    }
+  }
+}
+
+// GROOMING LOGS
+export async function fetchGroomingLogs(): Promise<GroomingLog[]> {
+  const items: GroomingLog[] = [];
+  await db.groomingLogs.iterate((value: GroomingLog) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
+  });
+  return items;
+}
+
+export async function upsertGroomingLog(log: GroomingLog): Promise<void> {
+  if (!log || !log.id) return;
+  await db.groomingLogs.setItem(log.id, stampRecord(log));
+  
+  if (log.petId) {
+    const pet = await db.pets.getItem<Pet>(log.petId);
+    if (pet) {
+      if (!pet.groomingIds) pet.groomingIds = [];
+      if (!pet.groomingIds.includes(log.id)) {
+        pet.groomingIds.push(log.id);
+        await db.pets.setItem(log.petId, stampRecord(pet));
+      }
+    }
+  }
+}
+
+// BOARDING RECORDS
+export async function fetchBoardingRecords(): Promise<BoardingRecord[]> {
+  const items: BoardingRecord[] = [];
+  await db.boardingRecords.iterate((value: BoardingRecord) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
+  });
+  return items;
+}
+
+export async function upsertBoardingRecord(record: BoardingRecord): Promise<void> {
+  if (!record || !record.id) return;
+  await db.boardingRecords.setItem(record.id, stampRecord(record));
+  
+  if (record.petId) {
+    const pet = await db.pets.getItem<Pet>(record.petId);
+    if (pet) {
+      if (!pet.boardingIds) pet.boardingIds = [];
+      if (!pet.boardingIds.includes(record.id)) {
+        pet.boardingIds.push(record.id);
+        await db.pets.setItem(record.petId, stampRecord(pet));
+      }
+    }
+  }
 }

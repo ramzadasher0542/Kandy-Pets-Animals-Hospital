@@ -522,7 +522,7 @@ function App() {
     try {
       await upsertMedicalRecord(newRec);
       setRecords(prev => [newRec, ...prev]);
-      showToast(`Medical record added for ${newRec.petName}.`);
+      showToast(`Medical record added successfully.`);
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
@@ -532,7 +532,7 @@ function App() {
     try {
       await upsertMedicalRecord(updated);
       setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
-      showToast(`Medical record updated for ${updated.petName}.`);
+      showToast(`Medical record updated successfully.`);
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }

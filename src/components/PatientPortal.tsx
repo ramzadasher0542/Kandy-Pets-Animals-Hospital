@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Search, PawPrint, Activity, HeartPulse, TestTube, Syringe, 
   Edit2, CheckCircle2, X, User, PenTool, Database, Clock, AlertTriangle
 } from 'lucide-react';
-import { MedicalRecord, PetClassification, Appointment } from '../types';
+import { MedicalRecord, PetClassification, Appointment, Pet, Vaccination, LabResult } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
+import { fetchPets, fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
 
 interface PatientPortalProps {
   records: MedicalRecord[];
@@ -45,6 +46,16 @@ export default function PatientPortal({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [passportTab, setPassportTab] = useState<'timeline' | 'exams' | 'labs' | 'vaccines'>('timeline');
+
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
+
+  useEffect(() => {
+    fetchPets().then(setPets).catch(console.error);
+    fetchVaccinations().then(setVaccinations).catch(console.error);
+    fetchLabResults().then(setLabResults).catch(console.error);
+  }, []);
   const [showQueueOnly, setShowQueueOnly] = useState(true); 
 
   const [showEditPetModal, setShowEditPetModal] = useState(false);
@@ -59,13 +70,14 @@ export default function PatientPortal({
 
     records.forEach(r => {
       if (!petMap.has(r.patientId) || new Date(r.visitDate) > new Date(petMap.get(r.patientId).visitDate)) {
+        const p = pets.find(pet => pet.id === r.patientId);
         petMap.set(r.patientId, {
           patientId: r.patientId,
-          petName: r.petName,
-          petType: r.petType,
-          breed: r.breed,
-          weight: r.weight,
-          sex: r.sex,
+          petName: p?.name || 'Unknown',
+          petType: p?.petType || 'Canine',
+          breed: p?.breed || '',
+          weight: p?.weight || 0,
+          sex: p?.sex || 'Unknown',
           ownerName: r.ownerName,
           ownerPhone: r.ownerPhone,
           visitDate: r.visitDate,
@@ -114,21 +126,21 @@ export default function PatientPortal({
     }
 
     return activeList.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
-  }, [records, appointments, showQueueOnly, searchQuery, todayStr]);
+  }, [records, appointments, showQueueOnly, searchQuery, todayStr, pets]);
 
   const petRecords = selectedPatientId 
     ? records.filter(r => r.patientId === selectedPatientId).sort((a,b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()) 
     : [];
   
-  const activePet = petRecords.length > 0 ? petRecords[0] : displayPets.find(p => p.patientId === selectedPatientId);
+  const activePet = selectedPatientId ? pets.find(p => p.id === selectedPatientId) : null;
 
-  const allPetLabs = petRecords.flatMap(r => (r.labResults || []).map(l => ({ ...l, visitDate: r.visitDate })));
-  const allPetVax = petRecords.flatMap(r => (r.vaccinations || []).map(v => ({ ...v, visitDate: r.visitDate })));
+  const allPetLabs = selectedPatientId ? labResults.filter(l => l.petId === selectedPatientId) : [];
+  const allPetVax = selectedPatientId ? vaccinations.filter(v => v.petId === selectedPatientId) : [];
 
   const handleOpenEditPet = () => {
     if (!activePet) return;
     setEditPetData({
-      petName: activePet.petName,
+      petName: activePet.name,
       petType: activePet.petType,
       breed: activePet.breed || '',
       sex: activePet.sex || 'Unknown',
@@ -141,36 +153,20 @@ export default function PatientPortal({
   // PHASE 3: BULK SYNC RACE-CONDITION ARMOR
   const handleSavePetEdits = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPatientId) return;
+    if (!activePet) return;
 
-    if (petRecords.length === 0) {
-      showToast('No medical records found to sync identity against.', 'warning');
-      setShowEditPetModal(false);
-      return;
-    }
-
-    const updatedRecords = petRecords.map(record => ({
-      ...record,
-      petName: editPetData.petName,
+    const updatedPet: Pet = {
+      ...activePet,
+      name: editPetData.petName,
       petType: editPetData.petType,
       breed: editPetData.breed,
       sex: editPetData.sex,
       weight: editPetData.weight,
       age: editPetData.age
-    }));
+    };
 
-    if (onUpdateRecordsBulk) {
-      onUpdateRecordsBulk(updatedRecords);
-    } else if (onUpdateRecord) {
-      // Fallback: Micro-throttled safe loop
-      for (const record of updatedRecords) {
-        onUpdateRecord(record);
-        await new Promise(resolve => setTimeout(resolve, 15));
-      }
-    } else {
-      showToast('Record update engine unavailable.', 'error');
-      return;
-    }
+    await upsertPet(updatedPet);
+    setPets(prev => prev.map(p => p.id === updatedPet.id ? updatedPet : p));
 
     setShowEditPetModal(false);
     showToast('Patient Identity synchronized across all medical records.', 'success');
@@ -255,8 +251,8 @@ export default function PatientPortal({
                   </div>
                   <div>
                     <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                      {activePet.petName}
-                      <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border border-slate-200">ID: {activePet.patientId.split('_')[0].toUpperCase()}</span>
+                      {activePet.name}
+                      <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border border-slate-200">Patient ID: {activePet.id.split('-')[0].toUpperCase()}</span>
                     </h2>
                     <div className="flex items-center gap-3 mt-1.5 text-xs font-bold text-slate-500 uppercase tracking-widest">
                       <span>{activePet.petType}</span>
@@ -270,7 +266,7 @@ export default function PatientPortal({
                 <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <div className="text-center px-4 border-r border-slate-200">
                     <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Sex</div>
-                    <div className="text-xs font-black text-slate-700">{activePet.sex || 'Unknown'}</div>
+                    <div className="text-xs font-black text-slate-700">{activePet.weight ? `${activePet.weight} kg` : 'N/A'}</div>
                   </div>
                   <div className="text-center px-4 border-r border-slate-200">
                     <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Weight</div>
