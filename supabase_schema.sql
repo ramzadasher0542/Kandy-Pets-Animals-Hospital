@@ -185,6 +185,7 @@ DROP TABLE IF EXISTS clients CASCADE;
 CREATE TABLE clients (
   "client_id"                TEXT PRIMARY KEY,
   "primary_phone"            TEXT NOT NULL DEFAULT '',
+  "petIds"                   JSONB DEFAULT '[]'::jsonb,
   "alternate_phone"          TEXT DEFAULT '',
   "full_name"                TEXT NOT NULL DEFAULT '',
   "email_address"            TEXT DEFAULT '',
@@ -311,7 +312,7 @@ CREATE POLICY "Allow anon write access on notifications"
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS clinic_queue CASCADE;
 CREATE TABLE clinic_queue (
-  "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id"              TEXT PRIMARY KEY,
   "petId"           TEXT NOT NULL DEFAULT '',
   "petName"         TEXT NOT NULL DEFAULT '',
   "ownerName"       TEXT NOT NULL DEFAULT '',
@@ -371,7 +372,7 @@ CREATE POLICY "Allow anon write access on staff_users"
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS pets CASCADE;
 CREATE TABLE pets (
-  "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "id"              TEXT PRIMARY KEY,
   "clientId"        TEXT NOT NULL DEFAULT '',
   "name"            TEXT NOT NULL DEFAULT '',
   "petType"         TEXT NOT NULL DEFAULT 'Canine',
