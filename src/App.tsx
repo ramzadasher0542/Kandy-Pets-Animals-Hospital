@@ -566,7 +566,13 @@ function App() {
   const handleUpdateInventoryItem = useCallback(async (item: InventoryItem) => {
     try {
       await upsertInventoryItem(item);
-      setInventory(prev => prev.map(i => i.id === item.id ? item : i));
+      setInventory(prev => {
+        const exists = prev.some(i => i.id === item.id);
+        if (exists) {
+          return prev.map(i => i.id === item.id ? item : i);
+        }
+        return [...prev, item];
+      });
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
