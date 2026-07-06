@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification } from '../types';
 import { fetchClients } from '../lib/db';
+import { db } from '../lib/localDb';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
@@ -56,6 +57,10 @@ export default function CustomersManager({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditPetModal, setShowEditPetModal] = useState(false);
+
+  // BUG #12 FIX: Full historical data loaded from DB, not today-only props
+  const [allClientRecords, setAllClientRecords] = useState<MedicalRecord[]>([]);
+  const [allClientInvoices, setAllClientInvoices] = useState<Invoice[]>([]);
   
   const [formData, setFormData] = useState({
     full_name: '', primary_phone: '', alternate_phone: '',
@@ -79,6 +84,36 @@ export default function CustomersManager({
   useEffect(() => {
     loadClients();
   }, [loadClients]);
+
+  // BUG #12 FIX: When a client is selected, load ALL their records/invoices from IndexedDB
+  useEffect(() => {
+    if (!selectedClientId) {
+      setAllClientRecords([]);
+      setAllClientInvoices([]);
+      return;
+    }
+    const selected = clients.find(c => c.client_id === selectedClientId);
+    if (!selected) return;
+    const phone9 = normalizePhone(selected.primary_phone).slice(-9);
+
+    (async () => {
+      const recs: MedicalRecord[] = [];
+      await db.records.iterate((v: any) => {
+        if (v && !Array.isArray(v) && !v.is_deleted && normalizePhone(v.ownerPhone || '').slice(-9) === phone9) {
+          recs.push(v);
+        }
+      });
+      setAllClientRecords(recs.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()));
+
+      const invs: Invoice[] = [];
+      await db.invoices.iterate((v: any) => {
+        if (v && !Array.isArray(v) && normalizePhone(v.ownerPhone || '').slice(-9) === phone9) {
+          invs.push(v);
+        }
+      });
+      setAllClientInvoices(invs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    })();
+  }, [selectedClientId, clients]);
 
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
 
@@ -249,7 +284,8 @@ export default function CustomersManager({
   // ---------------------------------------------------------
   // AGGREGATORS FOR CLIENT DASHBOARD
   // ---------------------------------------------------------
-  const clientPets = selectedClient ? records.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(selectedClient.primary_phone)) : [];
+  // BUG #12 FIX: Use full historical data from DB, not today-only props
+  const clientPets = selectedClient ? allClientRecords.filter(r => normalizePhone(r.ownerPhone) === normalizePhone(selectedClient.primary_phone)) : [];
   const petMap = new Map<string, any>();
   
   clientPets.forEach(p => {
@@ -264,7 +300,7 @@ export default function CustomersManager({
   });
   
   const uniqueClientPets = Array.from(petMap.values());
-  const clientInvoices = selectedClient ? invoices.filter(i => normalizePhone(i.ownerPhone) === normalizePhone(selectedClient.primary_phone)).slice(0, 5) : [];
+  const clientInvoices = selectedClient ? allClientInvoices.slice(0, 5) : [];
   const clientAppointments = selectedClient ? appointments.filter(a => normalizePhone(a.ownerPhone) === normalizePhone(selectedClient.primary_phone)).slice(0, 5) : [];
 
   // =========================================================

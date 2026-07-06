@@ -48,12 +48,11 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
 
 export async function deleteInventoryItem(id: string): Promise<void> {
   if (!id) return;
-  // FIXED: Soft delete instead of hard delete for data integrity
+  // FIXED: Soft delete with _dirty flag for sync
   const item = await db.inventory.getItem<InventoryItem>(id);
   if (item) {
     (item as any).is_deleted = true;
-    (item as any).updated_at = new Date().toISOString();
-    await db.inventory.setItem(id, item);
+    await db.inventory.setItem(id, stampRecord(item));
   }
 }
 
@@ -71,7 +70,8 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
     }
     const newStock = Math.max(0, item.stock + qtyDelta);
     item.stock = newStock;
-    await safeDbWrite(db.inventory, itemId, item);
+    // BUG #7 FIX: Stamp for sync so stock changes reach Supabase
+    await safeDbWrite(db.inventory, itemId, stampRecord(item));
     return newStock;
   } finally {
     unlock();
@@ -174,8 +174,8 @@ export async function deleteMedicalRecord(id: string): Promise<void> {
   const rec = await db.records.getItem<MedicalRecord>(id);
   if (rec) {
     (rec as any).is_deleted = true;
-    (rec as any).updated_at = new Date().toISOString();
-    await db.records.setItem(id, rec);
+    // BUG #8 FIX: Stamp for sync so deletion reaches Supabase
+    await db.records.setItem(id, stampRecord(rec));
   }
 }
 
@@ -436,7 +436,7 @@ export async function fetchClients(): Promise<Client[]> {
       lifetime_value: 0,
       administrative_notes: 'Permanent default account for anonymous over-the-counter retail sales.'
     };
-    await db.clients.setItem('walk_in_retail', walkInClient);
+    await db.clients.setItem('walk_in_retail', stampRecord(walkInClient));
     clients.unshift(walkInClient);
   }
   return clients;
@@ -538,33 +538,42 @@ export async function reconstituteSystemState(payload: any): Promise<void> {
 export async function fetchClinicQueue(): Promise<ClinicQueueItem[]> {
   const queue: ClinicQueueItem[] = [];
   await db.clinicQueue.iterate((value: ClinicQueueItem) => {
-    if (value && !Array.isArray(value)) queue.push(value);
+    // BUG #6 FIX: Filter out soft-deleted queue items
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) queue.push(value);
   });
   return queue.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
 }
 
 export async function addToClinicQueue(item: ClinicQueueItem): Promise<void> {
   if (!item || !item.id) return;
-  await db.clinicQueue.setItem(item.id, item);
+  // BUG #5 FIX: Stamp for sync so queue items reach Supabase
+  await db.clinicQueue.setItem(item.id, stampRecord(item));
 }
 
 export async function updateQueueItemStatus(id: string, status: 'scheduled' | 'active' | 'completed'): Promise<void> {
   const item = await db.clinicQueue.getItem<ClinicQueueItem>(id);
   if (item) {
     item.status = status;
-    await db.clinicQueue.setItem(id, item);
+    // BUG #5 FIX: Stamp for sync
+    await db.clinicQueue.setItem(id, stampRecord(item));
   }
 }
 
 export async function removeFromClinicQueue(id: string): Promise<void> {
   if (!id) return;
-  await db.clinicQueue.removeItem(id);
+  // BUG #6 FIX: Soft-delete instead of hard-delete so sync engine can push deletion
+  const item = await db.clinicQueue.getItem<ClinicQueueItem>(id);
+  if (item) {
+    (item as any).is_deleted = true;
+    (item as any).status = 'completed';
+    await db.clinicQueue.setItem(id, stampRecord(item));
+  }
 }
 
 export async function getActiveQueueItems(): Promise<ClinicQueueItem[]> {
   const queue: ClinicQueueItem[] = [];
   await db.clinicQueue.iterate((value: ClinicQueueItem) => {
-    if (value && !Array.isArray(value) && value.status === 'active') {
+    if (value && !Array.isArray(value) && value.status === 'active' && !(value as any).is_deleted) {
       queue.push(value);
     }
   });

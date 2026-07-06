@@ -323,6 +323,40 @@ function App() {
               });
             }
 
+            // ── ONE-TIME MIGRATION: Deduplicate ghost clients by phone ──
+            try {
+              const dedupDone = await db.system.getItem('migration_client_dedup_v1');
+              if (!dedupDone) {
+                const allClients: any[] = [];
+                await db.clients.iterate((v: any) => { if (v && !Array.isArray(v)) allClients.push(v); });
+                const phoneMap = new Map<string, any[]>();
+                allClients.forEach(c => {
+                  const norm = (c.primary_phone || '').replace(/\D/g, '').slice(-9);
+                  if (norm.length >= 7) {
+                    const existing = phoneMap.get(norm) || [];
+                    existing.push(c);
+                    phoneMap.set(norm, existing);
+                  }
+                });
+                let deduped = 0;
+                for (const [, dupes] of phoneMap) {
+                  if (dupes.length <= 1) continue;
+                  // Keep the one with the most data (longest administrative_notes or first created)
+                  dupes.sort((a, b) => (a.client_id || '').length - (b.client_id || '').length);
+                  const keeper = dupes[0];
+                  for (let i = 1; i < dupes.length; i++) {
+                    await db.clients.removeItem(dupes[i].client_id);
+                    deduped++;
+                  }
+                  console.info(`[Boot] Deduped client "${keeper.full_name}" — removed ${dupes.length - 1} ghost(s)`);
+                }
+                await db.system.setItem('migration_client_dedup_v1', new Date().toISOString());
+                if (deduped > 0) console.info(`[Boot] Client dedup complete: ${deduped} ghost(s) removed.`);
+              }
+            } catch (dedupErr) {
+              console.warn('[Boot] Client dedup migration failed (non-fatal):', dedupErr);
+            }
+
             // Allow 500ms for UI painting to stabilize
             setTimeout(() => setIsBooting(false), 500);
           }
@@ -676,8 +710,9 @@ function App() {
   }, []);
 
   // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
+  // BUG #1 FIX: Removed outer globalMutex.lock() — atomicStockDecrement already
+  // acquires the mutex internally. Double-locking caused a deadlock that froze checkout.
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
-    const unlock = await globalMutex.lock();
     try {
       await upsertInvoice(invoice);
       const updatedInvoices = await fetchTodaysInvoices();
@@ -694,8 +729,6 @@ function App() {
       console.error('Checkout failed:', error);
       showToast(`Checkout Error: ${error.message}`, 'error');
       throw error; // Rethrow so POSRegister knows it failed
-    } finally {
-      unlock();
     }
   }, []);
 

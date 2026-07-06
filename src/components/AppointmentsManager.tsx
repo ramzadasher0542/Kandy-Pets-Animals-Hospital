@@ -342,32 +342,51 @@ export default function AppointmentsManager({
   const handleCheckIn = async (apt: any) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
     
-    // FIXED: Create client/CRM record on check-in, NOT on appointment booking
-    // Only real walk-ins enter the customer database
+    const normalizedPhone = normalizeSearchPhone(apt.ownerPhone);
+    
+    // BUG #4 FIX: Deduplicate clients — search by phone before creating
     try {
-      const clientPayload = {
-        client_id: crypto.randomUUID(),
-        full_name: apt.ownerName.trim(),
-        primary_phone: enforcePhoneFormat(apt.ownerPhone),
-        alternate_phone: apt.alternatePhone || '',
-        email_address: apt.ownerEmail || 'not-provided@example.com',
-        physical_address: apt.address || '',
-        communication_preference: 'sms' as any,
-        account_balance: 0,
-        lifetime_value: 0,
-        client_status: 'active' as any,
-        administrative_notes: '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        is_deleted: false
-      };
-      if (onUpdateClient) await onUpdateClient(clientPayload);
+      let existingClient: any = null;
+      await db.clients.iterate((value: any) => {
+        if (value && !Array.isArray(value) && normalizeSearchPhone(value.primary_phone) === normalizedPhone) {
+          existingClient = value;
+          return false; // stop iteration — found match
+        }
+      });
+
+      if (!existingClient) {
+        // No existing client with this phone — create with deterministic ID
+        const clientPayload = {
+          client_id: `client_${normalizedPhone}`,
+          full_name: apt.ownerName.trim(),
+          primary_phone: enforcePhoneFormat(apt.ownerPhone),
+          alternate_phone: apt.alternatePhone || '',
+          email_address: apt.ownerEmail || 'not-provided@example.com',
+          physical_address: apt.address || '',
+          communication_preference: 'sms' as any,
+          account_balance: 0,
+          lifetime_value: 0,
+          client_status: 'active' as any,
+          administrative_notes: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          is_deleted: false
+        };
+        if (onUpdateClient) await onUpdateClient(clientPayload);
+      } else {
+        // Client exists — update name/email if they were placeholders
+        if (existingClient.full_name !== apt.ownerName.trim() && onUpdateClient) {
+          await onUpdateClient({ ...existingClient, full_name: apt.ownerName.trim() });
+        }
+      }
     } catch (err) {
       console.error('[Enterprise OS] CRM Sync on check-in failed:', err);
     }
 
+    // BUG #3 FIX: Use deterministic patientId that matches queue petId format
     const targetPhone = normalizeSearchPhone(apt.ownerPhone);
     const targetPetName = (apt.petName || '').trim().toLowerCase();
+    const deterministicPatientId = `${targetPetName}_${targetPhone}`;
 
     const patientExists = records.some(r => 
       normalizeSearchPhone(r.ownerPhone) === targetPhone && 
@@ -377,7 +396,7 @@ export default function AppointmentsManager({
     if (!patientExists) {
       const newRecord: MedicalRecord = {
         id: crypto.randomUUID(),
-        patientId: crypto.randomUUID(),
+        patientId: deterministicPatientId,
         petName: apt.petName.trim(),
         petType: apt.petType,
         breed: apt.breed || 'Mixed breed',
@@ -389,7 +408,7 @@ export default function AppointmentsManager({
         ownerEmail: apt.ownerEmail || 'not-provided@example.com',
         visitDate: apt.date,
         attendingVet: apt.veterinarian,
-        appointmentId: apt.id, // FIXED: was missing — broken Appointment → Record link
+        appointmentId: apt.id,
         symptoms: '',
         diagnosis: '',
         treatmentNotes: '',

@@ -260,7 +260,7 @@ export default function MedicalRecordsManager({ records, inventory, appointments
         labResults: [],
         createdDate: new Date().toISOString().split('T')[0]
       };
-      onAddRecord(targetRecord);
+      // NOTE: Do NOT call onAddRecord here — defer DB write to saveRecord
     }
 
     setEditingRecord(targetRecord);
@@ -291,7 +291,8 @@ export default function MedicalRecordsManager({ records, inventory, appointments
     const compiledSymptoms = Object.values(exam).flatMap((sys: any) => sys.abnormalities || []).join(', ');
     const compiledDiagnosis = `${assessment.diagnosisType || 'Diagnosis'}: ${assessment.notes || ''}`;
 
-    const latestRecord = records.find(r => r.id === editingRecord.id) || editingRecord;
+    const existingRecord = records.find(r => r.id === editingRecord.id);
+    const latestRecord = existingRecord || editingRecord;
 
     const updatedRecord: MedicalRecord = {
       ...latestRecord,
@@ -305,7 +306,11 @@ export default function MedicalRecordsManager({ records, inventory, appointments
       diagnosis: compiledDiagnosis 
     };
 
-    onUpdateRecord(updatedRecord);
+    if (existingRecord) {
+      onUpdateRecord(updatedRecord);
+    } else {
+      onAddRecord(updatedRecord);
+    }
     setShowModal(false);
     showToast('Chart Locked & Saved successfully.', 'success');
   };

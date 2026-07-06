@@ -35,6 +35,8 @@ const STORE_MAPPINGS: StoreMapping[] = [
   { storeKey: 'alerts',       table: DB_TABLES.ALERTS,        idField: 'id' },
   { storeKey: 'notifications', table: DB_TABLES.NOTIFICATIONS, idField: 'id' },
   { storeKey: 'clinicQueue',  table: 'clinic_queue',          idField: 'id' },
+  // BUG #13 FIX: Users were never synced
+  { storeKey: 'users',        table: DB_TABLES.USERS,         idField: 'id' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -254,11 +256,18 @@ export class SyncEngine {
 
     for (const mapping of STORE_MAPPINGS) {
       try {
-        const { pulled, maxTs } = await this.pullTable(mapping, lastSync);
-        totalPulled += pulled;
-        if (maxTs && maxTs > latestTimestamp) {
-          latestTimestamp = maxTs;
-        }
+        // BUG #11 FIX: Loop until all pending records are drained (not just 500)
+        let tableSince = lastSync;
+        let batchPulled = 0;
+        do {
+          const { pulled, maxTs } = await this.pullTable(mapping, tableSince);
+          batchPulled = pulled;
+          totalPulled += pulled;
+          if (maxTs && maxTs > latestTimestamp) {
+            latestTimestamp = maxTs;
+          }
+          if (maxTs) tableSince = maxTs;
+        } while (batchPulled >= PULL_LIMIT);
       } catch (err) {
         console.error(`${TAG} Pull error [${mapping.table}]:`, err);
       }
