@@ -269,15 +269,18 @@ export default function POSRegister({
     // Matches: medical records, clinic queue, patient portal
     const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase().trim()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
 
-    const invoiceItems: InvoiceItem[] = cart.map(c => ({
-      itemId: c.id,
-      sku: c.sku,
-      name: c.name,
-      category: c.category,
-      quantity: c.cartQuantity,
-      unitPrice: c.price,
-      totalPrice: c.price * c.cartQuantity
-    }));
+    const invoiceItems: InvoiceItem[] = cart.map(c => {
+      const numericPrice = Number(c.price) || 0;
+      return {
+        itemId: c.id,
+        sku: c.sku,
+        name: c.name,
+        category: c.category,
+        quantity: c.cartQuantity,
+        unitPrice: numericPrice,
+        totalPrice: numericPrice * c.cartQuantity
+      };
+    });
 
     const invoice: Invoice = {
       id: crypto.randomUUID(),
