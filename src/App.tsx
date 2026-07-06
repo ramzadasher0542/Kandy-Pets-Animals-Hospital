@@ -742,6 +742,8 @@ function App() {
       await db.notifications.clear();
       await db.alerts.clear();
       await db.users.clear();
+      await db.clients.clear();
+      await db.clinicQueue.clear();
       localStorage.clear(); sessionStorage.clear();
       window.location.reload();
     } catch (error: any) {
