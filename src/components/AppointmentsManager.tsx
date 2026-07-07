@@ -283,6 +283,22 @@ export default function AppointmentsManager({
     // Client/CRM record creation moved to check-in (handleCheckIn)
     // Rationale: Don't pollute pet/customer DB until patient physically arrives
 
+    const displayDate = formatDisplayDate(date);
+    const displayTime = formatDisplayTime(time);
+
+    const conflict = allAppointments.find(a => 
+      a.veterinarian === veterinarian &&
+      a.date === displayDate &&
+      a.time === displayTime &&
+      (a.status === 'booked' || a.status === 'in-progress') &&
+      a.id !== editingAptId
+    );
+
+    if (conflict) {
+      setFormError(`Dr. ${veterinarian} already has an appointment at ${displayTime} on ${displayDate}. Choose a different time or vet.`);
+      return;
+    }
+
     const now = new Date().toISOString();
     const currentWeight = typeof weight === 'number' ? weight : parseFloat(weight as string) || 0;
 

@@ -260,6 +260,16 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                 const isService = ['service', 'lab_service'].includes(item.category);
                 const isLow = !isService && item.stock <= item.minStock;
 
+                let expiryStatus: 'ok' | 'soon' | 'expired' = 'ok';
+                if (['prescription', 'vaccine'].includes(item.category) && item.expiryDate) {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const exp = new Date(item.expiryDate);
+                  const daysDiff = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+                  if (daysDiff < 0) expiryStatus = 'expired';
+                  else if (daysDiff <= 30) expiryStatus = 'soon';
+                }
+
                 return (
                   <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
@@ -289,6 +299,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                             {item.stock} <span className="text-[9px] opacity-70 ml-0.5 uppercase">{item.unit}</span>
                           </span>
                           {isLow && <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
+                          {expiryStatus === 'expired' && <span className="text-[8px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
+                          {expiryStatus === 'soon' && <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
                         </div>
                       )}
                     </td>
@@ -376,7 +388,22 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                       <input type="text" placeholder="e.g. tablet, box" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
                     </div>
                   </div>
-                ) : isFormLab ? (
+                ) : null}
+
+                {['prescription', 'vaccine'].includes(formData.category) && (
+                  <div className="grid grid-cols-2 gap-4 mt-4 animate-fade-in">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot Number</label>
+                      <input type="text" placeholder="e.g. LOT-12345" value={formData.lotNumber || ''} onChange={e => setFormData({...formData, lotNumber: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-1.5">Expiry Date</label>
+                      <input type="date" value={formData.expiryDate || ''} onChange={e => setFormData({...formData, expiryDate: e.target.value})} className="w-full px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-black font-mono text-amber-800 outline-none focus:border-amber-500" />
+                    </div>
+                  </div>
+                )}
+
+                {isFormLab ? (
                   /* PHASE 2: DYNAMIC LAB PARAMETER BUILDER */
                   <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 animate-fade-in shadow-inner">
                     <div className="flex items-center justify-between border-b border-indigo-200 pb-3 mb-4">

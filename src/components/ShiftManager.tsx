@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { Lock, Calculator, AlertTriangle, CheckCircle2, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
-import localforage from 'localforage';
+import { db, stampRecord } from '../lib/localDb';
 
 // --- Cash Adjustment Type ---
 interface CashAdjustment {
@@ -28,12 +28,12 @@ interface ShiftManagerProps {
   activeShift: ActiveShift | null;
   setActiveShift: (s: ActiveShift | null) => void;
   onSaveShift: (log: ShiftReconciliation) => void;
+  onVerifyMasterPin?: (pin: string) => boolean;
 }
 
-const cashDb = localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'cash_adjustments' });
 const formatCurrency = (v: number) => `Rs. ${v.toFixed(2)}`;
 
-export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift, onSaveShift }: ShiftManagerProps) {
+export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift, onSaveShift, onVerifyMasterPin }: ShiftManagerProps) {
   const [openingFloatInput, setOpeningFloatInput] = useState('');
   const [actualClosingInput, setActualClosingInput] = useState('');
   const [lastClosedShift, setLastClosedShift] = useState<ShiftReconciliation | null>(null);
@@ -51,7 +51,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     if (!activeShift) { setAdjustments([]); return; }
     const load = async () => {
       const adjs: CashAdjustment[] = [];
-      await cashDb.iterate((val: CashAdjustment) => {
+      await db.cashAdjustments.iterate((val: CashAdjustment) => {
         if (val && val.shiftId === activeShift.id) adjs.push(val);
       });
       setAdjustments(adjs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -157,7 +157,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       createdBy: currentUser.name,
       shiftId: newShift.id
     };
-    await cashDb.setItem(newAdj.id, newAdj);
+    await db.cashAdjustments.setItem(newAdj.id, stampRecord(newAdj));
     setAdjustments(prev => [newAdj, ...prev]);
 
     const activeShiftState: ActiveShift = {
@@ -208,6 +208,16 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     if (!amt || amt <= 0) return showToast('Enter a valid amount.', 'error');
     if (!adjReason.trim()) return showToast('Reason is required.', 'error');
 
+    if (!onVerifyMasterPin) {
+      showToast('Master PIN verification unavailable.', 'error');
+      return;
+    }
+    const pin = window.prompt('AUTHORIZATION REQUIRED: Cash drawer adjustment requires manager approval. Enter Master PIN:');
+    if (!pin || !onVerifyMasterPin(pin)) {
+      showToast('Authorization failed.', 'error');
+      return;
+    }
+
     const newAdj: CashAdjustment = {
       id: `CASH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       type: adjType, amount: amt, category: adjCategory, reason: adjReason,
@@ -215,7 +225,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       shiftId: activeShift.id
     };
 
-    await cashDb.setItem(newAdj.id, newAdj);
+    await db.cashAdjustments.setItem(newAdj.id, stampRecord(newAdj));
     setAdjustments(prev => [newAdj, ...prev]);
     setShowAdjModal(false); setAdjAmount(''); setAdjReason('');
     showToast(`Drawer ${adjType === 'IN' ? 'cash added' : 'cash removed'}: Rs. ${amt.toFixed(2)}`, 'success');

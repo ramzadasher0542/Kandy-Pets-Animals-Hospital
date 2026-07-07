@@ -13,8 +13,6 @@ SET search_path = public
 AS $$
 DECLARE
   v_count INTEGER;
-  v_alert_id TEXT;
-  v_alert_data JSONB;
 BEGIN
   -- Perform update targeting the appointments table (mapping fuzzy intent visit_date to date)
   UPDATE public.appointments
@@ -24,22 +22,15 @@ BEGIN
 
   GET DIAGNOSTICS v_count = ROW_COUNT;
 
-  -- Create alert ID using current timestamp
-  v_alert_id := 'al-cron-' || EXTRACT(EPOCH FROM NOW())::TEXT;
-
-  -- Build telemetry JSON data conforming to SystemAlert interface
-  v_alert_data := jsonb_build_object(
-    'id', v_alert_id,
-    'severity', 'info',
-    'category', 'appointment',
-    'message', 'Automated Appointment Expiry Sweeper executed: ' || v_count || ' expired bookings auto-cancelled.',
-    'timestamp', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-    'read', false
-  );
-
   -- Insert telemetry entry into system_alerts table
-  INSERT INTO public.system_alerts (id, data)
-  VALUES (v_alert_id, v_alert_data);
+  INSERT INTO public.system_alerts (severity, category, message, timestamp, read)
+  VALUES (
+    'info',
+    'appointment',
+    'Automated Appointment Expiry Sweeper executed: ' || v_count || ' expired bookings auto-cancelled.',
+    to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+    false
+  );
 
   -- Notify cache invalidation so postgrest has new data
   NOTIFY pgrst, 'reload schema';

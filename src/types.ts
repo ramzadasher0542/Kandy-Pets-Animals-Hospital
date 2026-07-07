@@ -22,6 +22,8 @@ export interface InventoryItem {
   unit: string; 
   location?: string;
   labParameters?: Array<{ name: string; referenceRange: string; unit: string }>;
+  expiryDate?: string;
+  lotNumber?: string;
 }
 
 export type AppointmentStatus = 'booked' | 'in-progress' | 'completed' | 'cancelled';

@@ -40,7 +40,7 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     invoiceExtraFooterMessage: 'POWERED BY ASH POINT SOLUTIONS',
     taxRate: 0.0825,
     currencySymbol: 'Rs. ',
-    masterPin: 'c23f6e51', // hashPin('5692')
+    masterPin: 'c23f6e51',
     selectedReceiptPrinter: '',
     selectedReportPrinter: '',
     receiptPaperSize: '58mm',

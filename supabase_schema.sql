@@ -529,3 +529,63 @@ CREATE POLICY "Allow anon write access on boarding_records"
 -- =============================================================================
 -- END OF SCHEMA
 -- =============================================================================
+  
+-- Migration: Add expiry and lot tracking to inventory  
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "expiryDate" TEXT DEFAULT NULL;  
+ALTER TABLE inventory ADD COLUMN IF NOT EXISTS "lotNumber" TEXT DEFAULT NULL; 
+
+-- ---------------------------------------------------------------------------  
+-- 16. CASH ADJUSTMENTS  
+-- ---------------------------------------------------------------------------  
+CREATE TABLE IF NOT EXISTS cash_adjustments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  category TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  date TEXT NOT NULL,
+  "createdBy" TEXT NOT NULL,
+  "shiftId" TEXT,
+  updated_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text,
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
+  _dirty BOOLEAN NOT NULL DEFAULT true
+);
+
+ALTER TABLE cash_adjustments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon full access on cash_adjustments" ON cash_adjustments;  
+DROP POLICY IF EXISTS "Allow anon read access on cash_adjustments" ON cash_adjustments;  
+DROP POLICY IF EXISTS "Allow anon write access on cash_adjustments" ON cash_adjustments;  
+CREATE POLICY "Allow anon write access on cash_adjustments"  
+  ON cash_adjustments FOR ALL TO anon  
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')  
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+
+-- ---------------------------------------------------------------------------  
+-- 17. SHIFT RECONCILIATIONS  
+-- ---------------------------------------------------------------------------  
+CREATE TABLE IF NOT EXISTS shift_reconciliations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  timestamp TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "userName" TEXT NOT NULL,
+  "openingFloat" NUMERIC NOT NULL,
+  "cashSales" NUMERIC NOT NULL,
+  "expectedClosing" NUMERIC NOT NULL,
+  "actualClosing" NUMERIC NOT NULL,
+  discrepancy NUMERIC NOT NULL,
+  status TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text,
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
+  _dirty BOOLEAN NOT NULL DEFAULT true
+);
+
+ALTER TABLE shift_reconciliations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon full access on shift_reconciliations" ON shift_reconciliations;  
+DROP POLICY IF EXISTS "Allow anon read access on shift_reconciliations" ON shift_reconciliations;  
+DROP POLICY IF EXISTS "Allow anon write access on shift_reconciliations" ON shift_reconciliations;  
+CREATE POLICY "Allow anon write access on shift_reconciliations"  
+  ON shift_reconciliations FOR ALL TO anon  
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')  
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');

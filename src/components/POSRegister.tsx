@@ -16,6 +16,8 @@ import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 import POSReceipt from './POSReceipt';
 
+const DISCOUNT_APPROVAL_THRESHOLD_PCT = 10;
+
 interface POSProps {
   inventory: InventoryItem[];
   appointments: Appointment[];
@@ -54,7 +56,8 @@ export default function POSRegister({
   activeShiftId,
   activeShift,
   currentUser,
-  systemConfig 
+  systemConfig,
+  onVerifyMasterPin
 }: POSProps) {
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -249,6 +252,21 @@ export default function POSRegister({
     if (cart.length === 0) {
       showToast('Cart is empty.', 'error');
       return;
+    }
+
+    if (discount > 0 && subtotal > 0) {
+      const discountPct = (discount / subtotal) * 100;
+      if (discountPct > DISCOUNT_APPROVAL_THRESHOLD_PCT) {
+        if (!onVerifyMasterPin) {
+          showToast('Master PIN verification unavailable.', 'error');
+          return;
+        }
+        const pin = window.prompt(`AUTHORIZATION REQUIRED: Discount of ${discountPct.toFixed(1)}% exceeds approval threshold (${DISCOUNT_APPROVAL_THRESHOLD_PCT}%). Enter Master PIN:`);
+        if (!pin || !onVerifyMasterPin(pin)) {
+          showToast('Discount authorization failed.', 'error');
+          return;
+        }
+      }
     }
 
     // FIXED: Stock validation — prevent over-selling

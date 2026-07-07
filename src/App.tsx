@@ -45,7 +45,7 @@ export class ClinicErrorBoundary extends React.Component<Props, State> {
   }
 }
 
-import { db, initializeDatabaseVault } from './lib/localDb';
+import { db, initializeDatabaseVault, stampRecord } from './lib/localDb';
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
@@ -298,7 +298,7 @@ function App() {
           ]);
 
           const hShifts: any[] = [];
-          await db.shifts.iterate((value: any) => { if (value) hShifts.push(value); });
+          await db.shiftReconciliations.iterate((value: any) => { if (value) hShifts.push(value); });
 
           const hSyncQueue: any[] = [];
           await db.syncQueue.iterate((value: any) => { if (value) hSyncQueue.push(value); });
@@ -744,6 +744,14 @@ function App() {
       // FIX 4: Use functional state update instead of destructive re-fetch
       const target = await db.invoices.getItem<Invoice>(id);
       if (target) {
+        if (target.paymentStatus !== 'void') {
+          for (const item of target.items) {
+            if (!['service', 'lab_service'].includes(item.category)) {
+              const newStock = await atomicStockDecrement(item.itemId, +item.quantity);
+              setInventory(prev => prev.map(invItem => invItem.id === item.itemId ? { ...invItem, stock: newStock } : invItem));
+            }
+          }
+        }
         const voided = { ...target, paymentStatus: 'void' as const };
         await upsertInvoice(voided);
         setInvoices(prev => {
@@ -923,7 +931,7 @@ function App() {
       case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
-      case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shifts.setItem(log.id, log); setShiftLogs(prev => [log, ...prev]); }} />;
+      case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shiftReconciliations.setItem(log.id, stampRecord(log)); setShiftLogs(prev => [log, ...prev]); }} onVerifyMasterPin={handleVerifyMasterPin} />;
       case 'dashboard':
         // FIX 8: Pass activeShift and onNavigate props
         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;

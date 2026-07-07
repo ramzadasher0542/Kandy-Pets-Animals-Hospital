@@ -38,6 +38,8 @@ const STORE_MAPPINGS: StoreMapping[] = [
   { storeKey: 'clinicQueue',  table: 'clinic_queue',          idField: 'id' },
   // BUG #13 FIX: Users were never synced
   { storeKey: 'users',        table: DB_TABLES.USERS,         idField: 'id' },
+  { storeKey: 'cashAdjustments', table: 'cash_adjustments',   idField: 'id' },
+  { storeKey: 'shiftReconciliations', table: 'shift_reconciliations', idField: 'id' },
   { storeKey: 'pets',         table: 'pets',                  idField: 'id' },
   { storeKey: 'vaccinations', table: 'vaccinations',          idField: 'id' },
   { storeKey: 'labResults',   table: 'lab_results',           idField: 'id' },
