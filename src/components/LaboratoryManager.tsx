@@ -6,7 +6,7 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, TestTube, Activity, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
-import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet, Client } from '../types';
+import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet, Client, ClinicQueueItem } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
 import { fetchPets, fetchLabResults, upsertLabResult } from '../lib/db';
@@ -17,13 +17,14 @@ interface LabProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
   appointments?: Appointment[]; // PHASE 1: Added to detect lobby queue
+  clinicQueue?: ClinicQueueItem[];
   onUpdateRecord: (record: MedicalRecord) => void;
   onAddRecord?: (record: MedicalRecord) => void; // PHASE 1: Auto-generate charts from labs
 }
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function LaboratoryManager({ clients, pets, records, inventory, appointments, onUpdateRecord, onAddRecord }: LabProps) {
+export default function LaboratoryManager({ clients, pets, records, inventory, appointments, clinicQueue = [], onUpdateRecord, onAddRecord }: LabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'order' | 'results'>('order');
@@ -92,13 +93,13 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
 
     if (showQueueOnly) {
       activeList = activeList.filter(p => {
-        const hasRecordToday = records.some(r => r.patientId === p.patientId && r.visitDate === todayStr);
-        const hasApptToday = (appointments || []).some(a => 
+        const isActiveInQueue = (clinicQueue || []).some(q => q.petId === p.patientId && q.status === 'active');
+        const hasPendingAppt = (appointments || []).some(a => 
           `${(a.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(a.ownerPhone)}` === p.patientId && 
           a.date === todayStr && 
-          ['booked', 'in-progress'].includes(a.status)
+          a.status === 'booked'
         );
-        return hasRecordToday || hasApptToday;
+        return isActiveInQueue || hasPendingAppt;
       });
     }
 
@@ -202,6 +203,43 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
     ? inventory.find(i => i.name === activeLabResult.result.testName)?.labParameters 
     : undefined;
 
+  const renderActiveQueue = () => {
+    const activeQueue = clinicQueue.filter(q => 
+      q.serviceType === 'Examination' && 
+      q.status === 'active' &&
+      labResults.some(l => l.petId === q.petId && l.status === 'pending')
+    );
+    
+    if (activeQueue.length === 0) return null;
+
+    return (
+      <div className="p-4 border-b border-slate-100 bg-indigo-50/50 shrink-0">
+        <h3 className="text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5"/> Active Lab Queue
+        </h3>
+        <div className="space-y-2">
+          {activeQueue.map(q => (
+            <div 
+              key={q.id}
+              onClick={() => setSelectedPatientId(q.petId)}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
+            >
+              <div className="flex justify-between items-center mb-1">
+                <div className="font-bold text-sm truncate">{q.petName}</div>
+                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                  Pending Labs
+                </div>
+              </div>
+              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
+                {q.ownerName}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full w-full gap-4 overflow-hidden" id="laboratory-module-container">
       
@@ -225,6 +263,8 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
             />
           </div>
         </div>
+
+        {renderActiveQueue()}
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-slate-50/30">
           {displayPatients.length === 0 ? (

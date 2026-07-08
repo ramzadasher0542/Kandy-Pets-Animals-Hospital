@@ -40,4 +40,14 @@ Operating rules for this session, before you do anything else:
    verify it worked, (c) the "Noticed but not fixed" list from rule 1,
    even if empty.
 
+10. When you verify or self-test your own work, be brutally honest about
+    the result. Report exactly what you observed, not what you expected
+    or hoped to see. If something partially works, say "partially works,
+    here's what fails" — do not round that up to "done" or "working."
+    If you didn't actually run a check, say you didn't, instead of
+    implying you did. I would rather hear "this part failed" than a
+    confident summary that turns out to be wrong.
+11.Fuck Playwright
+you tell me how to test manually with simplest instructiions and simple English as im a beginner
+
 Confirm you understand these rules, then do the task.

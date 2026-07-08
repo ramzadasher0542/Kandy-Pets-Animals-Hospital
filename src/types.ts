@@ -90,10 +90,10 @@ export interface Pet {
 }
 
 export interface Vaccination { id: string; petId: string; itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; created_at?: string; updated_at?: string; is_deleted?: boolean; }
-export interface LabResult { id: string; petId: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface LabResult { id: string; petId: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: string; frequency?: string; remarks?: string; vetId: string; }
-export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; created_at?: string; updated_at?: string; is_deleted?: boolean; }
-export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; billingItems?: any[]; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 
 // ============================================================================
 // PHASE 1: ENTERPRISE EHR MATRIX

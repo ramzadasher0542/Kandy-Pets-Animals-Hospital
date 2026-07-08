@@ -33,6 +33,7 @@ interface CustomersManagerProps {
   onUpdateRecord?: (record: MedicalRecord) => void; 
   onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
   onUpdateClient?: (client: any) => Promise<void>;
+  onUpdatePet?: (oldPatientId: string, newPetName: string, newDetails: any) => void;
 }
 
 export default function CustomersManager({ 
@@ -50,7 +51,8 @@ export default function CustomersManager({
   onAddRecord,
   onUpdateRecord,
   onUpdateRecordsBulk,
-  onUpdateClient
+  onUpdateClient,
+  onUpdatePet
 }: CustomersManagerProps) {
   
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
@@ -137,42 +139,82 @@ export default function CustomersManager({
       return;
     }
 
-    const exists = clients.some(c => normalizePhone(c.primary_phone) === normalizePhone(formData.primary_phone));
-    if (exists) {
-      showToast('Client with this primary phone already exists.', 'error');
-      return;
+    const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
+    const normalizedPhone = normalizeSearchPhone(formData.primary_phone);
+    const deterministicClientId = `client_${normalizedPhone}`;
+
+    const existingClient = clients.find(c => c.client_id === deterministicClientId);
+    let finalClient: Client;
+
+    if (existingClient) {
+      finalClient = {
+        ...existingClient,
+        full_name: formData.full_name,
+        primary_phone: formData.primary_phone,
+        alternate_phone: formData.alternate_phone,
+        email_address: formData.email_address,
+        physical_address: formData.physical_address,
+        communication_preference: formData.communication_preference as any,
+        administrative_notes: formData.administrative_notes,
+      };
+    } else {
+      finalClient = {
+        client_id: deterministicClientId,
+        ...formData,
+        communication_preference: formData.communication_preference as any,
+        account_balance: 0,
+        lifetime_value: 0,
+        client_status: 'active'
+      };
     }
 
-    const newClient: Client = {
-      client_id: crypto.randomUUID(),
-      ...formData,
-      communication_preference: formData.communication_preference as any,
-      account_balance: 0,
-      lifetime_value: 0,
-      client_status: 'active'
-    };
-
-    if (onUpdateClient) await onUpdateClient(newClient);
+    if (onUpdateClient) await onUpdateClient(finalClient);
 
     if (newPetData.petName) {
-      const newPetId = crypto.randomUUID();
-      const newPet: Pet = {
-        id: newPetId,
-        clientId: newClient.client_id,
-        name: newPetData.petName.trim(),
-        petType: newPetData.petType as any,
-        breed: newPetData.breed || 'Mixed breed',
-        weight: newPetData.weight || 0,
-        sex: newPetData.sex || 'Unknown',
-        age: newPetData.age || 'Unknown',
-        created_at: new Date().toISOString()
-      };
-      await upsertPet(newPet);
-      newClient.petIds = [newPetId];
-      if (onUpdateClient) await onUpdateClient(newClient);
+      const targetPetName = newPetData.petName.trim().toLowerCase();
+      const deterministicPatientId = `${targetPetName}_${normalizedPhone}`;
+      const existingPet = pets.find(p => p.id === deterministicPatientId);
+
+      if (existingPet) {
+        const updatedPet: Pet = {
+          ...existingPet,
+          name: newPetData.petName.trim(),
+          petType: newPetData.petType as any,
+          breed: newPetData.breed || 'Mixed breed',
+          weight: newPetData.weight || 0,
+          sex: newPetData.sex || 'Unknown',
+          age: newPetData.age || 'Unknown'
+        };
+        await upsertPet(updatedPet);
+        if (onUpdatePet) onUpdatePet(updatedPet.id, updatedPet.name, updatedPet);
+        
+        // Ensure client is linked to pet
+        if (!finalClient.petIds?.includes(deterministicPatientId)) {
+          finalClient.petIds = [...(finalClient.petIds || []), deterministicPatientId];
+          if (onUpdateClient) await onUpdateClient(finalClient);
+        }
+      } else {
+        const newPet: Pet = {
+          id: deterministicPatientId,
+          clientId: deterministicClientId,
+          name: newPetData.petName.trim(),
+          petType: newPetData.petType as any,
+          breed: newPetData.breed || 'Mixed breed',
+          weight: newPetData.weight || 0,
+          sex: newPetData.sex || 'Unknown',
+          age: newPetData.age || 'Unknown',
+          created_at: new Date().toISOString()
+        };
+        await upsertPet(newPet);
+        if (onUpdatePet) onUpdatePet(newPet.id, newPet.name, newPet);
+        
+        finalClient.petIds = [...(finalClient.petIds || []), deterministicPatientId];
+        if (onUpdateClient) await onUpdateClient(finalClient);
+      }
     }
+    
     setShowAddModal(false);
-    setSelectedClientId(newClient.client_id);
+    setSelectedClientId(deterministicClientId);
     showToast('Client and Companion successfully registered.', 'success');
     
     setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
@@ -241,8 +283,7 @@ export default function CustomersManager({
     };
 
     await upsertPet(updatedPet);
-    // @ts-ignore
-    if (props.onUpdatePet) props.onUpdatePet(activePet.id, updatedPet.name, updatedPet);
+    if (onUpdatePet) onUpdatePet(activePet.id, updatedPet.name, updatedPet);
 
     setShowEditPetModal(false);
     showToast('Patient Identity synchronized across all medical records.', 'success');

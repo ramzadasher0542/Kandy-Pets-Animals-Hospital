@@ -9,7 +9,7 @@ import {
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
   PenTool, CheckCircle2 // FIXED: Added missing icons
 } from 'lucide-react';
-import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet } from '../types';
+import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem } from '../types';
 import { fetchInvoices, upsertInvoice, fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
 import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
@@ -22,6 +22,7 @@ interface POSProps {
   inventory: InventoryItem[];
   appointments: Appointment[];
   records: MedicalRecord[];
+  clinicQueue?: ClinicQueueItem[];
   onCheckout?: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
   activeShiftId?: string;
   currentUser?: string;
@@ -41,6 +42,7 @@ interface POSProps {
 interface CartItem extends InventoryItem {
   cartQuantity: number;
   cartId: string;
+  sourceRefs?: { type: 'vaccination' | 'grooming' | 'lab' | 'boarding'; id: string }[];
 }
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
@@ -50,6 +52,7 @@ export default function POSRegister({
   inventory = [], 
   appointments = [], 
   records = [], 
+  clinicQueue = [],
   onAddInvoice, 
   onUpdateStock,
   onAtomicCheckout,
@@ -57,6 +60,7 @@ export default function POSRegister({
   activeShift,
   currentUser,
   systemConfig,
+  invoices = [],
   onVerifyMasterPin
 }: POSProps) {
   
@@ -100,16 +104,18 @@ export default function POSRegister({
     );
   }, [inventory, searchQuery]);
 
-  const activeQueue = useMemo(() => {
-    // FIXED: Only show checked-in patients. 'booked' = not physically here yet.
-    return appointments.filter(a => 
-      a.date === todayStr && ['in-progress', 'completed'].includes(a.status)
-    ).sort((a, b) => {
-      if (a.status === 'completed' && b.status !== 'completed') return -1;
-      if (b.status === 'completed' && a.status !== 'completed') return 1;
-      return 0;
+  const awaitingCheckoutQueue = useMemo(() => {
+    return clinicQueue.filter(q => q.status === 'active');
+  }, [clinicQueue]);
+
+  const unbilledAppointments = useMemo(() => {
+    return appointments.filter(a => {
+      if (a.date !== todayStr) return false;
+      if (a.status !== 'completed') return false;
+      const hasPaidInvoice = (invoices || []).some(inv => inv.appointmentId === a.id && inv.paymentStatus === 'paid');
+      return !hasPaidInvoice;
     });
-  }, [appointments, todayStr]);
+  }, [appointments, invoices, todayStr]);
 
   // ---------------------------------------------------------
   // CART OPERATIONS
@@ -166,7 +172,7 @@ export default function POSRegister({
     const allPatientRecords = records.filter(r => r.patientId === targetPid);
     const activeRecord = allPatientRecords.find(r => r.visitDate === todayStr);
 
-    const targetBoarding = activeBoarding.filter(b => b.petId === targetPid && b.status === 'active');
+    const targetBoarding = activeBoarding.filter(b => b.petId === targetPid && b.status === 'active' && !b.billed);
 
     let newCartItems: CartItem[] = [];
 
@@ -198,38 +204,57 @@ export default function POSRegister({
     unbilledVax.forEach(vax => {
       const invItem = inventory.find(i => i.id === vax.itemId);
       if (invItem) {
-        newCartItems.push({ ...invItem, cartQuantity: 1, cartId: crypto.randomUUID() });
+        const existing = newCartItems.find(i => i.id === invItem.id);
+        if (existing) {
+          existing.cartQuantity += 1;
+          if (!existing.sourceRefs) existing.sourceRefs = [];
+          existing.sourceRefs.push({ type: 'vaccination', id: vax.id });
+        } else {
+          newCartItems.push({ 
+            ...invItem, 
+            cartQuantity: 1, 
+            cartId: crypto.randomUUID(),
+            sourceRefs: [{ type: 'vaccination', id: vax.id }]
+          });
+        }
       }
     });
 
     // 4. AUDIT FIX: Sweep native billing items from Grooming, Labs, and Boarding
-    const sweepBillingItems = (items: any[]) => {
+    const sweepBillingItems = (items: any[], sourceType: 'vaccination' | 'grooming' | 'lab' | 'boarding', sourceId: string) => {
       items.forEach(med => {
         const invItem = inventory.find(i => i.id === med.itemId);
         if (invItem) {
           const existing = newCartItems.find(i => i.id === invItem.id);
           if (existing) {
             existing.cartQuantity += med.quantity || 1;
+            if (!existing.sourceRefs) existing.sourceRefs = [];
+            existing.sourceRefs.push({ type: sourceType, id: sourceId });
           } else {
-            newCartItems.push({ ...invItem, cartQuantity: med.quantity || 1, cartId: crypto.randomUUID() });
+            newCartItems.push({ 
+              ...invItem, 
+              cartQuantity: med.quantity || 1, 
+              cartId: crypto.randomUUID(),
+              sourceRefs: [{ type: sourceType, id: sourceId }]
+            });
           }
         }
       });
     };
 
     // Sweep native arrays replacing the prescribedMeds hack
-    const patientGrooming = groomingLogs.filter(l => l.petId === targetPid && l.date === todayStr);
+    const patientGrooming = groomingLogs.filter(l => l.petId === targetPid && !l.billed);
     patientGrooming.forEach(log => {
-      if (log.billingItems) sweepBillingItems(log.billingItems);
+      if (log.billingItems) sweepBillingItems(log.billingItems, 'grooming', log.id);
     });
     
-    const patientLabs = labResults.filter(l => l.petId === targetPid && l.requestDate === todayStr);
+    const patientLabs = labResults.filter(l => l.petId === targetPid && !l.billed);
     patientLabs.forEach(res => {
-      if (res.billingItems) sweepBillingItems(res.billingItems);
+      if (res.billingItems) sweepBillingItems(res.billingItems, 'lab', res.id);
     });
 
     targetBoarding.forEach(rec => {
-      if (rec.billingItems) sweepBillingItems(rec.billingItems);
+      if (rec.billingItems) sweepBillingItems(rec.billingItems, 'boarding', rec.id);
     });
 
     if (newCartItems.length > 0) {
@@ -560,42 +585,85 @@ export default function POSRegister({
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-4 flex items-center gap-2">
               <Activity className="w-3.5 h-3.5"/> Today's Clinical Queue
             </h3>
-            <div className="space-y-3">
-              {activeQueue.length === 0 ? (
-                <div className="bg-white border border-dashed border-slate-200 rounded-xl p-6 text-center shadow-sm">
-                  <CalendarIcon className="w-8 h-8 text-slate-200 mx-auto mb-2"/>
-                  <div className="text-[10px] font-bold text-slate-400">No active patients in clinic today.</div>
-                </div>
-              ) : (
-                activeQueue.map(apt => {
-                  const isSelected = selectedAppointment?.id === apt.id;
-                  const isCompleted = apt.status === 'completed';
-                  
-                  return (
-                    <div 
-                      key={apt.id} 
-                      onClick={() => handleSelectAppointment(apt)}
-                      className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
-                    >
-                      {isCompleted && !isSelected && <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>}
-                      <div className="flex justify-between items-start mb-1">
-                        <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{apt.petName}</div>
-                        <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {isCompleted ? 'Ready' : 'In Clinic'}
-                        </div>
-                      </div>
-                      <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{apt.ownerName} • {apt.ownerPhone}</div>
+            <div className="space-y-6">
+              
+              {/* SECTION: Awaiting Checkout */}
+              <div>
+                <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-3">Awaiting Checkout</h4>
+                <div className="space-y-3">
+                  {awaitingCheckoutQueue.length === 0 ? (
+                    <div className="text-[10px] text-slate-400 italic px-2">No patients active.</div>
+                  ) : (
+                    awaitingCheckoutQueue.map(q => {
+                      const apt = appointments.find(a => a.id === q.appointmentId);
+                      if (!apt) return null;
+                      const isSelected = selectedAppointment?.id === apt.id;
                       
-                      <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
-                        <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
-                          <FileText className="w-3 h-3"/> Import E.H.R Charges
+                      return (
+                        <div 
+                          key={q.id} 
+                          onClick={() => handleSelectAppointment(apt)}
+                          className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{q.petName}</div>
+                            <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                              In Clinic
+                            </div>
+                          </div>
+                          <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{q.ownerName} • {q.ownerPhone}</div>
+                          
+                          <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
+                            <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
+                              <FileText className="w-3 h-3"/> Import E.H.R Charges
+                            </div>
+                            <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
+                          </div>
                         </div>
-                        <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* SECTION: Seen Today - Not Yet Billed */}
+              <div>
+                <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-3">Seen Today — Not Yet Billed</h4>
+                <div className="space-y-3">
+                  {unbilledAppointments.length === 0 ? (
+                    <div className="text-[10px] text-slate-400 italic px-2">No unbilled checkouts.</div>
+                  ) : (
+                    unbilledAppointments.map(apt => {
+                      const isSelected = selectedAppointment?.id === apt.id;
+                      
+                      return (
+                        <div 
+                          key={apt.id} 
+                          onClick={() => handleSelectAppointment(apt)}
+                          className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                        >
+                          {!isSelected && <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>}
+                          <div className="flex justify-between items-start mb-1">
+                            <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{apt.petName}</div>
+                            <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                              Ready
+                            </div>
+                          </div>
+                          <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{apt.ownerName} • {apt.ownerPhone}</div>
+                          
+                          <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
+                            <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
+                              <FileText className="w-3 h-3"/> Import E.H.R Charges
+                            </div>
+                            <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
 

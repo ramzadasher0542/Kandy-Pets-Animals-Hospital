@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { 
   Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock
 } from 'lucide-react';
-import { MedicalRecord, BoardingRecord, Pet, Client } from '../types';
+import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem } from '../types';
 import { showToast } from './Toast';
 import { fetchBoardingRecords, upsertBoardingRecord, fetchPets } from '../lib/db';
 
@@ -16,6 +16,7 @@ interface BoardingProps {
   clients: Client[];
   pets: Pet[];
   records: MedicalRecord[];
+  clinicQueue?: ClinicQueueItem[];
   onUpdateRecord: (record: MedicalRecord) => void;
 }
 
@@ -23,7 +24,7 @@ const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ clients, pets = [], records, onUpdateRecord }: BoardingProps) {
+export default function BoardingManager({ clients, pets = [], records, clinicQueue = [], onUpdateRecord }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
@@ -131,6 +132,42 @@ export default function BoardingManager({ clients, pets = [], records, onUpdateR
     setMedicalBoarding(false);
   };
 
+  const renderActiveQueue = () => {
+    const activeQueue = clinicQueue.filter(q => 
+      (q.serviceType === 'Boarding' || q.serviceType === 'boarding') && 
+      q.status === 'active'
+    );
+    
+    if (activeQueue.length === 0) return null;
+
+    return (
+      <div className="p-4 border-b border-slate-100 bg-indigo-50/50 shrink-0">
+        <h3 className="text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5"/> Active Boarding Queue
+        </h3>
+        <div className="space-y-2">
+          {activeQueue.map(q => (
+            <div 
+              key={q.id}
+              onClick={() => { setSelectedPatientId(q.petId); }}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
+            >
+              <div className="flex justify-between items-center mb-1">
+                <div className="font-bold text-sm truncate">{q.petName}</div>
+                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                  Waiting
+                </div>
+              </div>
+              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
+                {q.ownerName}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-[calc(100vh-140px)] w-full gap-4 overflow-hidden" id="boarding-module-container">
       
@@ -142,6 +179,8 @@ export default function BoardingManager({ clients, pets = [], records, onUpdateR
           </h2>
           <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Select an empty space to check-in.</p>
         </div>
+
+        {renderActiveQueue()}
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 bg-slate-50/50">
           

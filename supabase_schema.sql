@@ -589,3 +589,8 @@ CREATE POLICY "Allow anon write access on shift_reconciliations"
   ON shift_reconciliations FOR ALL TO anon  
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')  
   WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+  
+-- Migration: Add billed flag to EHR logs  
+ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;  
+ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;  
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false; 

@@ -29,6 +29,7 @@ interface AppointmentsProps {
   preFilledPet?: any;
   onGenerateConsent?: (clientName: string, petName: string) => void;
   onUpdateClient?: (client: any) => Promise<void>;
+  onUpdatePet?: (id: string, name: string, petObj: Pet) => void;
 }
 
 // ---------------------------------------------------------
@@ -65,7 +66,7 @@ const getNextAptNumber = (apts: Appointment[]) => {
 
 export default function AppointmentsManager({ 
   appointments, records, isOnline, onAddAppointment, onUpdateStatus,
-  onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent, onUpdateClient
+  onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent, onUpdateClient, onUpdatePet
 }: AppointmentsProps) {
   
   // ---------------------------------------------------------
@@ -424,6 +425,7 @@ export default function AppointmentsManager({
       };
       await upsertPet(newPet);
       setPets(prev => [...prev, newPet]);
+      if (onUpdatePet) onUpdatePet(newPet.id, newPet.name, newPet);
     }
 
     const patientExists = records.some(r => 

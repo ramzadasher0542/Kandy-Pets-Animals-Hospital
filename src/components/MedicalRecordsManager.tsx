@@ -227,7 +227,7 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
     });
 
     let activeList = Array.from(patientMap.values());
-    activeList = activeList.filter(p => (clinicQueue || []).some(q => q.petId === p.patientId));
+    activeList = activeList.filter(p => (clinicQueue || []).some(q => q.petId === p.patientId && q.serviceType === 'Examination'));
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();

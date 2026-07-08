@@ -41,7 +41,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   const filteredPatients = useMemo(() => {
     const salonQueuePatientIds = new Set(
       clinicQueue
-        .filter(q => ['grooming', 'Grooming'].includes(q.serviceType || '') && q.status !== 'completed')
+        .filter(q => ['grooming', 'Grooming'].includes(q.serviceType || '') && q.status === 'active')
         .map(q => q.petId)
     );
 
