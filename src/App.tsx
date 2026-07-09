@@ -1166,8 +1166,8 @@ function App() {
                         {pinError && <span className="text-[10px] text-rose-600 font-semibold animate-pulse">Incorrect passcode pin.</span>}
                       </div>
                       <div className="flex gap-2">
-                        <input id="login-pin" name="pin" type="password" autoComplete="current-password" maxLength={4} placeholder="••••" value={enteredPin} onChange={(e) => setEnteredPin(e.target.value)} className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 text-center font-mono font-bold tracking-widest text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500" required />
-                        <button type="submit" className="px-5 bg-slate-800 hover:bg-slate-900 font-extrabold text-white rounded-xl transition-all font-mono">Verify</button>
+                        <input id="login-pin" data-testid="input-pin" name="pin" type="password" autoComplete="current-password" maxLength={4} placeholder="••••" value={enteredPin} onChange={(e) => setEnteredPin(e.target.value)} className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 text-center font-mono font-bold tracking-widest text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500" required />
+                        <button type="submit" data-testid="btn-verify-pin" className="px-5 bg-slate-800 hover:bg-slate-900 font-extrabold text-white rounded-xl transition-all font-mono">Verify</button>
                       </div>
                     </div>
                   </form>
@@ -1192,12 +1192,12 @@ function App() {
               <nav className="flex-1 overflow-y-auto p-3 space-y-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
-                  if (!item.isLive) return <a key={item.id} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
+                  if (!item.isLive) return <a key={item.id} data-testid={`nav-${item.id}`} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
                   const permissionKey = item.id === 'reports' || item.id === 'dashboard' ? 'dashboard' : item.id;
                   if (!isViewPermitted(permissionKey, currentUser)) return null;
                   const isSelected = activeView === item.id || (activeView === 'reports' && item.id === 'dashboard');
                   return (
-                    <button key={item.id} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
+                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
                       <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />{item.label}
                     </button>
                   );

@@ -813,7 +813,8 @@ export default function CustomersManager({
         </div>
 
         <div className="p-4 border-t border-slate-100 bg-white shrink-0">
-          <button 
+          <button
+            data-testid="btn-add-client"
             onClick={() => {
               setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
               setNewPetData({ petName: '', petType: 'Canine', breed: '', weight: 0, sex: 'Unknown', age: '' });
@@ -852,14 +853,15 @@ export default function CustomersManager({
                     <div className="space-y-3">
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Full Name *</label>
-                        <input type="text" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold text-xs" />
+                        <input type="text" name="full_name" required value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold text-xs" />
                       </div>
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Primary Phone *</label>
-                        <PhoneInput 
-                          required 
-                          value={formData.primary_phone} 
-                          onChange={(val) => setFormData({...formData, primary_phone: val})} 
+                        <PhoneInput
+                          name="primary_phone"
+                          required
+                          value={formData.primary_phone}
+                          onChange={(val) => setFormData({...formData, primary_phone: val})}
                         />
                       </div>
                       <div>
@@ -879,7 +881,7 @@ export default function CustomersManager({
                     <div className="space-y-3">
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name</label>
-                        <input type="text" value={newPetData.petName} onChange={(e) => setNewPetData({...newPetData, petName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                        <input type="text" name="petName" value={newPetData.petName} onChange={(e) => setNewPetData({...newPetData, petName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                       </div>
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Species</label>

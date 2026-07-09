@@ -389,7 +389,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             {/* Modal Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-between items-center print:hidden">
               {selectedInvoice.paymentStatus !== 'void' ? (
-                <button onClick={handleVoid} className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">
+                <button data-testid="btn-void-invoice" onClick={handleVoid} className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4"/> Execute Void Protocol
                 </button>
               ) : (

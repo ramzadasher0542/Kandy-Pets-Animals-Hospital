@@ -717,7 +717,7 @@ export default function AppointmentsManager({
         <td className="py-4 px-4 text-right w-32">
           <div className="flex items-center justify-end gap-1">
             {apt.status === 'booked' && (
-              <button onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
+              <button data-testid="btn-check-in" onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
                 <CheckCircle2 className="h-4 w-4" />
               </button>
             )}
@@ -907,7 +907,7 @@ export default function AppointmentsManager({
             {liveVets.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
           </select>
 
-          <button onClick={() => { resetForm(); setShowAddModal(true); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
+          <button data-testid="btn-new-appointment" onClick={() => { resetForm(); setShowAddModal(true); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
             <Plus className="h-4 w-4" /> New Appointment
           </button>
         </div>
@@ -1074,7 +1074,7 @@ export default function AppointmentsManager({
                     <div className="space-y-3">
                       <div>
                         <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name *</label>
-                        <input type="text" required value={petName} onChange={(e) => { setPetName(e.target.value); setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !petName ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs`} />
+                        <input type="text" name="petName" required value={petName} onChange={(e) => { setPetName(e.target.value); setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !petName ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs`} />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -1133,14 +1133,15 @@ export default function AppointmentsManager({
                       <div className="space-y-3 flex-1">
                         <div>
                           <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Owner Name *</label>
-                          <input type="text" required value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
+                          <input type="text" name="ownerName" required value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Phone (+94 Format) *</label>
-                            <PhoneInput 
-                              required 
-                              value={ownerPhone} 
+                            <PhoneInput
+                              name="ownerPhone"
+                              required
+                              value={ownerPhone}
                               onChange={setOwnerPhone}
                             />
                           </div>
@@ -1176,7 +1177,7 @@ export default function AppointmentsManager({
                   </div>
                   <div>
                     <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Chief Complaint / Visit Notes *</label>
-                    <textarea required rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Annual vaccinations, limping on front right leg..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs resize-none" />
+                    <textarea name="reason" required rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Annual vaccinations, limping on front right leg..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs resize-none" />
                   </div>
                 </div>
 

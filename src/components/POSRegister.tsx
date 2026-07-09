@@ -524,7 +524,8 @@ export default function POSRegister({
             </div>
           )}
 
-          <button 
+          <button
+            data-testid="btn-checkout"
             onClick={handleCheckout}
             disabled={cart.length === 0 || (paymentMethod === 'split' && Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) >= 0.01)}
             className={`w-full py-3.5 rounded-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all shadow-md ${(cart.length > 0 && (paymentMethod !== 'split' || Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) < 0.01)) ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}
@@ -600,8 +601,9 @@ export default function POSRegister({
                       const isSelected = selectedAppointment?.id === apt.id;
                       
                       return (
-                        <div 
-                          key={q.id} 
+                        <div
+                          key={q.id}
+                          data-testid="btn-import-ehr"
                           onClick={() => handleSelectAppointment(apt)}
                           className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
                         >
@@ -637,8 +639,9 @@ export default function POSRegister({
                       const isSelected = selectedAppointment?.id === apt.id;
                       
                       return (
-                        <div 
-                          key={apt.id} 
+                        <div
+                          key={apt.id}
+                          data-testid="btn-import-ehr"
                           onClick={() => handleSelectAppointment(apt)}
                           className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
                         >
