@@ -4,6 +4,7 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props { children: ReactNode; }
 interface State { hasError: boolean; error: Error | null; }
@@ -54,7 +55,7 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Printer, Lock,
-  ChevronLeft, PenTool, Home, Scissors, Activity
+  ChevronLeft, PenTool, Home, Scissors, Activity, Bell
 } from 'lucide-react';
 
 import {
@@ -68,6 +69,7 @@ import DashboardAnalytics from './components/DashboardAnalytics';
 import ReportsManager from './components/ReportsManager';
 import POSRegister from './components/POSRegister';
 import AppointmentsManager from './components/AppointmentsManager';
+import NotificationsModal from './components/NotificationsModal';
 import MedicalRecordsManager from './components/MedicalRecordsManager';
 import InventoryManager from './components/InventoryManager';
 import PatientPortal from './components/PatientPortal';
@@ -145,6 +147,7 @@ function App() {
   const [clients, setClients] = useState<import('./types').Client[]>([]);
   const [notifications, setNotifications] = useState<ClientNotification[]>([]);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [shiftLogs, setShiftLogs] = useState<ShiftReconciliation[]>([]);
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [syncQueue, setSyncQueue] = useState<OfflineSyncItem[]>([]);
@@ -578,6 +581,19 @@ function App() {
       showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
+
+  const handleDismissAlert = useCallback(async (id: string) => {
+    try {
+      const alert = alerts.find(a => a.id === id);
+      if (alert) {
+        const updated = { ...alert, read: true, updated_at: new Date().toISOString() };
+        await db.alerts.setItem(id, updated);
+        setAlerts(prev => prev.map(a => a.id === id ? updated : a));
+      }
+    } catch (error) {
+      console.error('Failed to dismiss alert:', error);
+    }
+  }, [alerts]);
 
   const handleBulkUpdateRecords = useCallback(async (updatedRecords: MedicalRecord[]) => {
     try {
@@ -1019,7 +1035,7 @@ function App() {
         // FIX 8: Pass activeShift and onNavigate props
         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
-        return <ReportsManager />;
+        return <ReportsManager onVerifyMasterPin={handleVerifyMasterPin} currentUser={currentUser} />;
       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
@@ -1233,21 +1249,33 @@ function App() {
 
             {/* MAIN CANVAS */}
             <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
-              <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs">
-                {historyStack.length > 1 && (
-                  <button
-                    onClick={() => {
-                      // FIX 10: Renamed to avoid variable shadowing with setter callback
-                      const prevView = historyStack[historyStack.length - 2];
-                      setHistoryStack(s => s.slice(0, -1));
-                      setActiveView(prevView);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
-                  >
-                    <ChevronLeft className="w-3 h-3" /> Back
+              <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs justify-between">
+                <div className="flex items-center gap-4">
+                  {historyStack.length > 1 && (
+                    <button
+                      onClick={() => {
+                        // FIX 10: Renamed to avoid variable shadowing with setter callback
+                        const prevView = historyStack[historyStack.length - 2];
+                        setHistoryStack(s => s.slice(0, -1));
+                        setActiveView(prevView);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3 h-3" /> Back
+                    </button>
+                  )}
+                  <span className="text-xs font-bold text-slate-500 capitalize">{activeView}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setShowNotifications(true)} className="relative p-2 rounded-full hover:bg-slate-100 transition-colors">
+                    <Bell className="w-5 h-5 text-slate-600" />
+                    {alerts.filter(a => !a.read).length > 0 && (
+                      <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[8px] font-black text-white border-2 border-white">
+                        {alerts.filter(a => !a.read).length}
+                      </span>
+                    )}
                   </button>
-                )}
-                <span className="text-xs font-bold text-slate-500 capitalize">{activeView}</span>
+                </div>
               </div>
               <div className="flex-1 w-full h-full overflow-y-auto">
                 {renderCanvas()}
@@ -1256,6 +1284,29 @@ function App() {
           </div>
         )}
         <ToastContainer />
+        {showNotifications && createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
+                <h3 className="font-black text-slate-800">Notifications & Alerts</h3>
+                <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-800 p-1 rounded transition-colors">✕</button>
+              </div>
+              <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+                <NotificationsModal
+                  notifications={notifications}
+                  alerts={alerts}
+                  onDismissAlert={handleDismissAlert}
+                  onSendNotification={(id) => {
+                    // TODO: wire to real SMS/email provider.
+                    console.log(`Simulated sending notification ${id}`);
+                    showToast('Notification dispatched to queue.', 'success');
+                  }}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </>
   );

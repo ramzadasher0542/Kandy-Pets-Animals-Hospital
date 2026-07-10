@@ -114,8 +114,8 @@ export default function NotificationsModal({
         <div className="p-3 bg-indigo-50 border border-indigo-100 text-indigo-950 font-medium rounded-xl flex gap-3 mt-4 items-start">
           <AlertTriangle className="h-5 w-5 text-indigo-600 mt-0.5 min-w-[20px]" />
           <div>
-            <span className="font-bold block">HIPAA Medical Warning</span>
-            Discharging patient medical entries or inventory lists flags reordering protocols here automatically. Keep tabs regularly.
+            <span className="font-bold block">Patient Privacy Warning</span>
+            Patient medical records are confidential. Handle all communications with care and follow clinic data protocols. Keep tabs regularly.
           </div>
         </div>
       </div>

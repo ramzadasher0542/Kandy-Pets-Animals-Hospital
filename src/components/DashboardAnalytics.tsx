@@ -35,8 +35,31 @@ export default function DashboardAnalytics({
   const todaysRevenue = todaysInvoices.reduce((sum, i) => sum + (i.sales_total || 0), 0);
   const todaysRecords = records.filter(r => r.visitDate?.startsWith(todayStr));
 
-  // Inventory SOS (Items at or below minimum stock threshold)
-  const lowStockItems = inventory.filter(item => !['service', 'lab_service'].includes(item.category) && item.stock <= item.minStock);
+  // Inventory SOS (Items at or below minimum stock threshold OR expired/expiring soon)
+  const sosItems = inventory.map(item => {
+    let issue: 'low_stock' | 'expired' | 'expiring_soon' | null = null;
+    let daysDiff = 0;
+
+    const isLowStock = !['service', 'lab_service'].includes(item.category) && item.stock <= item.minStock;
+    
+    let isExpired = false;
+    let isExpiringSoon = false;
+    
+    if (item.expiryDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const exp = new Date(item.expiryDate);
+      daysDiff = Math.floor((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff < 0) isExpired = true;
+      else if (daysDiff <= 30) isExpiringSoon = true;
+    }
+
+    if (isExpired) issue = 'expired';
+    else if (isExpiringSoon) issue = 'expiring_soon';
+    else if (isLowStock) issue = 'low_stock';
+
+    return { item, issue, daysDiff };
+  }).filter(entry => entry.issue !== null);
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] bg-slate-50 w-full overflow-hidden font-sans relative">
@@ -95,13 +118,13 @@ export default function DashboardAnalytics({
 
           {/* Critical Stock */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5 transition-all hover:shadow-md group">
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${lowStockItems.length > 0 ? 'bg-amber-100 animate-pulse' : 'bg-slate-100'}`}>
-              <AlertTriangle className={`w-7 h-7 ${lowStockItems.length > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${sosItems.length > 0 ? 'bg-amber-100 animate-pulse' : 'bg-slate-100'}`}>
+              <AlertTriangle className={`w-7 h-7 ${sosItems.length > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
             </div>
             <div>
               <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Inventory SOS</h3>
               <div className="text-xl font-black text-slate-800 font-mono">
-                {lowStockItems.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">Items Low</span>
+                {sosItems.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">Alerts</span>
               </div>
             </div>
           </div>
@@ -150,19 +173,23 @@ export default function DashboardAnalytics({
               <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2"><PackageX className="w-4 h-4 text-rose-500" /> Stock SOS Alert</h2>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
-              {lowStockItems.length === 0 ? (
+              {sosItems.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-2"><span className="text-emerald-500 text-xl font-black">✓</span></div>
-                  <div className="text-[10px] uppercase tracking-widest font-black text-center text-slate-400">All critical stock levels<br/>are optimal.</div>
+                  <div className="text-[10px] uppercase tracking-widest font-black text-center text-slate-400">All critical stock &<br/>expiry levels optimal.</div>
                 </div>
               ) : (
-                lowStockItems.map(item => (
-                  <div key={item.id} className="flex justify-between items-center p-3 border border-rose-100 rounded-xl bg-rose-50/50 hover:bg-rose-50 transition-colors">
+                sosItems.map(({ item, issue, daysDiff }) => (
+                  <div key={`${item.id}-${issue}`} className="flex justify-between items-center p-3 border border-rose-100 rounded-xl bg-rose-50/50 hover:bg-rose-50 transition-colors">
                     <div className="overflow-hidden pr-2">
                       <div className="text-[11px] font-black text-slate-800 truncate">{item.name}</div>
-                      <div className="text-[9px] font-bold text-rose-500 uppercase tracking-widest mt-0.5">Threshold: {item.minStock}</div>
+                      <div className="text-[9px] font-bold text-rose-500 uppercase tracking-widest mt-0.5">
+                        {issue === 'low_stock' ? `Threshold: ${item.minStock}` : issue === 'expired' ? 'EXPIRED' : 'Expiring Soon'}
+                      </div>
                     </div>
-                    <div className="text-xs font-black text-rose-700 bg-white px-2 py-1 rounded shadow-xs border border-rose-200 shrink-0 font-mono">{item.stock} Left</div>
+                    <div className="text-xs font-black text-rose-700 bg-white px-2 py-1 rounded shadow-xs border border-rose-200 shrink-0 font-mono">
+                      {issue === 'low_stock' ? `${item.stock} Left` : issue === 'expired' ? '0 Days' : `${daysDiff} Days`}
+                    </div>
                   </div>
                 ))
               )}

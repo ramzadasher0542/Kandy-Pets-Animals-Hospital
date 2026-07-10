@@ -3,6 +3,7 @@ import localforage from 'localforage';
 import { Wallet, DollarSign, TrendingUp, TrendingDown, Plus, ArrowDownRight, ArrowUpRight, ShieldCheck, FileText, Download } from 'lucide-react';
 import { showToast } from './Toast';
 import { db } from '../lib/localDb';
+import { User } from '../types';
 
 // --- Types ---
 interface CashAdjustment {
@@ -30,20 +31,19 @@ interface VaultInvoice {
 }
 
 // --- DB Initialization ---
-// FIXED: Use shared CeylonPets_Enterprise_OS database for invoices (was reading from wrong DB)
-const cashDb = localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'cash_adjustments' });
+// (cashDb removed - using shared db.cashAdjustments)
 
-export default function ReportsManager() {
+interface ReportsManagerProps {
+  currentUser: User;
+  onVerifyMasterPin?: (pin: string) => boolean;
+}
+
+export default function ReportsManager({ currentUser, onVerifyMasterPin }: ReportsManagerProps) {
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<VaultInvoice[]>([]);
   const [adjustments, setAdjustments] = useState<CashAdjustment[]>([]);
   
-  // Modal State
-  const [showModal, setShowModal] = useState(false);
-  const [adjType, setAdjType] = useState<'IN' | 'OUT'>('OUT');
-  const [adjAmount, setAdjAmount] = useState('');
-  const [adjCategory, setAdjCategory] = useState<CashAdjustment['category']>('Expense');
-  const [adjReason, setAdjReason] = useState('');
+  // Modal State variables removed per step 0
 
   // Metrics
   const [metrics, setMetrics] = useState({
@@ -103,7 +103,7 @@ export default function ReportsManager() {
       await db.invoices.iterate((val: VaultInvoice) => { if (val && !Array.isArray(val)) invs.push(val); });
       
       const adjs: CashAdjustment[] = [];
-      await cashDb.iterate((val: CashAdjustment) => { adjs.push(val); });
+      await db.cashAdjustments.iterate((val: CashAdjustment) => { adjs.push(val); });
       
       // Sort descending
       adjs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -120,24 +120,32 @@ export default function ReportsManager() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleSaveAdjustment = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveAdjustment = async (adjAmount: string, adjReason: string, adjType: 'IN' | 'OUT', adjCategory: CashAdjustment['category']) => {
     const amt = parseFloat(adjAmount);
     if (!amt || amt <= 0) return showToast('Enter a valid amount', 'error');
     if (!adjReason.trim()) return showToast('Reason is required', 'error');
 
+    if (!onVerifyMasterPin) {
+      showToast('Master PIN verification unavailable.', 'error');
+      return;
+    }
+    const pin = window.prompt('AUTHORIZATION REQUIRED: Cash drawer adjustment requires manager approval. Enter Master PIN:');
+    if (!pin || !onVerifyMasterPin(pin)) {
+      showToast('Authorization failed.', 'error');
+      return;
+    }
+
     const newAdj: CashAdjustment = {
       id: `CASH-${crypto.randomUUID().slice(0,8).toUpperCase()}`,
       type: adjType, amount: amt, category: adjCategory, reason: adjReason,
-      date: new Date().toISOString(), createdBy: 'Admin'
+      date: new Date().toISOString(), createdBy: currentUser.name
     };
 
-    await cashDb.setItem(newAdj.id, newAdj);
+    await db.cashAdjustments.setItem(newAdj.id, newAdj);
     const newAdjs = [newAdj, ...adjustments];
     setAdjustments(newAdjs);
     calculateMetrics(invoices, newAdjs);
     
-    setShowModal(false); setAdjAmount(''); setAdjReason('');
     showToast('Vault adjustment recorded successfully', 'success');
   };
 
