@@ -590,7 +590,127 @@ CREATE POLICY "Allow anon write access on shift_reconciliations"
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')  
   WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
   
--- Migration: Add billed flag to EHR logs  
-ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;  
-ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;  
-ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false; 
+-- Migration: Add billed flag to EHR logs
+ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;
+ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS billed BOOLEAN DEFAULT false;
+
+-- =============================================================================
+-- PAYROLL MODULE — Staff Profiles, Time Entries, Scheduling, and Payslips
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 18. STAFF PROFILES
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS staff_profiles (
+  "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "userId"          TEXT DEFAULT NULL,
+  "fullName"        TEXT NOT NULL DEFAULT '',
+  "position"        TEXT DEFAULT '',
+  "department"      TEXT DEFAULT '',
+  "employmentType"  TEXT NOT NULL DEFAULT 'monthly',
+  "hourlyRate"      INTEGER DEFAULT NULL,
+  "monthlySalary"   INTEGER DEFAULT NULL,
+  "hireDate"        TEXT DEFAULT '',
+  "active"          BOOLEAN NOT NULL DEFAULT true,
+  "created_at"      TIMESTAMPTZ DEFAULT now(),
+  "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"      BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"          BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_staff_profiles_updated_at ON staff_profiles ("updated_at");
+ALTER TABLE staff_profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon read access on staff_profiles" ON staff_profiles;
+DROP POLICY IF EXISTS "Allow anon write access on staff_profiles" ON staff_profiles;
+CREATE POLICY "Allow anon read access on staff_profiles"
+  ON staff_profiles FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on staff_profiles"
+  ON staff_profiles FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+
+-- ---------------------------------------------------------------------------
+-- 19. TIME ENTRIES
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS time_entries (
+  "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "staffId"         TEXT NOT NULL DEFAULT '',
+  "date"            TEXT NOT NULL DEFAULT '',
+  "clockIn"         TEXT NOT NULL DEFAULT '',
+  "clockOut"        TEXT DEFAULT NULL,
+  "durationMinutes" INTEGER DEFAULT NULL,
+  "enteredBy"       TEXT DEFAULT '',
+  "source"          TEXT DEFAULT 'self',
+  "notes"           TEXT DEFAULT NULL,
+  "created_at"      TIMESTAMPTZ DEFAULT now(),
+  "updated_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"      BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"          BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_time_entries_updated_at ON time_entries ("updated_at");
+ALTER TABLE time_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon read access on time_entries" ON time_entries;
+DROP POLICY IF EXISTS "Allow anon write access on time_entries" ON time_entries;
+CREATE POLICY "Allow anon read access on time_entries"
+  ON time_entries FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on time_entries"
+  ON time_entries FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+
+-- ---------------------------------------------------------------------------
+-- 20. SCHEDULE ENTRIES
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS schedule_entries (
+  "id"           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "staffId"      TEXT NOT NULL DEFAULT '',
+  "shiftStart"   TEXT NOT NULL DEFAULT '',
+  "shiftEnd"     TEXT NOT NULL DEFAULT '',
+  "role"         TEXT DEFAULT '',
+  "notes"        TEXT DEFAULT NULL,
+  "created_at"   TIMESTAMPTZ DEFAULT now(),
+  "updated_at"   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"   BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"       BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_entries_updated_at ON schedule_entries ("updated_at");
+ALTER TABLE schedule_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon read access on schedule_entries" ON schedule_entries;
+DROP POLICY IF EXISTS "Allow anon write access on schedule_entries" ON schedule_entries;
+CREATE POLICY "Allow anon read access on schedule_entries"
+  ON schedule_entries FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on schedule_entries"
+  ON schedule_entries FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+
+-- ---------------------------------------------------------------------------
+-- 21. PAYSLIPS
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS payslips (
+  "id"            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "staffId"       TEXT NOT NULL DEFAULT '',
+  "periodStart"   TEXT DEFAULT '',
+  "periodEnd"     TEXT DEFAULT '',
+  "grossPayCents" INTEGER DEFAULT 0,
+  "deductions"    JSONB DEFAULT '[]'::jsonb,
+  "netPayCents"   INTEGER DEFAULT 0,
+  "status"        TEXT NOT NULL DEFAULT 'draft',
+  "generatedBy"   TEXT DEFAULT '',
+  "generatedAt"   TEXT DEFAULT '',
+  "paidAt"        TEXT DEFAULT NULL,
+  "created_at"    TIMESTAMPTZ DEFAULT now(),
+  "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"    BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"        BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_payslips_updated_at ON payslips ("updated_at");
+ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon read access on payslips" ON payslips;
+DROP POLICY IF EXISTS "Allow anon write access on payslips" ON payslips;
+CREATE POLICY "Allow anon read access on payslips"
+  ON payslips FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon write access on payslips"
+  ON payslips FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__'); 

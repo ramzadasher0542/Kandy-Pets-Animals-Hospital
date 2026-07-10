@@ -38,7 +38,13 @@ export const db = {
   syncQueue: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'sync_queue' }),
   
   // THE LIVING FLOOR: Real-time clinic queue state machine
-  clinicQueue: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'clinic_queue' })
+  clinicQueue: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'clinic_queue' }),
+
+  // PAYROLL MODULE: Staff, time tracking, scheduling, and payroll
+  staffProfiles: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'staff_profiles' }),
+  timeEntries: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'time_entries' }),
+  scheduleEntries: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'schedule_entries' }),
+  payslips: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'payslips' })
 };
 
 /**

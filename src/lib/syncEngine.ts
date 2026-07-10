@@ -45,6 +45,10 @@ const STORE_MAPPINGS: StoreMapping[] = [
   { storeKey: 'labResults',   table: 'lab_results',           idField: 'id' },
   { storeKey: 'groomingLogs', table: 'grooming_logs',         idField: 'id' },
   { storeKey: 'boardingRecords', table: 'boarding_records',   idField: 'id' },
+  { storeKey: 'staffProfiles',    table: 'staff_profiles',    idField: 'id' },
+  { storeKey: 'timeEntries',      table: 'time_entries',      idField: 'id' },
+  { storeKey: 'scheduleEntries',  table: 'schedule_entries',  idField: 'id' },
+  { storeKey: 'payslips',         table: 'payslips',          idField: 'id' },
 ];
 
 // ---------------------------------------------------------------------------

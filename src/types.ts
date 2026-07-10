@@ -196,3 +196,72 @@ export interface OfflineSyncItem { id: string; action: 'create_appointment' | 'c
 export const CATEGORY_DISPLAY_MAP: Record<string, string> = { 'service': 'Clinical Care', 'lab_service': 'Labs & Diagnostics', 'vaccine': 'Vaccinations', 'prescription': 'Pharmacy Rx', 'retail': 'Pet Supplies Shop', 'Taxes & Adjustments': 'Taxes & Adjustments', 'other': 'Other / Uncategorized' };
 
 export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; created_at?: string; updated_at?: string; is_deleted?: boolean; petIds?: string[]; }
+
+export interface StaffProfile {
+  id: string;
+  userId?: string;           // optional link to a User login account
+  fullName: string;
+  position: string;          // job title e.g. "Head Veterinarian"
+  department: string;        // e.g. "Clinical", "Grooming", "Admin"
+  employmentType: 'hourly' | 'monthly';
+  hourlyRate?: number;       // cents, only if hourly
+  monthlySalary?: number;    // cents, only if monthly
+  hireDate: string;          // ISO date string
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  _dirty: boolean;
+}
+
+export interface TimeEntry {
+  id: string;
+  staffId: string;           // StaffProfile.id
+  date: string;              // ISO date string YYYY-MM-DD
+  clockIn: string;           // ISO datetime string (full timestamp)
+  clockOut?: string;         // ISO datetime string, undefined if still clocked in
+  durationMinutes?: number;  // computed on clockOut, stored for easy payroll math
+  enteredBy: string;         // User.id of who logged this entry
+  source: 'self' | 'manager';
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  _dirty: boolean;
+}
+
+export interface ScheduleEntry {
+  id: string;
+  staffId: string;           // StaffProfile.id
+  shiftStart: string;        // ISO datetime — full timestamp, NOT time-of-day only
+  shiftEnd: string;          // ISO datetime — handles overnight shifts correctly
+  role: string;              // capacity e.g. "Vet on Call", "Cashier", "Groomer"
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  _dirty: boolean;
+}
+
+export interface PayslipDeduction {
+  label: string;             // e.g. "Advance", "EPF", "Uniform"
+  amountCents: number;
+}
+
+export interface Payslip {
+  id: string;
+  staffId: string;           // StaffProfile.id
+  periodStart: string;       // ISO date string
+  periodEnd: string;         // ISO date string
+  grossPayCents: number;     // computed from TimeEntry sum (hourly) or monthlySalary
+  deductions: PayslipDeduction[];
+  netPayCents: number;       // grossPayCents minus sum of deductions
+  status: 'draft' | 'finalized' | 'paid';
+  generatedBy: string;       // User.id
+  generatedAt: string;       // ISO datetime
+  paidAt?: string;           // ISO datetime, only when status = 'paid'
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  _dirty: boolean;
+}

@@ -55,14 +55,14 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Printer, Lock,
-  ChevronLeft, PenTool, Home, Scissors, Activity, Bell
+  ChevronLeft, PenTool, Home, Scissors, Activity, Bell, UserCog
 } from 'lucide-react';
 
 import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus, OfflineSyncItem,
   ShiftReconciliation, ActiveShift, ClinicQueueItem,
-  Vaccination, GroomingLog, LabResult, BoardingRecord
+  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, Payslip
 } from './types';
 
 import DashboardAnalytics from './components/DashboardAnalytics';
@@ -82,6 +82,7 @@ import LaboratoryManager from './components/LaboratoryManager';
 import BoardingManager from './components/BoardingManager';
 import GroomingManager from './components/GroomingManager';
 import ShiftManager from './components/ShiftManager';
+import StaffManager from './components/StaffManager';
 
 import { 
   fetchAppointments, 
@@ -153,6 +154,10 @@ function App() {
   const [syncQueue, setSyncQueue] = useState<OfflineSyncItem[]>([]);
   const [pinCache, setPinCache] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<any[]>([]);
+  const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
 
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     appName: 'Ceylon Pets POS',
@@ -312,6 +317,31 @@ function App() {
           const hShifts: any[] = [];
           await db.shiftReconciliations.iterate((value: any) => { if (value) hShifts.push(value); });
 
+          const hQueue: any[] = [];
+          await db.clinicQueue.iterate((value: any) => {
+            if (value && !value.is_deleted) hQueue.push(value);
+          });
+
+          const hStaffProfiles: any[] = [];
+          await db.staffProfiles.iterate((value: any) => {
+            if (value && !value.is_deleted) hStaffProfiles.push(value);
+          });
+
+          const hTimeEntries: any[] = [];
+          await db.timeEntries.iterate((value: any) => {
+            if (value && !value.is_deleted) hTimeEntries.push(value);
+          });
+
+          const hScheduleEntries: any[] = [];
+          await db.scheduleEntries.iterate((value: any) => {
+            if (value && !value.is_deleted) hScheduleEntries.push(value);
+          });
+
+          const hPayslips: any[] = [];
+          await db.payslips.iterate((value: any) => {
+            if (value && !value.is_deleted) hPayslips.push(value);
+          });
+
           const hSyncQueue: any[] = [];
           await db.syncQueue.iterate((value: any) => { if (value) hSyncQueue.push(value); });
 
@@ -334,7 +364,11 @@ function App() {
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
-            setClinicQueue(Array.isArray(queue) ? queue as any : []);
+            setClinicQueue(hQueue.sort((a, b) => new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime()));
+            setStaffProfiles(hStaffProfiles);
+            setTimeEntries(hTimeEntries);
+            setScheduleEntries(hScheduleEntries);
+            setPayslips(hPayslips);
             setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
             setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
             setActiveShift(hActiveShift as any);
@@ -989,6 +1023,61 @@ function App() {
     setEnteredPin(''); setSelectedUsername('');
   };
 
+  const handleSaveStaffProfile = useCallback(async (profile: StaffProfile) => {
+    await db.staffProfiles.setItem(profile.id, profile);
+    setStaffProfiles(prev => {
+      const exists = prev.find(p => p.id === profile.id);
+      return exists ? prev.map(p => p.id === profile.id ? profile : p)
+                    : [...prev, profile];
+    });
+  }, []);
+
+  const handleDeactivateStaffProfile = useCallback(async (id: string) => {
+    const profile = staffProfiles.find(p => p.id === id);
+    if (!profile) return;
+    const updated = { ...profile, active: false, updated_at: new Date().toISOString(), _dirty: true };
+    await db.staffProfiles.setItem(id, updated);
+    setStaffProfiles(prev => prev.map(p => p.id === id ? updated : p));
+  }, [staffProfiles]);
+
+  const handleSaveTimeEntry = useCallback(async (entry: TimeEntry) => {
+    const stamped = { ...entry, updated_at: new Date().toISOString(), _dirty: true };
+    await db.timeEntries.setItem(stamped.id, stamped);
+    setTimeEntries(prev => {
+      const exists = prev.find(t => t.id === stamped.id);
+      return exists ? prev.map(t => t.id === stamped.id ? stamped : t)
+                    : [...prev, stamped];
+    });
+  }, []);
+
+  const handleSaveScheduleEntry = useCallback(async (entry: ScheduleEntry) => {
+    const stamped = { ...entry, updated_at: new Date().toISOString(), _dirty: true };
+    await db.scheduleEntries.setItem(stamped.id, stamped);
+    setScheduleEntries(prev => {
+      const exists = prev.find(t => t.id === stamped.id);
+      return exists ? prev.map(t => t.id === stamped.id ? stamped : t)
+                    : [...prev, stamped];
+    });
+  }, []);
+
+  const handleDeleteScheduleEntry = useCallback(async (id: string) => {
+    const entry = scheduleEntries.find(e => e.id === id);
+    if (!entry) return;
+    const stamped = { ...entry, is_deleted: true, updated_at: new Date().toISOString(), _dirty: true };
+    await db.scheduleEntries.setItem(id, stamped);
+    setScheduleEntries(prev => prev.filter(e => e.id !== id));
+  }, [scheduleEntries]);
+
+  const handleSavePayslip = useCallback(async (payslip: Payslip) => {
+    const stamped = { ...payslip, updated_at: new Date().toISOString(), _dirty: true };
+    await db.payslips.setItem(stamped.id, stamped);
+    setPayslips(prev => {
+      const exists = prev.find(p => p.id === stamped.id);
+      return exists ? prev.map(p => p.id === stamped.id ? stamped : p)
+                    : [...prev, stamped];
+    });
+  }, []);
+
   const navItems = [
     { id: 'pos', label: 'POS', icon: Calculator, isLive: true },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, isLive: true },
@@ -1003,7 +1092,8 @@ function App() {
     { id: 'inventory', label: 'Inventory', icon: Package, isLive: true },
     { id: 'invoices', label: 'Invoices', icon: FileText, isLive: true }, // ACTIVATED
     { id: 'shift', label: 'Shift & Drawer', icon: Lock, isLive: true },
-    { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true }
+    { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true },
+    { id: 'staff', label: 'Staff & Payroll', icon: UserCog, isLive: true }
   ];
 
   const renderCanvas = () => {
@@ -1036,6 +1126,8 @@ function App() {
         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
         return <ReportsManager onVerifyMasterPin={handleVerifyMasterPin} currentUser={currentUser} />;
+      case 'staff': 
+        return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} />;
       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
