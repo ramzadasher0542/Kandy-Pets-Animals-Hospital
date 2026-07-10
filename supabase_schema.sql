@@ -32,12 +32,10 @@ ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on inventory" ON inventory;
 DROP POLICY IF EXISTS "Allow anon read access on inventory" ON inventory;
 DROP POLICY IF EXISTS "Allow anon write access on inventory" ON inventory;
-CREATE POLICY "Allow anon read access on inventory"
-  ON inventory FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on inventory"
   ON inventory FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 2. APPOINTMENTS
@@ -73,12 +71,10 @@ ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on appointments" ON appointments;
 DROP POLICY IF EXISTS "Allow anon read access on appointments" ON appointments;
 DROP POLICY IF EXISTS "Allow anon write access on appointments" ON appointments;
-CREATE POLICY "Allow anon read access on appointments"
-  ON appointments FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on appointments"
   ON appointments FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 3. MEDICAL RECORDS
@@ -128,12 +124,10 @@ ALTER TABLE medical_records ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on medical_records" ON medical_records;
 DROP POLICY IF EXISTS "Allow anon read access on medical_records" ON medical_records;
 DROP POLICY IF EXISTS "Allow anon write access on medical_records" ON medical_records;
-CREATE POLICY "Allow anon read access on medical_records"
-  ON medical_records FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on medical_records"
   ON medical_records FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 4. INVOICES
@@ -171,12 +165,10 @@ ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on invoices" ON invoices;
 DROP POLICY IF EXISTS "Allow anon read access on invoices" ON invoices;
 DROP POLICY IF EXISTS "Allow anon write access on invoices" ON invoices;
-CREATE POLICY "Allow anon read access on invoices"
-  ON invoices FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on invoices"
   ON invoices FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 5. CLIENTS
@@ -205,12 +197,10 @@ ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on clients" ON clients;
 DROP POLICY IF EXISTS "Allow anon read access on clients" ON clients;
 DROP POLICY IF EXISTS "Allow anon write access on clients" ON clients;
-CREATE POLICY "Allow anon read access on clients"
-  ON clients FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on clients"
   ON clients FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 6. SHIFTS
@@ -243,12 +233,10 @@ ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on shifts" ON shifts;
 DROP POLICY IF EXISTS "Allow anon read access on shifts" ON shifts;
 DROP POLICY IF EXISTS "Allow anon write access on shifts" ON shifts;
-CREATE POLICY "Allow anon read access on shifts"
-  ON shifts FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on shifts"
   ON shifts FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 7. SYSTEM ALERTS
@@ -270,12 +258,10 @@ ALTER TABLE system_alerts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on system_alerts" ON system_alerts;
 DROP POLICY IF EXISTS "Allow anon read access on system_alerts" ON system_alerts;
 DROP POLICY IF EXISTS "Allow anon write access on system_alerts" ON system_alerts;
-CREATE POLICY "Allow anon read access on system_alerts"
-  ON system_alerts FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on system_alerts"
   ON system_alerts FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 8. NOTIFICATIONS
@@ -300,12 +286,10 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on notifications" ON notifications;
 DROP POLICY IF EXISTS "Allow anon read access on notifications" ON notifications;
 DROP POLICY IF EXISTS "Allow anon write access on notifications" ON notifications;
-CREATE POLICY "Allow anon read access on notifications"
-  ON notifications FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on notifications"
   ON notifications FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 9. CLINIC QUEUE
@@ -332,12 +316,10 @@ ALTER TABLE clinic_queue ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on clinic_queue" ON clinic_queue;
 DROP POLICY IF EXISTS "Allow anon read access on clinic_queue" ON clinic_queue;
 DROP POLICY IF EXISTS "Allow anon write access on clinic_queue" ON clinic_queue;
-CREATE POLICY "Allow anon read access on clinic_queue"
-  ON clinic_queue FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on clinic_queue"
   ON clinic_queue FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 10. STAFF USERS
@@ -360,12 +342,10 @@ ALTER TABLE staff_users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on staff_users" ON staff_users;
 DROP POLICY IF EXISTS "Allow anon read access on staff_users" ON staff_users;
 DROP POLICY IF EXISTS "Allow anon write access on staff_users" ON staff_users;
-CREATE POLICY "Allow anon read access on staff_users"
-  ON staff_users FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on staff_users"
   ON staff_users FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 11. PETS
@@ -395,12 +375,10 @@ ALTER TABLE pets ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on pets" ON pets;
 DROP POLICY IF EXISTS "Allow anon read access on pets" ON pets;
 DROP POLICY IF EXISTS "Allow anon write access on pets" ON pets;
-CREATE POLICY "Allow anon read access on pets"
-  ON pets FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on pets"
   ON pets FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 12. VACCINATIONS
@@ -426,12 +404,10 @@ ALTER TABLE vaccinations ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on vaccinations" ON vaccinations;
 DROP POLICY IF EXISTS "Allow anon read access on vaccinations" ON vaccinations;
 DROP POLICY IF EXISTS "Allow anon write access on vaccinations" ON vaccinations;
-CREATE POLICY "Allow anon read access on vaccinations"
-  ON vaccinations FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on vaccinations"
   ON vaccinations FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 13. LAB RESULTS
@@ -458,12 +434,10 @@ ALTER TABLE lab_results ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on lab_results" ON lab_results;
 DROP POLICY IF EXISTS "Allow anon read access on lab_results" ON lab_results;
 DROP POLICY IF EXISTS "Allow anon write access on lab_results" ON lab_results;
-CREATE POLICY "Allow anon read access on lab_results"
-  ON lab_results FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on lab_results"
   ON lab_results FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 14. GROOMING LOGS
@@ -487,12 +461,10 @@ ALTER TABLE grooming_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on grooming_logs" ON grooming_logs;
 DROP POLICY IF EXISTS "Allow anon read access on grooming_logs" ON grooming_logs;
 DROP POLICY IF EXISTS "Allow anon write access on grooming_logs" ON grooming_logs;
-CREATE POLICY "Allow anon read access on grooming_logs"
-  ON grooming_logs FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on grooming_logs"
   ON grooming_logs FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- ---------------------------------------------------------------------------
 -- 15. BOARDING RECORDS
@@ -519,12 +491,10 @@ ALTER TABLE boarding_records ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon full access on boarding_records" ON boarding_records;
 DROP POLICY IF EXISTS "Allow anon read access on boarding_records" ON boarding_records;
 DROP POLICY IF EXISTS "Allow anon write access on boarding_records" ON boarding_records;
-CREATE POLICY "Allow anon read access on boarding_records"
-  ON boarding_records FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on boarding_records"
   ON boarding_records FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = 'cpets_sync_7f3a9b2e1d4c5f8e0a6b3d7c9e1f4a2b');
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
 
 -- =============================================================================
 -- END OF SCHEMA
@@ -622,8 +592,6 @@ CREATE INDEX IF NOT EXISTS idx_staff_profiles_updated_at ON staff_profiles ("upd
 ALTER TABLE staff_profiles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon read access on staff_profiles" ON staff_profiles;
 DROP POLICY IF EXISTS "Allow anon write access on staff_profiles" ON staff_profiles;
-CREATE POLICY "Allow anon read access on staff_profiles"
-  ON staff_profiles FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on staff_profiles"
   ON staff_profiles FOR ALL TO anon
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
@@ -651,8 +619,6 @@ CREATE INDEX IF NOT EXISTS idx_time_entries_updated_at ON time_entries ("updated
 ALTER TABLE time_entries ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon read access on time_entries" ON time_entries;
 DROP POLICY IF EXISTS "Allow anon write access on time_entries" ON time_entries;
-CREATE POLICY "Allow anon read access on time_entries"
-  ON time_entries FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on time_entries"
   ON time_entries FOR ALL TO anon
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
@@ -677,8 +643,6 @@ CREATE INDEX IF NOT EXISTS idx_schedule_entries_updated_at ON schedule_entries (
 ALTER TABLE schedule_entries ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon read access on schedule_entries" ON schedule_entries;
 DROP POLICY IF EXISTS "Allow anon write access on schedule_entries" ON schedule_entries;
-CREATE POLICY "Allow anon read access on schedule_entries"
-  ON schedule_entries FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on schedule_entries"
   ON schedule_entries FOR ALL TO anon
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
@@ -708,8 +672,6 @@ CREATE INDEX IF NOT EXISTS idx_payslips_updated_at ON payslips ("updated_at");
 ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon read access on payslips" ON payslips;
 DROP POLICY IF EXISTS "Allow anon write access on payslips" ON payslips;
-CREATE POLICY "Allow anon read access on payslips"
-  ON payslips FOR SELECT TO anon USING (true);
 CREATE POLICY "Allow anon write access on payslips"
   ON payslips FOR ALL TO anon
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
