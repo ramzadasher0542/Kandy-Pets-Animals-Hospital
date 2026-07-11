@@ -16,6 +16,7 @@ interface GroomingProps {
   inventory: InventoryItem[];
   clinicQueue?: ClinicQueueItem[];
   onUpdateRecord: (record: MedicalRecord) => void;
+  systemConfig?: any;
 }
 
 const GROOMING_SERVICES = [
@@ -24,17 +25,44 @@ const GROOMING_SERVICES = [
   { category: 'Medical Add-Ons', items: ['Medicated Bath'] }
 ];
 
-export default function GroomingManager({ clients, pets, records, inventory, clinicQueue = [], onUpdateRecord }: GroomingProps) {
+export default function GroomingManager({ clients, pets, records, inventory, clinicQueue = [], onUpdateRecord, systemConfig }: GroomingProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'new_session' | 'history'>('new_session');
 
   const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
+  
+  const [groomingInstructions, setGroomingInstructions] = useState({
+    bathe: false,
+    fullShave: false,
+    trimOnly: false,
+    nailClip: false,
+    earClean: false,
+    deShed: false,
+    customNotes: ''
+  });
+  const [consentOwnerName, setConsentOwnerName] = useState('');
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
 
   React.useEffect(() => {
     fetchGroomingLogs().then(setGroomingLogs).catch(console.error);
   }, []);
+
+  React.useEffect(() => {
+    if (selectedPatientId) {
+      const p = pets.find(p => p.id === selectedPatientId);
+      if (p) {
+        const client = clients.find(c => c.client_id === p.clientId);
+        if (client) {
+          setConsentOwnerName(client.full_name);
+        }
+      }
+    }
+  }, [selectedPatientId, pets, clients]);
 
   const normalizePhone = (p: string) => (p || '').replace(/\D/g, '');
 
@@ -76,7 +104,59 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
     setSelectedServices(prev => prev.includes(service) ? prev.filter(s => s !== service) : [...prev, service]);
   };
 
-  const handleFinalizeAndBill = () => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    // e.preventDefault(); // Moved to onTouchStart to avoid React passive event warning
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    if ('touches' in e) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = (e as React.MouseEvent).clientX - rect.left;
+      y = (e as React.MouseEvent).clientY - rect.top;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    // e.preventDefault();
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    if ('touches' in e) {
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = (e as React.MouseEvent).clientX - rect.left;
+      y = (e as React.MouseEvent).clientY - rect.top;
+    }
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    setHasSignature(true);
+  };
+
+  const stopDrawing = () => setIsDrawing(false);
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+  };
+
+  const processFinalization = () => {
     if (!selectedPatient || selectedServices.length === 0) return;
 
     let totalBilled = 0;
@@ -108,6 +188,8 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
       showToast(`Warning: ${missingServices.join(', ')} not found in inventory. Billed at 0.00.`, 'warning');
     }
 
+    const consentSignature = hasSignature && canvasRef.current ? canvasRef.current.toDataURL('image/png') : undefined;
+
     const newLog: GroomingLog = {
       id: crypto.randomUUID(),
       petId: selectedPatientId,
@@ -115,7 +197,11 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
       services: selectedServices,
       totalBilled: totalBilled,
       status: 'completed',
-      billingItems: billingItems
+      billingItems: billingItems,
+      groomingInstructions,
+      consentSignature,
+      consentTimestamp: consentSignature ? new Date().toISOString() : undefined,
+      consentOwnerName: consentOwnerName || undefined
     };
 
     upsertGroomingLog(newLog).then(() => {
@@ -123,7 +209,68 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
     });
     showToast(`Grooming session completed & pushed to POS Queue.`, 'success');
     setSelectedServices([]);
+    clearSignature();
+    setGroomingInstructions({ bathe: false, fullShave: false, trimOnly: false, nailClip: false, earClean: false, deShed: false, customNotes: '' });
+    setShowWarningModal(false);
     setActiveTab('history');
+  };
+
+  const handleFinalizeAndBill = () => {
+    if (!selectedPatient || selectedServices.length === 0) return;
+    if (!hasSignature) {
+      setShowWarningModal(true);
+      return;
+    }
+    processFinalization();
+  };
+
+  const [signatureModal, setSignatureModal] = useState<string | null>(null);
+
+  const handlePrintConsent = (log: GroomingLog) => {
+    const printDiv = document.createElement('div');
+    printDiv.id = 'print-consent';
+    printDiv.innerHTML = `
+      <style>
+        @media print {
+          body * { visibility: hidden; }
+          #print-consent, #print-consent * { visibility: visible; }
+          #print-consent { position: absolute; left: 0; top: 0; width: 100%; padding: 40px; }
+        }
+      </style>
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2>${systemConfig?.hospitalName || 'KANDY PETS ANIMAL HOSPITAL'}</h2>
+        <p>${systemConfig?.hospitalAddress || '123 Vet Street, Kandy'}</p>
+        <h1 style="margin-top: 20px;">GROOMING CONSENT FORM</h1>
+      </div>
+      <div style="margin-bottom: 20px;">
+        <p><strong>Date:</strong> ${log.date}</p>
+        <p><strong>Owner Name:</strong> ${log.consentOwnerName || '_________________________'}</p>
+        <p><strong>Pet ID:</strong> ${log.petId}</p>
+      </div>
+      <h3>Grooming Instructions</h3>
+      <ul style="list-style: none; padding: 0;">
+        <li style="margin-bottom: 10px;">${log.groomingInstructions?.bathe ? '☑' : '☐'} Bathe</li>
+        <li style="margin-bottom: 10px;">${log.groomingInstructions?.fullShave ? '☑' : '☐'} Full Shave</li>
+        <li style="margin-bottom: 10px;">${log.groomingInstructions?.trimOnly ? '☑' : '☐'} Trim Only</li>
+        <li style="margin-bottom: 10px;">${log.groomingInstructions?.nailClip ? '☑' : '☐'} Nail Clip</li>
+        <li style="margin-bottom: 10px;">${log.groomingInstructions?.earClean ? '☑' : '☐'} Ear Clean</li>
+        <li style="margin-bottom: 10px;">${log.groomingInstructions?.deShed ? '☑' : '☐'} De-shed</li>
+      </ul>
+      <div style="margin-bottom: 40px;">
+        <p><strong>Special Instructions:</strong></p>
+        <p>${log.groomingInstructions?.customNotes || 'None'}</p>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 50px;">
+        <p>Owner Signature: ___________________________  Date: ______</p>
+        <p>Staff Signature: ___________________________</p>
+      </div>
+    `;
+    document.body.appendChild(printDiv);
+    window.onafterprint = () => {
+      printDiv.remove();
+      window.onafterprint = null;
+    };
+    window.print();
   };
 
   const renderActiveQueue = () => {
@@ -231,6 +378,61 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
               {/* TAB: New Session */}
               {activeTab === 'new_session' && (
                 <div className="flex flex-col h-full space-y-6">
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Grooming Instructions</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                      {(['bathe', 'fullShave', 'trimOnly', 'nailClip', 'earClean', 'deShed'] as const).map(key => {
+                        const labelMap = { bathe: 'Bathe', fullShave: 'Full Shave', trimOnly: 'Trim Only', nailClip: 'Nail Clip', earClean: 'Ear Clean', deShed: 'De-shed' };
+                        const isChecked = groomingInstructions[key];
+                        return (
+                          <label key={key} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer select-none ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
+                            <input type="checkbox" className="sr-only" checked={isChecked} onChange={() => {
+                              let newInst = { ...groomingInstructions, [key]: !isChecked };
+                              if (key === 'fullShave' && !isChecked) newInst.trimOnly = false;
+                              if (key === 'trimOnly' && !isChecked) newInst.fullShave = false;
+                              setGroomingInstructions(newInst);
+                            }} />
+                            <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
+                              {isChecked && <CheckCircle2 className="w-4 h-4" />}
+                            </div>
+                            <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{labelMap[key]}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="mb-6">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Special Instructions</label>
+                      <textarea value={groomingInstructions.customNotes} onChange={(e) => setGroomingInstructions({...groomingInstructions, customNotes: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none min-h-[60px]" placeholder="Any custom notes..."></textarea>
+                    </div>
+
+                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Customer Consent</h3>
+                    <div className="mb-4">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Owner Name</label>
+                      <input type="text" value={consentOwnerName} onChange={(e) => setConsentOwnerName(e.target.value)} className="w-full md:w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="Owner Name" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Digital Signature</label>
+                      <div className="border border-slate-300 bg-slate-50 rounded-xl overflow-hidden inline-block relative">
+                        <canvas 
+                          ref={canvasRef} 
+                          width={400} 
+                          height={150} 
+                          className="bg-transparent cursor-crosshair touch-none w-full md:w-[400px] h-[150px]"
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+                          onTouchStart={(e) => { e.preventDefault(); startDrawing(e); }}
+                          onTouchMove={(e) => { e.preventDefault(); draw(e); }}
+                          onTouchEnd={stopDrawing}
+                        />
+                      </div>
+                      <div className="mt-2">
+                        <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors">Clear Signature</button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
                     {GROOMING_SERVICES.map(group => (
                       <div key={group.category} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm h-fit">
@@ -286,7 +488,6 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[9px]">
                         <th className="py-3 px-4 w-40">Date</th>
                         <th className="py-3 px-4">Services Rendered</th>
-                        <th className="py-3 px-4 text-right">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -304,11 +505,42 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                                   </span>
                                 ))}
                               </div>
+                              <details className="mt-3 border-t border-slate-100 pt-3 text-xs group">
+                                <summary className="cursor-pointer font-bold text-indigo-600 hover:text-indigo-800 outline-none select-none list-none flex items-center gap-1">
+                                  <span className="group-open:rotate-90 transition-transform">▶</span> View Instructions
+                                </summary>
+                                <div className="mt-2 grid grid-cols-2 gap-2 text-slate-600 pl-4">
+                                  <div>{log.groomingInstructions?.bathe ? '☑' : '☐'} Bathe</div>
+                                  <div>{log.groomingInstructions?.fullShave ? '☑' : '☐'} Full Shave</div>
+                                  <div>{log.groomingInstructions?.trimOnly ? '☑' : '☐'} Trim Only</div>
+                                  <div>{log.groomingInstructions?.nailClip ? '☑' : '☐'} Nail Clip</div>
+                                  <div>{log.groomingInstructions?.earClean ? '☑' : '☐'} Ear Clean</div>
+                                  <div>{log.groomingInstructions?.deShed ? '☑' : '☐'} De-shed</div>
+                                </div>
+                                {log.groomingInstructions?.customNotes && (
+                                  <div className="mt-2 pl-4 text-slate-500 italic">Notes: {log.groomingInstructions.customNotes}</div>
+                                )}
+                              </details>
                             </td>
-                            <td className="py-4 px-4 text-right">
+                            <td className="py-4 px-4 text-right flex flex-col items-end gap-2">
                               <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
                                 {log.status}
                               </span>
+                              {log.consentSignature ? (
+                                <>
+                                  <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-white flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" /> CONSENT SIGNED
+                                  </span>
+                                  <button onClick={() => setSignatureModal(log.consentSignature!)} className="text-[10px] font-bold text-indigo-600 hover:underline">View Signature</button>
+                                </>
+                              ) : (
+                                <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-rose-500 text-white flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" /> NO CONSENT
+                                </span>
+                              )}
+                              <button onClick={() => handlePrintConsent(log)} className="mt-1 flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-colors border border-slate-300">
+                                🖨 Print Consent Form
+                              </button>
                             </td>
                           </tr>
                         ))
@@ -322,6 +554,33 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
           </div>
         )}
       </main>
+      
+      {showWarningModal && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-amber-200">
+            <div className="p-6 bg-amber-50">
+              <h3 className="text-lg font-black text-amber-900 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600" /> Missing Signature
+              </h3>
+              <p className="text-sm font-medium text-amber-800 mt-2">No signature captured. Save anyway?</p>
+            </div>
+            <div className="p-4 flex gap-3 justify-end bg-slate-50 border-t border-slate-100">
+              <button onClick={() => setShowWarningModal(false)} className="px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+              <button onClick={processFinalization} className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md">Confirm Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {signatureModal && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSignatureModal(null)}>
+          <div className="bg-white rounded-2xl p-4 shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Customer Signature</h3>
+            <img src={signatureModal} alt="Signature" className="border border-slate-200 rounded-lg w-full md:w-[400px]" />
+            <button onClick={() => setSignatureModal(null)} className="w-full mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

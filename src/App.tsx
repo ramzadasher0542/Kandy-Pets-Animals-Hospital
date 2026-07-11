@@ -364,7 +364,12 @@ function App() {
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
-            setClinicQueue(hQueue.sort((a, b) => new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime()));
+            setClinicQueue(hQueue.sort((a, b) => {
+              const pA = a.priority ?? 2;
+              const pB = b.priority ?? 2;
+              if (pA !== pB) return pA - pB;
+              return new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime();
+            }));
             setStaffProfiles(hStaffProfiles);
             setTimeEntries(hTimeEntries);
             setScheduleEntries(hScheduleEntries);
@@ -544,47 +549,76 @@ function App() {
     }
   }, []);
 
+  const closeVisit = useCallback(async (appointmentId: string) => {
+    const apt = appointments.find(a => a.id === appointmentId);
+    if (!apt) return;
+
+    try {
+      const updated = { ...apt, status: 'completed' as const, updated_at: new Date().toISOString(), _dirty: true };
+      await upsertAppointment(updated);
+      setAppointments(prev => prev.map(a => a.id === appointmentId ? updated : a));
+
+      const queueItem = clinicQueue.find(q => q.appointmentId === appointmentId);
+      if (queueItem) {
+        await removeFromClinicQueue(queueItem.id);
+        setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+      }
+    } catch (error) {
+      console.error('[CeylonPets] closeVisit failed:', error);
+      throw error;
+    }
+  }, [appointments, clinicQueue]);
+
   const handleUpdateAppointmentStatus = useCallback(async (id: string, status: AppointmentStatus) => {
     const apt = appointments.find(a => a.id === id);
     if (apt) {
       try {
-        const updated = { ...apt, status, updated_at: new Date().toISOString() };
-        await upsertAppointment(updated);
-        setAppointments(prev => prev.map(a => a.id === id ? updated : a));
+        if (status === 'completed') {
+          await closeVisit(id);
+        } else {
+          const updated = { ...apt, status, updated_at: new Date().toISOString() };
+          await upsertAppointment(updated);
+          setAppointments(prev => prev.map(a => a.id === id ? updated : a));
 
-        // LIVING FLOOR: When appointment is checked-in (in-progress), add to clinic queue
-        if (status === 'in-progress') {
-          // FIX 3: Look up the real Pet UUID by matching Name AND Owner Phone
-          const normalize = (p: string) => (p || '').replace(/\D/g, '');
-          const matchedPet = pets.find(p => {
-            if (p.name.toLowerCase() !== (apt.petName || '').trim().toLowerCase()) return false;
-            const client = clients.find(c => c.client_id === p.clientId);
-            if (!client) return false;
-            return normalize(client.primary_phone) === normalize(apt.ownerPhone) || client.primary_phone === apt.ownerPhone;
-          });
-          const queueItem: ClinicQueueItem = {
-            id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
-            petId: matchedPet ? matchedPet.id : `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
-            petName: apt.petName,
-            ownerName: apt.ownerName,
-            ownerPhone: apt.ownerPhone,
-            appointmentId: apt.id,
-            serviceType: apt.admissionType === 'Vaccination' ? 'Vaccination' : apt.admissionType === 'Pet Boarding' ? 'Boarding' : apt.admissionType === 'Grooming Salon' ? 'Grooming' : 'Examination',
-            checkInTime: new Date().toISOString(),
-            status: 'active',
-            assignedVet: apt.veterinarian
-          };
-          await addToClinicQueue(queueItem);
-          setClinicQueue(prev => [queueItem, ...prev]);
-        }
+          if (status === 'in-progress') {
+            const normalize = (p: string) => (p || '').replace(/\D/g, '');
+            const matchedPet = pets.find(p => {
+              if (p.name.toLowerCase() !== (apt.petName || '').trim().toLowerCase()) return false;
+              const client = clients.find(c => c.client_id === p.clientId);
+              if (!client) return false;
+              return normalize(client.primary_phone) === normalize(apt.ownerPhone) || client.primary_phone === apt.ownerPhone;
+            });
+            const queueItem: ClinicQueueItem = {
+              id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
+              petId: matchedPet ? matchedPet.id : `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
+              petName: apt.petName,
+              ownerName: apt.ownerName,
+              ownerPhone: apt.ownerPhone,
+              appointmentId: apt.id,
+              serviceType: apt.admissionType === 'Vaccination' ? 'Vaccination' : apt.admissionType === 'Pet Boarding' ? 'Boarding' : apt.admissionType === 'Grooming Salon' ? 'Grooming' : 'Examination',
+              checkInTime: new Date().toISOString(),
+              status: 'active',
+              priority: apt.urgency === 'emergency' ? 0 : (apt.urgency === 'non-emergency' ? 1 : 2),
+              assignedVet: apt.veterinarian
+            };
+            await addToClinicQueue(queueItem);
+            setClinicQueue(prev => {
+              const next = [queueItem, ...prev];
+              return next.sort((a, b) => {
+                const pA = a.priority ?? 2;
+                const pB = b.priority ?? 2;
+                if (pA !== pB) return pA - pB;
+                return new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime();
+              });
+            });
+          }
 
-        // FIXED: Remove from queue when appointment is completed or cancelled
-        if (status === 'completed' || status === 'cancelled') {
-          // FIX 3: Match by appointment ID first (reliable), then fallback to compound string
-          const queueItem = clinicQueue.find(q => q.appointmentId === apt.id);
-          if (queueItem) {
-            await removeFromClinicQueue(queueItem.id);
-            setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+          if (status === 'cancelled') {
+            const queueItem = clinicQueue.find(q => q.appointmentId === apt.id);
+            if (queueItem) {
+              await removeFromClinicQueue(queueItem.id);
+              setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
+            }
           }
         }
 
@@ -594,7 +628,7 @@ function App() {
         showToast(`Failed to update appointment status: ${error.message}`, 'error');
       }
     }
-  }, [appointments, clinicQueue, pets]);
+  }, [appointments, clinicQueue, pets, closeVisit]);
 
   const handleAddRecord = useCallback(async (newRec: MedicalRecord) => {
     try {
@@ -778,24 +812,14 @@ function App() {
       await upsertInvoice(invoice);
       setInvoices(prev => [invoice, ...prev]);
 
-      // Remove patient from clinic queue after checkout
-      if (invoice.patientId && invoice.patientId !== 'RETAIL') {
-        const queueItem = clinicQueue.find(q => q.petId === invoice.patientId);
-        if (queueItem) {
-          await removeFromClinicQueue(queueItem.id);
-          setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
-        }
-      }
-
-      // Sync React appointment state to match DB (upsertInvoice already completed it in DB)
       if (invoice.appointmentId) {
-        setAppointments(prev => prev.map(a => a.id === invoice.appointmentId ? { ...a, status: 'completed' as const, updated_at: new Date().toISOString() } : a));
+        await closeVisit(invoice.appointmentId);
       }
     } catch (error: any) {
       console.error('[CeylonPets] Invoice creation failed:', error);
       showToast(`Checkout failed: ${error.message}`, 'error');
     }
-  }, [clinicQueue]);
+  }, [closeVisit]);
 
   // FIXED: No longer mutates React state directly — creates a new object
   // MISSION 2 FIX: Read from DB directly instead of stale state (old invoices aren't in state)
@@ -878,23 +902,9 @@ function App() {
         }
       }
 
-      // Sync appointment status if linked
+      // Close visit (appointment complete + queue removal) via unified path
       if (invoice.appointmentId) {
-        const appointment = appointments.find(a => a.id === invoice.appointmentId);
-        if (appointment) {
-          const updated = { ...appointment, status: 'completed' as const, updated_at: new Date().toISOString() };
-          await upsertAppointment(updated);
-          setAppointments(prev => prev.map(a => a.id === invoice.appointmentId ? updated : a));
-        }
-      }
-
-      // Remove patient from clinic queue after checkout
-      if (invoice.patientId && invoice.patientId !== 'RETAIL') {
-        const queueItem = clinicQueue.find(q => q.petId === invoice.patientId);
-        if (queueItem) {
-          await removeFromClinicQueue(queueItem.id);
-          setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
-        }
+        await closeVisit(invoice.appointmentId);
       }
 
       // Mark swept records as billed
@@ -931,7 +941,7 @@ function App() {
       showToast(`Checkout Error: ${error.message}`, 'error');
       throw error;
     }
-  }, [clinicQueue, appointments]);
+  }, [closeVisit]);
 
   const handlePurgeDatabases = useCallback(async () => {
     try {
@@ -1116,8 +1126,8 @@ function App() {
         );
       }
       case 'appointments': return <AppointmentsManager appointments={appointments} records={records} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
-      case 'boarding': return <BoardingManager clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} />;
-      case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} />;
+      case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} />;
+      case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} systemConfig={systemConfig} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shiftReconciliations.setItem(log.id, stampRecord(log)); setShiftLogs(prev => [log, ...prev]); }} onVerifyMasterPin={handleVerifyMasterPin} />;

@@ -96,7 +96,9 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
   const [medSearch, setMedSearch] = useState('');
   const [selectedMed, setSelectedMed] = useState<InventoryItem | null>(null);
   const [medDosage, setMedDosage] = useState('');
-  const [medFreq, setMedFreq] = useState('SID (Once a day)');
+  const [medRoute, setMedRoute] = useState('Oral');
+  const [medFreq, setMedFreq] = useState('BD');
+  const [medFreqCustom, setMedFreqCustom] = useState('');
   const [medDuration, setMedDuration] = useState('');
   const [medInstructions, setMedInstructions] = useState('After Meal');
   const [medQty, setMedQty] = useState(1);
@@ -582,18 +584,21 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
     const filteredSearch = medSearch ? rxInventory.filter(i => i.name.toLowerCase().includes(medSearch.toLowerCase())) : [];
 
     const handleAddMed = () => {
-      if (!selectedMed) return;
+      const name = selectedMed ? selectedMed.name : medSearch;
+      if (!name) return;
       const newMed = {
-        itemId: selectedMed.id,
-        name: selectedMed.name,
+        itemId: selectedMed ? selectedMed.id : `custom_${Date.now()}`,
+        name: name,
         dosage: medDosage,
+        route: medRoute,
         frequency: medFreq,
+        frequencyCustom: medFreq === 'Custom' ? medFreqCustom : undefined,
         duration: medDuration,
         instructions: medInstructions,
         quantity: medQty
       };
       setPrescribedMeds([...prescribedMeds, newMed]);
-      setSelectedMed(null); setMedSearch(''); setMedDosage(''); setMedQty(1);
+      setSelectedMed(null); setMedSearch(''); setMedDosage(''); setMedRoute('Oral'); setMedFreq('BD'); setMedFreqCustom(''); setMedQty(1);
     };
 
     return (
@@ -627,19 +632,33 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Route</label>
+                <select value={medRoute} onChange={e => setMedRoute(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer">
+                  <option value="IV">IV (Intravenous)</option>
+                  <option value="IM">IM (Intramuscular)</option>
+                  <option value="SC">SC (Subcutaneous)</option>
+                  <option value="Oral">Oral</option>
+                  <option value="Suppository">Suppository</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Dosage</label>
                 <input type="text" placeholder="e.g. 1 Tablet, 5ml" value={medDosage} onChange={e => setMedDosage(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Frequency</label>
-                <select value={medFreq} onChange={e => setMedFreq(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer">
-                  <option>SID (Once a day)</option>
-                  <option>BID (Twice a day)</option>
-                  <option>TID (Three times a day)</option>
-                  <option>QID (Four times a day)</option>
-                  <option>PRN (As needed)</option>
-                  <option>STAT (Immediately)</option>
+                <select value={medFreq} onChange={e => setMedFreq(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer mb-2">
+                  <option value="TDS">TDS (3×/day)</option>
+                  <option value="BD">BD (Twice daily)</option>
+                  <option value="Noct">Noct (Night only)</option>
+                  <option value="Mane">Mane (Morning only)</option>
+                  <option value="SOS">SOS (As needed)</option>
+                  <option value="Stat">Stat (Immediately)</option>
+                  <option value="Custom">Custom</option>
                 </select>
+                {medFreq === 'Custom' && (
+                  <input type="text" placeholder="e.g. Every 8hrs" value={medFreqCustom} onChange={e => setMedFreqCustom(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Duration (Days)</label>
@@ -662,8 +681,8 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
               <button 
                 type="button"
                 onClick={handleAddMed}
-                disabled={!selectedMed}
-                className={`flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${selectedMed ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                disabled={!selectedMed && !medSearch}
+                className={`flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${selectedMed || medSearch ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
               >
                 Add to Prescription
               </button>
@@ -682,7 +701,7 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
                   <div>
                     <div className="font-black text-indigo-900 text-xs">{med.name}</div>
                     <div className="text-[10px] font-medium text-indigo-700 mt-0.5">
-                      {med.dosage} • {med.frequency} • {med.duration} days • {med.instructions}
+                      {med.route} · {med.frequency === 'Custom' ? med.frequencyCustom : med.frequency} • {med.dosage} • {med.duration} days • {med.instructions}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">

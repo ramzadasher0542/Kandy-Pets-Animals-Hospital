@@ -96,6 +96,10 @@ export default function AppointmentsManager({
   const [breed, setBreed] = useState('');
   const [weight, setWeight] = useState<number | ''>(''); // PHASE 1 NATIVE
   const [sex, setSex] = useState('Unknown'); // PHASE 1 NATIVE
+  const [fastingStartTime, setFastingStartTime] = useState('');
+  const [rabiesProof, setRabiesProof] = useState(false);
+  const [dhlpProof, setDhlpProof] = useState(false);
+  const [fleaTickUpToDate, setFleaTickUpToDate] = useState(false);
   const [ownerName, setOwnerName] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('+94 ');
   const [ownerEmail, setOwnerEmail] = useState('');
@@ -105,8 +109,16 @@ export default function AppointmentsManager({
   const [reason, setReason] = useState('');
   const [formError, setFormError] = useState('');
   const [admissionType, setAdmissionType] = useState('OPD');
+  const [urgency, setUrgency] = useState<'routine' | 'non-emergency' | 'emergency'>('routine');
   const [phone2, setPhone2] = useState('');
   const [address, setAddress] = useState('');
+
+  // Emergency Intake State
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [emergencyPetName, setEmergencyPetName] = useState('');
+  const [emergencyOwnerPhone, setEmergencyOwnerPhone] = useState('+94 ');
+  const [emergencyComplaint, setEmergencyComplaint] = useState('');
+  const [emergencyVet, setEmergencyVet] = useState('');
 
   // Identity Scanner State
   const [identitySearch, setIdentitySearch] = useState('');
@@ -218,8 +230,9 @@ export default function AppointmentsManager({
   const resetForm = useCallback(() => {
     setEditingAptId(null);
     setPetName(''); setBreed(''); setWeight(''); setSex('Unknown');
+    setFastingStartTime(''); setRabiesProof(false); setDhlpProof(false); setFleaTickUpToDate(false);
     setOwnerName(''); setOwnerPhone('+94 '); setOwnerEmail('');
-    setReason(''); setFormError(''); setAdmissionType('OPD'); setPhone2(''); setAddress('');
+    setReason(''); setFormError(''); setAdmissionType('OPD'); setUrgency('routine'); setPhone2(''); setAddress('');
     setDate(formatDisplayDate(new Date())); setTime(formatDisplayTime(new Date()));
     setIdentitySearch(''); setKnownPets([]);
     if (liveVets.length > 0) setVeterinarian(liveVets[0].name);
@@ -229,13 +242,14 @@ export default function AppointmentsManager({
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (showAddModal) { setShowAddModal(false); resetForm(); }
+        if (showEmergencyModal) { setShowEmergencyModal(false); }
         if (selectedPopoverApt) setSelectedPopoverApt(null);
         if (overflowPopover) setOverflowPopover(null);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [showAddModal, selectedPopoverApt, overflowPopover, resetForm]);
+  }, [showAddModal, showEmergencyModal, selectedPopoverApt, overflowPopover, resetForm]);
 
   const handleEditClick = (apt: Appointment) => {
     if (apt.status === 'completed' || apt.status === 'cancelled') return;
@@ -252,9 +266,22 @@ export default function AppointmentsManager({
     setTime(apt.time);
     setVeterinarian(apt.veterinarian);
     setAdmissionType(apt.admissionType || 'OPD');
+    setUrgency(apt.urgency || 'routine');
     
     setPhone2(apt.alternatePhone || '');
     setAddress(apt.address || '');
+
+    if (apt.surgeryChecklist) {
+      setFastingStartTime(apt.surgeryChecklist.fastingStartTime || '');
+      setRabiesProof(apt.surgeryChecklist.rabiesProof);
+      setDhlpProof(apt.surgeryChecklist.dhlpProof);
+      setFleaTickUpToDate(apt.surgeryChecklist.fleaTickUpToDate);
+    } else {
+      setFastingStartTime('');
+      setRabiesProof(false);
+      setDhlpProof(false);
+      setFleaTickUpToDate(false);
+    }
     
     let displayReason = apt.reason || '';
     const match = displayReason.match(/:::METADATA(.*?):::\n?/);
@@ -272,6 +299,49 @@ export default function AppointmentsManager({
     setReason(displayReason);
     setSelectedPopoverApt(null);
     setShowAddModal(true);
+  };
+
+  const handleEmergencyIntake = async () => {
+    if (!emergencyPetName.trim() || !emergencyComplaint.trim()) {
+      showToast('Pet Name and Chief Complaint are required.', 'error');
+      return;
+    }
+    const aptId = crypto.randomUUID();
+    const aptNumber = getNextAptNumber(allAppointments);
+    const now = new Date().toISOString();
+    const targetVet = emergencyVet || (liveVets[0]?.name || '');
+
+    const newApt = {
+      id: aptId,
+      aptNumber,
+      petName: emergencyPetName.trim(),
+      petType: 'Canine' as any,
+      breed: 'Unknown',
+      ownerName: 'Emergency Unknown',
+      ownerPhone: enforcePhoneFormat(emergencyOwnerPhone || '0000000000'),
+      date: formatDisplayDate(new Date()),
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      veterinarian: targetVet,
+      assignedVet: targetVet,
+      admissionType: 'OPD' as any,
+      reason: emergencyComplaint,
+      status: 'in-progress' as any, // goes straight to active
+      urgency: 'emergency' as any,
+      emergencyBackfillRequired: true,
+      created_at: now,
+      updated_at: now,
+      is_deleted: false
+    } as any;
+    
+    await onAddAppointment(newApt);
+    await handleCheckIn(newApt);
+    
+    showToast('Emergency intake created. Complete patient details when stable.', 'success');
+    setShowEmergencyModal(false);
+    setEmergencyPetName('');
+    setEmergencyOwnerPhone('+94 ');
+    setEmergencyComplaint('');
+    setEmergencyVet(liveVets[0]?.name || '');
   };
 
   const handleCreateAppointment = async (e: React.FormEvent | React.KeyboardEvent) => {
@@ -302,6 +372,13 @@ export default function AppointmentsManager({
 
     const now = new Date().toISOString();
     const currentWeight = typeof weight === 'number' ? weight : parseFloat(weight as string) || 0;
+    const isSurgery = reason.toLowerCase().includes('surgery') || admissionType.toLowerCase().includes('surgery');
+    const surgeryChecklistObj = isSurgery ? {
+      fastingStartTime,
+      rabiesProof,
+      dhlpProof,
+      fleaTickUpToDate
+    } : undefined;
 
     if (editingAptId) {
       const existingApt = allAppointments.find(a => a.id === editingAptId);
@@ -321,9 +398,11 @@ export default function AppointmentsManager({
         veterinarian,
         assignedVet: veterinarian,
         admissionType: admissionType as any,
+        urgency,
         reason: reason,
         alternatePhone: phone2,
         address: address,
+        surgeryChecklist: surgeryChecklistObj,
         updated_at: now
       } as any;
       if (onUpdateAppointment) onUpdateAppointment(updatedApt);
@@ -345,10 +424,12 @@ export default function AppointmentsManager({
         veterinarian,
         assignedVet: veterinarian,
         admissionType: admissionType as any,
+        urgency,
         reason: reason,
         alternatePhone: phone2,
         address: address,
         status: 'booked',
+        surgeryChecklist: surgeryChecklistObj,
         created_at: now,
         updated_at: now,
         is_deleted: false
@@ -492,7 +573,12 @@ export default function AppointmentsManager({
 
   const todayStr = toLocalISODate(new Date());
   
-  const todaysListApts = listFilteredApts.filter(a => a.date === todayStr);
+  const todaysListApts = listFilteredApts.filter(a => a.date === todayStr).sort((a, b) => {
+    const getUrgencyVal = (u?: string) => u === 'emergency' ? 3 : u === 'non-emergency' ? 2 : 1;
+    const diff = getUrgencyVal(b.urgency) - getUrgencyVal(a.urgency);
+    if (diff !== 0) return diff;
+    return (a.time || '').localeCompare(b.time || '');
+  });
   const futureListApts = listFilteredApts.filter(a => new Date(a.date) > new Date(todayStr));
   const pastListApts = listFilteredApts.filter(a => new Date(a.date) < new Date(todayStr));
 
@@ -690,7 +776,11 @@ export default function AppointmentsManager({
         </td>
         <td className="py-4 px-4">
           <div className="flex flex-col items-start gap-1">
-            <div className="font-bold text-slate-800">{apt.petName}</div>
+            <div className="font-bold text-slate-800 flex items-center gap-2">
+              {apt.petName}
+              {apt.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">EMERGENCY</span>}
+              {apt.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">URGENT</span>}
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
               <span className="text-[10px] text-slate-500 font-medium">{apt.petType} - {apt.breed || 'Mixed'}</span>
@@ -821,6 +911,32 @@ export default function AppointmentsManager({
     </div>
   );
 
+  const isSurgeryForm = reason.toLowerCase().includes('surgery') || admissionType.toLowerCase().includes('surgery');
+  let fastingHours = 0;
+  if (isSurgeryForm && date && time && fastingStartTime) {
+    const surgeryDate = new Date(`${date}T${time}`);
+    const fastingDate = new Date(fastingStartTime);
+    if (!isNaN(surgeryDate.getTime()) && !isNaN(fastingDate.getTime())) {
+      fastingHours = (surgeryDate.getTime() - fastingDate.getTime()) / (1000 * 60 * 60);
+    }
+  }
+
+  let under6Months = false;
+  if (isSurgeryForm && petName) {
+    const matchedPet = pets.find(p => p.name.toLowerCase() === petName.toLowerCase() && p.petType === petType);
+    if (!matchedPet || !matchedPet.age) {
+       under6Months = true;
+    } else {
+       const ageStr = matchedPet.age.toLowerCase();
+       if (ageStr.includes('month')) {
+          const num = parseInt(ageStr.replace(/[^0-9]/g, ''), 10);
+          if (!isNaN(num) && num < 6) under6Months = true;
+       } else if (ageStr.includes('week') || ageStr.includes('day')) {
+          under6Months = true;
+       }
+    }
+  }
+
   return (
     <div className="h-full flex flex-col gap-4" id="appointments-tab-system">
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 shrink-0">
@@ -906,6 +1022,10 @@ export default function AppointmentsManager({
             <option value="All Doctors">All Doctors</option>
             {liveVets.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
           </select>
+
+          <button onClick={() => setShowEmergencyModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
+            ⚡ Emergency Intake
+          </button>
 
           <button data-testid="btn-new-appointment" onClick={() => { resetForm(); setShowAddModal(true); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
             <Plus className="h-4 w-4" /> New Appointment
@@ -1048,20 +1168,32 @@ export default function AppointmentsManager({
                 )}
 
                 {/* TIER 1: Administration */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-4">
-                  <div className="flex-1 w-full">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">System Appointment ID</label>
-                    <input type="text" readOnly value={currentDisplayAptNumber} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-mono font-bold cursor-not-allowed outline-none text-xs" />
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="flex flex-col md:flex-row gap-5 mb-5">
+                    <div className="flex-1 w-full max-w-[150px]">
+                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">System Appointment ID</label>
+                      <input type="text" readOnly value={currentDisplayAptNumber} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-mono font-bold cursor-not-allowed outline-none text-xs" />
+                    </div>
+                    <div className="flex-1 w-full">
+                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Intake Tag (Admission Type)</label>
+                      <select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
+                        <option value="OPD">OPD Consultation</option>
+                        <option value="Vaccination">Vaccination Drop-off</option>
+                        <option value="Grooming Salon">Grooming Salon</option>
+                        <option value="Hospital Admission">Hospital Admission</option>
+                        <option value="Pet Boarding">Pet Boarding Intake</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="flex-1 w-full">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Intake Tag (Admission Type)</label>
-                    <select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
-                      <option value="OPD">OPD Consultation</option>
-                      <option value="Vaccination">Vaccination Drop-off</option>
-                      <option value="Grooming Salon">Grooming Salon</option>
-                      <option value="Hospital Admission">Hospital Admission</option>
-                      <option value="Pet Boarding">Pet Boarding Intake</option>
-                    </select>
+
+                  {/* Urgency Selector */}
+                  <div className="mb-5">
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Urgency Level</label>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setUrgency('routine')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors ${urgency === 'routine' ? 'bg-slate-800 text-white border-slate-900 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}>🟢 Routine</button>
+                      <button type="button" onClick={() => setUrgency('non-emergency')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors ${urgency === 'non-emergency' ? 'bg-amber-500 text-white border-amber-600 shadow-sm' : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'}`}>🟡 Non-Emergency</button>
+                      <button type="button" onClick={() => setUrgency('emergency')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors ${urgency === 'emergency' ? 'bg-rose-600 text-white border-rose-700 shadow-sm' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>🔴 Emergency</button>
+                    </div>
                   </div>
                 </div>
 
@@ -1179,6 +1311,47 @@ export default function AppointmentsManager({
                     <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Chief Complaint / Visit Notes *</label>
                     <textarea name="reason" required rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Annual vaccinations, limping on front right leg..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs resize-none" />
                   </div>
+
+                  {isSurgeryForm && (
+                    <div className="bg-amber-50 rounded-2xl p-5 border border-amber-200 mt-4 space-y-4 shadow-sm">
+                      <h3 className="text-[10px] font-black text-amber-800 uppercase tracking-widest flex items-center gap-2"><Activity className="w-3.5 h-3.5"/> Pre-Surgery Checklist</h3>
+                      
+                      {under6Months && (
+                        <div className="bg-amber-100 text-amber-800 text-xs font-bold p-3 rounded-xl border border-amber-300">
+                          ⚠ This pet may be under 6 months old. Sterilization is not recommended before 6 months. Confirm with the attending vet.
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="font-bold text-amber-800 block text-[9px] uppercase tracking-widest mb-1.5">Fasting Start Time</label>
+                          <input type="datetime-local" value={fastingStartTime} onChange={(e) => setFastingStartTime(e.target.value)} className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 font-bold text-xs" />
+                          {fastingStartTime && date && time && (
+                            <div className={`mt-1.5 text-[10px] font-bold ${fastingHours < 5 ? 'text-amber-600' : fastingHours < 10 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                              Fasting duration: {fastingHours.toFixed(1)} hours before surgery time
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex flex-col justify-center space-y-2 pt-4">
+                          <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer">
+                            <input type="checkbox" checked={rabiesProof} onChange={(e) => setRabiesProof(e.target.checked)} className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer" />
+                            Rabies Vacc. Proof ✓
+                          </label>
+                          {(petType === 'Canine' || petType === 'Dog' as any) && (
+                            <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer">
+                              <input type="checkbox" checked={dhlpProof} onChange={(e) => setDhlpProof(e.target.checked)} className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer" />
+                              DHLP Vacc. Proof ✓
+                            </label>
+                          )}
+                          <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer">
+                            <input type="checkbox" checked={fleaTickUpToDate} onChange={(e) => setFleaTickUpToDate(e.target.checked)} className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer" />
+                            Flea/tick treatment up to date?
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>
@@ -1191,6 +1364,57 @@ export default function AppointmentsManager({
               </div>
             </form>
 
+          </div>
+        </div>,
+        document.body
+      )}
+      {showEmergencyModal && createPortal(
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowEmergencyModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-rose-200" onClick={e => e.stopPropagation()}>
+            <div className="bg-rose-50 p-5 border-b border-rose-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-rose-700 flex items-center gap-2 tracking-tight">
+                  <span className="text-xl">⚡</span> Emergency Intake
+                </h2>
+                <p className="text-rose-600/80 text-xs font-semibold mt-1">Bypass triage and push directly to active queue.</p>
+              </div>
+              <button onClick={() => setShowEmergencyModal(false)} className="text-rose-400 hover:text-rose-700 hover:bg-rose-100 p-2 rounded-xl transition-colors cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name *</label>
+                <input type="text" autoFocus value={emergencyPetName} onChange={e => setEmergencyPetName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" placeholder="e.g. Buddy" />
+              </div>
+              
+              <div>
+                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Owner Phone (Optional)</label>
+                <PhoneInput value={emergencyOwnerPhone} onChange={setEmergencyOwnerPhone} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" />
+              </div>
+              
+              <div>
+                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Chief Complaint *</label>
+                <input type="text" value={emergencyComplaint} onChange={e => setEmergencyComplaint(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" placeholder="e.g. Hit by vehicle, actively seizing..." />
+              </div>
+              
+              <div>
+                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Assigned Veterinarian</label>
+                <select value={emergencyVet} onChange={e => setEmergencyVet(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm cursor-pointer">
+                  {liveVets.map(v => <option key={v.id} value={v.name}>Dr. {v.name}</option>)}
+                </select>
+              </div>
+            </div>
+            
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setShowEmergencyModal(false)} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer shadow-sm">
+                Cancel
+              </button>
+              <button onClick={handleEmergencyIntake} className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-200 flex items-center gap-2">
+                <span className="text-sm">⚡</span> Create Emergency Intake
+              </button>
+            </div>
           </div>
         </div>,
         document.body

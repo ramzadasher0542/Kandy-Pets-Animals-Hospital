@@ -676,3 +676,25 @@ CREATE POLICY "Allow anon write access on payslips"
   ON payslips FOR ALL TO anon
   USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
   WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__'); 
+
+
+-- =============================================================
+-- BM-2: Feeding plan on boarding records (added 2026-07-10)
+-- =============================================================
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS feeding_plan JSONB DEFAULT NULL;
+
+-- Chunk K-2 Grooming Instructions and Consent
+ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS grooming_instructions JSONB DEFAULT NULL;
+ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS consent_signature TEXT DEFAULT NULL;
+ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS consent_timestamp TEXT DEFAULT NULL;
+ALTER TABLE grooming_logs ADD COLUMN IF NOT EXISTS consent_owner_name TEXT DEFAULT NULL;
+
+
+-- =============================================================
+-- K-3: Admission vs Boarding billing intelligence (added 2026-07-11)
+-- =============================================================
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS estimated_stay_days INTEGER DEFAULT 1;
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS deposit_amount_cents INTEGER DEFAULT 0;
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS cage_fee_per_day_cents INTEGER DEFAULT 0;
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS cleaning_fee_per_day_cents INTEGER DEFAULT 0;
+ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS doctor_fee_per_visit_cents INTEGER DEFAULT 0;

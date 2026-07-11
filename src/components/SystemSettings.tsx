@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Building2, Printer, Users, ShieldAlert, Save, Plus, 
   Trash2, Database, Power, X, Lock, CheckCircle2, User,
-  FileText, Download, Upload, Layers, AlertTriangle, Smartphone, DownloadCloud, UploadCloud } from 'lucide-react';
+  FileText, Download, Upload, Layers, AlertTriangle, Smartphone, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
@@ -43,6 +43,16 @@ export interface SystemConfig {
     owner: string[];
   };
   masterPin?: string;
+  boardingRates?: {
+    catNofoodCents: number;
+    catWithfoodCents: number;
+    dogNofoodCents: number;
+    dogWithfoodCents: number;
+    catLitterCents: number;
+    dogLitterCents: number;
+    milkCupCents: number;
+  };
+  defaultDepositCents?: number;
   dummyAdminPin?: string;
 }
 
@@ -69,7 +79,7 @@ export default function SystemSettings({
   config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onHardReboot, onUpdateInventory, onDeleteInventory, onVerifyMasterPin
 }: SettingsProps) {
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'database'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'database' | 'rates'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
   const [hasChanges, setHasChanges] = useState(false);
   
@@ -300,7 +310,8 @@ export default function SystemSettings({
     { id: 'profile', label: 'Hospital Profile', icon: Building2 },
     { id: 'pos', label: 'Hardware & POS', icon: Printer },
     { id: 'staff', label: 'Staff & Security', icon: Users },
-    { id: 'database', label: 'Data & Operations', icon: Database, danger: true }
+    { id: 'database', label: 'Data & Operations', icon: Database, danger: true },
+    { id: 'rates', label: 'Billing & Rates', icon: Banknote }
   ];
 
   return (
@@ -560,6 +571,181 @@ export default function SystemSettings({
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* TAB: Billing & Rates */}
+          {activeTab === 'rates' && (
+            <div className="animate-fade-in p-6 space-y-6">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2"><Banknote className="w-5 h-5 text-indigo-500" /> Boarding Rates</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Configure daily rates for the boarding hotel</p>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Cat (No Food) / Day</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.catNofoodCents ? (localConfig.boardingRates.catNofoodCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), catNofoodCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Cat (With Food) / Day</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.catWithfoodCents ? (localConfig.boardingRates.catWithfoodCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), catWithfoodCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Dog (No Food) / Day</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.dogNofoodCents ? (localConfig.boardingRates.dogNofoodCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), dogNofoodCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Dog (With Food) / Day</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.dogWithfoodCents ? (localConfig.boardingRates.dogWithfoodCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), dogWithfoodCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Cat Litter / Day Extra</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.catLitterCents ? (localConfig.boardingRates.catLitterCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), catLitterCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Dog Litter / Day Extra</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.dogLitterCents ? (localConfig.boardingRates.dogLitterCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), dogLitterCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Milk Cup Extra</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input 
+                        type="number" step="0.01" min="0"
+                        value={localConfig.boardingRates?.milkCupCents ? (localConfig.boardingRates.milkCupCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), milkCupCents: Math.round(val * 100) }}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h4 className="text-sm font-black text-slate-800 tracking-tight mb-4">Admission / Boarding Deposit</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+                      <span>Standard Admission Deposit (Rs.)</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
+                      <input
+                        data-testid="default-deposit-input"
+                        type="number" step="0.01" min="0"
+                        value={localConfig.defaultDepositCents ? (localConfig.defaultDepositCents / 100).toFixed(2) : ''}
+                        onChange={e => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setLocalConfig(prev => ({...prev, defaultDepositCents: Math.round(val * 100)}));
+                          setHasChanges(true);
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      />
+                    </div>
+                    <p className="text-[10px] font-medium text-slate-400 mt-1">Flat deposit collected at every intake, regardless of estimated stay. All charges run against this at discharge.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

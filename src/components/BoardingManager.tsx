@@ -5,18 +5,21 @@
 
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock
+import {
+  Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
 } from 'lucide-react';
-import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem } from '../types';
+import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem } from '../types';
 import { showToast } from './Toast';
 import { fetchBoardingRecords, upsertBoardingRecord, fetchPets } from '../lib/db';
 
 interface BoardingProps {
+  systemConfig: any;
   clients: Client[];
   pets: Pet[];
   records: MedicalRecord[];
   clinicQueue?: ClinicQueueItem[];
+  inventory?: InventoryItem[];
+  onUpdateStock?: (itemId: string, qtyDelta: number) => Promise<void>;
   onUpdateRecord: (record: MedicalRecord) => void;
 }
 
@@ -24,14 +27,20 @@ const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ clients, pets = [], records, clinicQueue = [], onUpdateRecord }: BoardingProps) {
+export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [checkOutDate, setCheckOutDate] = useState<string>('');
   const [foodType, setFoodType] = useState<'without_food' | 'with_food'>('without_food');
+  const [hospitalProvidesLitter, setHospitalProvidesLitter] = useState<boolean>(false);
   const [medicalBoarding, setMedicalBoarding] = useState<boolean>(false);
+  const [estimatedStayDays, setEstimatedStayDays] = useState<number>(1);
+  const [doctorFeeRupees, setDoctorFeeRupees] = useState<number>(0);
+  const [cleaningFeeRupees, setCleaningFeeRupees] = useState<number>(0);
+
+  const depositCents = systemConfig?.defaultDepositCents ?? 1500000;
   
   // Guardrail State
   const [showDepositGuard, setShowDepositGuard] = useState(false);
@@ -41,6 +50,23 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
   React.useEffect(() => {
     fetchBoardingRecords().then(setBoardingRecords).catch(console.error);
   }, []);
+
+  const calculateDailyRate = (pet: Pet | undefined, food: 'without_food' | 'with_food', litter: boolean) => {
+    if (!pet || !systemConfig?.boardingRates) return 0;
+    const rates = systemConfig.boardingRates;
+    let cost = 0;
+    const isCat = pet.petType?.toLowerCase() === 'cat' || pet.petType?.toLowerCase() === 'feline';
+    const isDog = pet.petType?.toLowerCase() === 'dog' || pet.petType?.toLowerCase() === 'canine';
+
+    if (isCat) {
+      cost = food === 'with_food' ? rates.catWithfoodCents : rates.catNofoodCents;
+      if (litter) cost += rates.catLitterCents;
+    } else if (isDog) {
+      cost = food === 'with_food' ? rates.dogWithfoodCents : rates.dogNofoodCents;
+      if (litter) cost += rates.dogLitterCents;
+    }
+    return cost;
+  };
 
   // Derive unique patients & active boarding map
   const { uniquePatients, activeBoardingMap } = useMemo(() => {
@@ -62,17 +88,175 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
 
   const [dischargeModalCage, setDischargeModalCage] = useState<string | null>(null);
 
-  const handleDischarge = async (cage: string) => {
+  // Feeding plan modal state
+  const [feedingModalCage, setFeedingModalCage] = useState<string | null>(null);
+  const [feedingItemId, setFeedingItemId] = useState<string>('');
+  const [feedingQtyPerMeal, setFeedingQtyPerMeal] = useState<number>(1);
+  const [feedingMealsPerDay, setFeedingMealsPerDay] = useState<number>(3);
+
+  const foodInventory = useMemo(() => inventory.filter(i => i.category === 'food'), [inventory]);
+
+  // Medication log modal state (Admission only)
+  const [medModalCage, setMedModalCage] = useState<string | null>(null);
+  const [medItemId, setMedItemId] = useState<string>('');
+  const [medQty, setMedQty] = useState<number>(1);
+
+  // Sum of all billing charges EXCEPT the deposit and any settlement top-up (in cents)
+  const computeCharges = (b: BoardingRecord) =>
+    (b.billingItems || [])
+      .filter(i => i.itemId !== 'admission_deposit' && i.itemId !== 'additional_charges')
+      .reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
+
+  const countDoctorRounds = (b: BoardingRecord) =>
+    (b.billingItems || []).filter(i => i.itemId === 'doctor_round').length;
+
+  const persistBoarding = async (updated: BoardingRecord) => {
+    await upsertBoardingRecord(updated);
+    setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+  };
+
+  const handleLogDoctorRound = async (cage: string) => {
+    const occupant = activeBoardingMap.get(cage);
+    if (!occupant) return;
+    const b = occupant.boarding;
+    const fee = b.doctorFeePerVisitCents ?? 0;
+    const item = { itemId: 'doctor_round', name: 'Doctor Round Fee', price: fee, quantity: 1, category: 'service' as const };
+    const nextItems = [...(b.billingItems || []), item];
+    const updated: BoardingRecord = { ...b, billingItems: nextItems, totalChargesCents: computeCharges({ ...b, billingItems: nextItems }) };
+    await persistBoarding(updated);
+    showToast(`Doctor round logged (Rs. ${(fee / 100).toFixed(2)}).`, 'success');
+  };
+
+  const openMedModal = (cage: string) => {
+    setMedItemId('');
+    setMedQty(1);
+    setMedModalCage(cage);
+  };
+
+  const handleLogMedication = async () => {
+    if (!medModalCage) return;
+    const occupant = activeBoardingMap.get(medModalCage);
+    if (!occupant) return;
+    if (!medItemId) { showToast('Select a medication item.', 'error'); return; }
+    if (medQty <= 0) { showToast('Quantity must be positive.', 'error'); return; }
+    const item = inventory.find(i => i.id === medItemId);
+    if (!item) { showToast('Medication item not found in inventory.', 'error'); return; }
+    if (!onUpdateStock) { showToast('Stock handler unavailable.', 'error'); return; }
+
+    try {
+      await onUpdateStock(medItemId, -medQty);
+    } catch (err: any) {
+      showToast(`Stock update failed: ${err?.message || err}`, 'error');
+      return;
+    }
+
+    const billingItem = { itemId: item.id, name: item.name, price: item.price, quantity: medQty, category: item.category };
+    const b = occupant.boarding;
+    const nextItems = [...(b.billingItems || []), billingItem];
+    const updated: BoardingRecord = { ...b, billingItems: nextItems, totalChargesCents: computeCharges({ ...b, billingItems: nextItems }) };
+    await persistBoarding(updated);
+    showToast('Medication logged. Stock updated.', 'success');
+    setMedModalCage(null);
+  };
+
+  const openFeedingModal = (cage: string) => {
+    const occupant = activeBoardingMap.get(cage);
+    const plan = occupant?.boarding.feedingPlan;
+    setFeedingItemId(plan?.inventoryItemId || '');
+    setFeedingQtyPerMeal(plan?.quantityPerMeal ?? 1);
+    setFeedingMealsPerDay(plan?.mealsPerDay ?? 3);
+    setFeedingModalCage(cage);
+  };
+
+  const handleSaveFeedingPlan = async () => {
+    if (!feedingModalCage) return;
+    const occupant = activeBoardingMap.get(feedingModalCage);
+    if (!occupant) return;
+    if (!feedingItemId) { showToast('Select a food item.', 'error'); return; }
+    if (feedingQtyPerMeal <= 0 || feedingMealsPerDay <= 0) { showToast('Quantities must be positive.', 'error'); return; }
+    const item = foodInventory.find(i => i.id === feedingItemId);
+    if (!item) { showToast('Food item not found in inventory.', 'error'); return; }
+
+    const updated: BoardingRecord = {
+      ...occupant.boarding,
+      feedingPlan: {
+        inventoryItemId: item.id,
+        itemName: item.name,
+        quantityPerMeal: feedingQtyPerMeal,
+        mealsPerDay: feedingMealsPerDay,
+      }
+    };
+    await upsertBoardingRecord(updated);
+    setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+    showToast(`Feeding plan set: ${item.name} — ${feedingQtyPerMeal}/meal × ${feedingMealsPerDay}/day.`, 'success');
+    setFeedingModalCage(null);
+  };
+
+  const handleLogFeeding = async (cage: string) => {
+    const occupant = activeBoardingMap.get(cage);
+    if (!occupant) return;
+    const plan = occupant.boarding.feedingPlan;
+    if (!plan) { showToast('No feeding plan set', 'error'); return; }
+    if (!onUpdateStock) { showToast('Stock handler unavailable.', 'error'); return; }
+
+    const invItem = inventory.find(i => i.id === plan.inventoryItemId);
+    const unitPrice = invItem?.price ?? (systemConfig?.boardingRates?.milkCupCents ?? 10000);
+
+    try {
+      await onUpdateStock(plan.inventoryItemId, -plan.quantityPerMeal);
+    } catch (err: any) {
+      showToast(`Stock update failed: ${err?.message || err}`, 'error');
+      return;
+    }
+
+    const billingItem = {
+      itemId: plan.inventoryItemId,
+      name: plan.itemName + ' (feeding)',
+      price: unitPrice,
+      quantity: plan.quantityPerMeal,
+      category: 'food' as const,
+    };
+
+    const nextItems = [...(occupant.boarding.billingItems || []), billingItem];
+    const updated: BoardingRecord = {
+      ...occupant.boarding,
+      billingItems: nextItems,
+      totalChargesCents: computeCharges({ ...occupant.boarding, billingItems: nextItems }),
+    };
+    await upsertBoardingRecord(updated);
+    setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+    showToast('Feeding logged. Stock updated.', 'success');
+  };
+
+  const handleDischargeSettle = async (cage: string) => {
     const occupant = activeBoardingMap.get(cage);
     if (!occupant || !occupant.boarding) return;
-    
-    const updatedBoarding: BoardingRecord = {
-      ...occupant.boarding,
-      status: 'discharged'
+    const b = occupant.boarding;
+
+    const charges = computeCharges(b);
+    const deposit = b.depositAmountCents ?? 0;
+    const balance = deposit - charges; // positive = refund owed, negative = owner owes more
+
+    let nextItems = b.billingItems || [];
+    let toastMsg: string;
+    if (balance < 0) {
+      nextItems = [...nextItems, { itemId: 'additional_charges', name: 'Additional Charges Beyond Deposit', price: Math.abs(balance), quantity: 1 }];
+      toastMsg = `Discharged. Collect Rs. ${(Math.abs(balance) / 100).toFixed(2)} additional.`;
+    } else if (balance > 0) {
+      toastMsg = `Discharged. Refund: Rs. ${(balance / 100).toFixed(2)}`;
+    } else {
+      toastMsg = 'Discharged. Settled exactly — no balance.';
+    }
+
+    const updated: BoardingRecord = {
+      ...b,
+      billingItems: nextItems,
+      totalChargesCents: charges,
+      status: 'discharged',
     };
-    await upsertBoardingRecord(updatedBoarding);
-    setBoardingRecords(prev => prev.map(b => b.id === updatedBoarding.id ? updatedBoarding : b));
-    showToast(`${occupant.pet?.name || 'Unknown'} discharged from ${cage}. Cage is now available.`, 'success');
+    await upsertBoardingRecord(updated);
+    setBoardingRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+    showToast(toastMsg, 'success');
     setSelectedCage(null);
     setDischargeModalCage(null);
   };
@@ -96,14 +280,12 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
     const patient = uniquePatients.find(p => p.id === selectedPatientId);
     if (!patient) return;
 
-    const checkIn = new Date();
-    const checkOut = new Date(checkOutDate);
-    const diffMs = checkOut.getTime() - checkIn.getTime();
-    const boardingDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    // Snapshot today's cage rate for this pet/food/litter configuration
+    const cageFeePerDayCents = calculateDailyRate(patient, foodType, hospitalProvidesLitter);
 
+    // Intake charges the flat deposit only; all other charges accumulate against it.
     const billingItems = [
-      { itemId: 'boarding_deposit', name: '[DEPOSIT] Admission Hold', dosage: 'N/A', quantity: 1 },
-      { itemId: 'boarding_rate', name: `[BOARDING] Base Rate (${boardingDays} Day${boardingDays > 1 ? 's' : ''})`, dosage: 'N/A', quantity: boardingDays }
+      { itemId: 'admission_deposit', name: 'Admission/Boarding Deposit (Refundable)', price: depositCents, quantity: 1, category: 'service' }
     ];
 
     const newBoardingInfo: BoardingRecord = {
@@ -116,13 +298,20 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
       foodType,
       medicalBoarding,
       depositPaid: true,
-      billingItems: billingItems
+      hospitalProvidesLitter,
+      billingItems: billingItems,
+      estimatedStayDays: Math.max(1, estimatedStayDays || 1),
+      depositAmountCents: depositCents,
+      totalChargesCents: 0,
+      cageFeePerDayCents,
+      cleaningFeePerDayCents: medicalBoarding ? Math.round((cleaningFeeRupees || 0) * 100) : 0,
+      doctorFeePerVisitCents: medicalBoarding ? Math.round((doctorFeeRupees || 0) * 100) : 0,
     };
 
     await upsertBoardingRecord(newBoardingInfo);
     setBoardingRecords(prev => [...prev, newBoardingInfo]);
     showToast(`Patient booked into ${selectedCage}.`, 'success');
-    
+
     // Reset
     setShowDepositGuard(false);
     setSelectedCage(null);
@@ -130,6 +319,10 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
     setCheckOutDate('');
     setFoodType('without_food');
     setMedicalBoarding(false);
+    setHospitalProvidesLitter(false);
+    setEstimatedStayDays(1);
+    setDoctorFeeRupees(0);
+    setCleaningFeeRupees(0);
   };
 
   const renderActiveQueue = () => {
@@ -164,6 +357,49 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
             </div>
           ))}
         </div>
+      </div>
+    );
+  };
+
+  const btnClass = "py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg flex items-center justify-center gap-1";
+
+  const renderCageBilling = (cage: string, occupant: { boarding: BoardingRecord; pet: Pet | undefined; ownerName: string }) => {
+    const b = occupant.boarding;
+    const isAdmission = b.medicalBoarding;
+    const deposit = b.depositAmountCents ?? 0;
+    const charges = computeCharges(b);
+    const balance = deposit - charges;
+    const rounds = countDoctorRounds(b);
+
+    return (
+      <div className="mt-auto pt-3 space-y-2">
+        {/* Billing type badge + estimated stay */}
+        <div className="flex items-center gap-1.5">
+          <span data-testid={`type-badge-${cage}`} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md shadow-sm ${isAdmission ? 'bg-white text-rose-700' : 'bg-blue-500 text-white'}`}>{isAdmission ? 'Admission' : 'Boarding'}</span>
+          <span className="text-[8px] font-bold text-rose-100">~{b.estimatedStayDays ?? 1}d · deposit Rs. {(deposit / 100).toFixed(0)}</span>
+        </div>
+
+        {/* Running settlement tab */}
+        <div data-testid={`billing-tab-${cage}`} className="text-[9px] font-bold text-white bg-black/25 rounded-md p-2 border border-white/10 space-y-0.5">
+          <div>Deposit held: Rs. {(deposit / 100).toFixed(2)}</div>
+          <div data-testid={`charges-${cage}`}>Charges to date: Rs. {(charges / 100).toFixed(2)}</div>
+          <div data-testid={`balance-${cage}`} className={balance < 0 ? 'text-red-300 font-black' : 'text-emerald-200 font-black'}>
+            Balance: Rs. {(balance / 100).toFixed(2)} {balance < 0 ? '(owes more)' : balance > 0 ? '(refund)' : ''}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="grid grid-cols-2 gap-1">
+          <button data-testid={`feeding-btn-${cage}`} onClick={(e) => { e.stopPropagation(); openFeedingModal(cage); }} className={btnClass}><Utensils className="w-3 h-3" />Feed</button>
+          <button data-testid={`log-feed-btn-${cage}`} onClick={(e) => { e.stopPropagation(); handleLogFeeding(cage); }} className={btnClass}>Log Feed</button>
+          {isAdmission && (
+            <button data-testid={`doctor-round-btn-${cage}`} onClick={(e) => { e.stopPropagation(); handleLogDoctorRound(cage); }} className={btnClass}><Stethoscope className="w-3 h-3" />Round ({rounds})</button>
+          )}
+          {isAdmission && (
+            <button data-testid={`log-med-btn-${cage}`} onClick={(e) => { e.stopPropagation(); openMedModal(cage); }} className={btnClass}><Pill className="w-3 h-3" />Med</button>
+          )}
+        </div>
+        <button data-testid={`discharge-settle-btn-${cage}`} onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white text-rose-700 hover:bg-rose-50 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/60 hover:shadow-lg flex items-center justify-center gap-1"><Receipt className="w-3 h-3" />Discharge &amp; Settle</button>
       </div>
     );
   };
@@ -206,21 +442,23 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
                         <div className="font-black text-white text-lg tracking-tight truncate drop-shadow-sm">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate opacity-90">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-rose-200 truncate mt-0.5">Owner: {occupant.ownerName || 'Unknown'}</div>
-                        <div className="mt-auto pt-3">
-                          <button onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg">Discharge</button>
-                        </div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-md inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
+                        {occupant.boarding.feedingPlan && (
+                          <div data-testid={`feeding-plan-${cage}`} className="text-[9px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-md inline-block mt-1 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
+                        )}
+                        {renderCageBilling(cage, occupant)}
                       </div>
                     </div>
                   );
                 }
 
                 return (
-                  <div 
+                  <div
                     key={cage} onClick={() => setSelectedCage(cage)}
                     className={`p-4 rounded-2xl transition-all cursor-pointer relative overflow-hidden group ${isSelected ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-xl border-indigo-400 scale-[1.02] text-white' : 'bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 hover:shadow-md hover:border-emerald-300'}`}
                   >
                     <div className={`absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl -mr-8 -mt-8 pointer-events-none transition-transform duration-500 group-hover:scale-110 ${isSelected ? 'bg-white/20' : 'bg-emerald-200/50'}`}></div>
-                    
+
                     <div className="relative z-10 flex flex-col h-full">
                       <div className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isSelected ? 'text-indigo-100' : 'text-emerald-600'}`}>{cage}</div>
                       <div className={`font-black text-lg flex items-center gap-1.5 ${isSelected ? 'text-white' : 'text-emerald-900'}`}><CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-indigo-200' : 'text-emerald-500'}`} /> Empty</div>
@@ -253,10 +491,12 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
                         </div>
                         <div className="font-black text-white text-xl tracking-tight truncate drop-shadow-md">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate mb-1 opacity-90 drop-shadow-sm">{occupant.pet?.breed || 'Unknown Breed'}</div>
-                        <div className="text-[10px] font-bold text-white/80 bg-black/20 px-2 py-0.5 rounded-full inline-block mb-3 border border-white/10 w-max mt-1">Owner: {occupant.ownerName}</div>
-                        <div className="mt-auto">
-                          <button onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg">Discharge</button>
-                        </div>
+                        <div className="text-[10px] font-bold text-white/80 bg-black/20 px-2 py-0.5 rounded-full inline-block mb-1 border border-white/10 w-max mt-1">Owner: {occupant.ownerName}</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-md inline-block mb-3 border border-white/10 w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
+                        {occupant.boarding.feedingPlan && (
+                          <div data-testid={`feeding-plan-${cage}`} className="text-[9px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-md inline-block mb-2 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
+                        )}
+                        {renderCageBilling(cage, occupant)}
                       </div>
                     </div>
                   );
@@ -326,11 +566,23 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Expected Checkout Date *</label>
-                  <input 
+                  <input
                     type="date" required min={new Date().toISOString().split('T')[0]}
                     value={checkOutDate} onChange={e => setCheckOutDate(e.target.value)}
                     className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Estimated Stay (days)</label>
+                  <input
+                    data-testid="estimated-stay-input"
+                    type="number" min={1}
+                    value={estimatedStayDays}
+                    onChange={e => setEstimatedStayDays(parseInt(e.target.value) || 1)}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <p className="text-[10px] font-medium text-slate-400">For planning &amp; staffing only — does not change the deposit.</p>
                 </div>
               </div>
 
@@ -358,6 +610,48 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2 border border-slate-200 p-4 rounded-2xl bg-slate-50">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block text-center mb-3">Litter Service</label>
+                <div className="flex rounded-xl overflow-hidden shadow-sm border border-slate-200">
+                  <button type="button" onClick={() => setHospitalProvidesLitter(false)} className={`flex-1 py-2 text-xs font-bold transition-colors ${!hospitalProvidesLitter ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
+                    Owner Brings
+                  </button>
+                  <button type="button" onClick={() => setHospitalProvidesLitter(true)} className={`flex-1 py-2 text-xs font-bold transition-colors ${hospitalProvidesLitter ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
+                    Hospital Provides
+                  </button>
+                </div>
+              </div>
+
+              {medicalBoarding && (
+                <div data-testid="admission-fees" className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest block">Doctor Fee per Round (Rs.)</label>
+                    <input
+                      data-testid="doctor-fee-input"
+                      type="number" step="0.01" min={0}
+                      value={doctorFeeRupees || ''}
+                      onChange={e => setDoctorFeeRupees(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest block">Cleaning Fee per Day (Rs.)</label>
+                    <input
+                      data-testid="cleaning-fee-input"
+                      type="number" step="0.01" min={0}
+                      value={cleaningFeeRupees || ''}
+                      onChange={e => setCleaningFeeRupees(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div data-testid="deposit-display" className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
+                <p className="text-sm font-black text-emerald-800">Deposit to collect: Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="font-semibold text-emerald-600">(standard admission deposit)</span></p>
+                <p className="text-xs text-emerald-700 font-semibold mt-1">All charges will run against this deposit at discharge.</p>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex gap-3 items-start">
@@ -392,7 +686,7 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
 
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount Required</div>
-              <div className="text-3xl font-mono font-black text-slate-800 mt-1">LKR 15,000</div>
+              <div className="text-3xl font-mono font-black text-slate-800 mt-1">Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -404,20 +698,148 @@ export default function BoardingManager({ clients, pets = [], records, clinicQue
         document.body
       )}
 
-      {/* MODAL: Discharge Confirmation */}
-      {dischargeModalCage && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDischargeModalCage(null)}>
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-6 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><CheckCircle2 className="w-10 h-10" /></div>
-            
-            <div>
-              <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Confirm Discharge</h3>
-              <p className="text-slate-500 text-xs font-semibold mt-2 px-2">Are you sure you want to discharge {activeBoardingMap.get(dischargeModalCage)?.pet?.name || 'this patient'} from {dischargeModalCage}? This will free the cage immediately.</p>
+      {/* MODAL: Feeding Plan */}
+      {feedingModalCage && createPortal(
+        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setFeedingModalCage(null)}>
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center shadow-inner"><Utensils className="w-6 h-6" /></div>
+              <div>
+                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Feeding Plan</h3>
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{feedingModalCage} • {activeBoardingMap.get(feedingModalCage)?.pet?.name || 'Unknown'}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Food Item</label>
+              <select
+                data-testid="feeding-item-select"
+                value={feedingItemId}
+                onChange={e => setFeedingItemId(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+              >
+                <option value="">— Select food item —</option>
+                {foodInventory.map(i => (
+                  <option key={i.id} value={i.id}>{i.name} (stock {i.stock})</option>
+                ))}
+              </select>
+              {foodInventory.length === 0 && (
+                <p className="text-[10px] font-bold text-amber-600">No inventory items with category "food". Add one in the Inventory panel first.</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Qty / Meal</label>
+                <input
+                  data-testid="feeding-qty-per-meal"
+                  type="number" min={1}
+                  value={feedingQtyPerMeal}
+                  onChange={e => setFeedingQtyPerMeal(parseInt(e.target.value) || 0)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Meals / Day</label>
+                <input
+                  data-testid="feeding-meals-per-day"
+                  type="number" min={1}
+                  value={feedingMealsPerDay}
+                  onChange={e => setFeedingMealsPerDay(parseInt(e.target.value) || 0)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                />
+              </div>
             </div>
 
             <div className="flex gap-2 pt-2">
+              <button onClick={() => setFeedingModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+              <button data-testid="feeding-save-btn" onClick={handleSaveFeedingPlan} className="flex-[2] py-3 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Set Feeding Plan</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL: Discharge & Settle */}
+      {dischargeModalCage && createPortal((() => {
+        const occ = activeBoardingMap.get(dischargeModalCage);
+        const b = occ?.boarding;
+        const deposit = b?.depositAmountCents ?? 0;
+        const charges = b ? computeCharges(b) : 0;
+        const balance = deposit - charges;
+        return (
+        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDischargeModalCage(null)}>
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><Receipt className="w-10 h-10" /></div>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Discharge &amp; Settle</h3>
+              <p className="text-slate-500 text-xs font-semibold mt-2 px-2">Settle the account for {occ?.pet?.name || 'this patient'} in {dischargeModalCage} and free the cage.</p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-1.5 text-sm">
+              <div className="flex justify-between"><span className="font-semibold text-slate-500">Deposit held</span><span data-testid="settle-deposit" className="font-mono font-black text-slate-800">Rs. {(deposit / 100).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="font-semibold text-slate-500">Charges to date</span><span data-testid="settle-charges" className="font-mono font-black text-slate-800">Rs. {(charges / 100).toFixed(2)}</span></div>
+              <div className="border-t border-slate-200 my-1"></div>
+              {balance >= 0 ? (
+                <div className="flex justify-between"><span className="font-black text-emerald-700">Refund to owner</span><span data-testid="settle-balance" className="font-mono font-black text-emerald-700">Rs. {(balance / 100).toFixed(2)}</span></div>
+              ) : (
+                <div className="flex justify-between"><span className="font-black text-red-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-red-600">Rs. {(Math.abs(balance) / 100).toFixed(2)}</span></div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
               <button onClick={() => setDischargeModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-              <button onClick={() => handleDischarge(dischargeModalCage)} className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Confirm Discharge</button>
+              <button data-testid="confirm-settle-btn" onClick={() => handleDischargeSettle(dischargeModalCage)} className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Confirm Discharge</button>
+            </div>
+          </div>
+        </div>
+        );
+      })(),
+        document.body
+      )}
+
+      {/* MODAL: Log Medication (Admission) */}
+      {medModalCage && createPortal(
+        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setMedModalCage(null)}>
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center shadow-inner"><Pill className="w-6 h-6" /></div>
+              <div>
+                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Log Medication</h3>
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{medModalCage} • {activeBoardingMap.get(medModalCage)?.pet?.name || 'Unknown'}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Inventory Item</label>
+              <select
+                data-testid="med-item-select"
+                value={medItemId}
+                onChange={e => setMedItemId(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+              >
+                <option value="">— Select item —</option>
+                {inventory.map(i => (
+                  <option key={i.id} value={i.id}>{i.name} (stock {i.stock}) — Rs. {(i.price / 100).toFixed(2)}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Quantity</label>
+              <input
+                data-testid="med-qty-input"
+                type="number" min={1}
+                value={medQty}
+                onChange={e => setMedQty(parseInt(e.target.value) || 0)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setMedModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+              <button data-testid="med-save-btn" onClick={handleLogMedication} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Log &amp; Deduct Stock</button>
             </div>
           </div>
         </div>,

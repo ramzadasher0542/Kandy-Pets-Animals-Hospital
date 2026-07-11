@@ -56,7 +56,17 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
       veterinarian: [],
       admin: [],
       owner: []
-    }
+    },
+    boardingRates: {
+      catNofoodCents: 100000,
+      catWithfoodCents: 190000,
+      dogNofoodCents: 180000,
+      dogWithfoodCents: 260000,
+      catLitterCents: 30000,
+      dogLitterCents: 40000,
+      milkCupCents: 10000,
+    },
+    defaultDepositCents: 1500000,
   };
 }
 

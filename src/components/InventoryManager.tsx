@@ -20,7 +20,8 @@ const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] =
   { id: 'prescription', label: 'Pharmacy Rx', color: 'bg-emerald-50 text-emerald-700' },
   { id: 'vaccine', label: 'Vaccines', color: 'bg-amber-50 text-amber-700' },
   { id: 'service', label: 'Clinical Services', color: 'bg-purple-50 text-purple-700' },
-  { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' }
+  { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' },
+  { id: 'food', label: 'Food & Feeding', color: 'bg-orange-50 text-orange-700' }
 ];
 
 interface InventoryProps {
@@ -358,6 +359,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                       <option value="vaccine">Vaccine</option>
                       <option value="service">Clinical Service</option>
                       <option value="lab_service">Lab Test (Diagnostic)</option>
+                      <option value="food">Food & Feeding</option>
                     </select>
                   </div>
                 </div>

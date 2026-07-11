@@ -7,7 +7,7 @@ export type UserRole = 'admin' | 'veterinarian' | 'cashier' | 'owner' | 'dummy_a
 
 export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; }
 
-export type ItemCategory = 'retail' | 'prescription' | 'lab_service' | 'service' | 'vaccine';
+export type ItemCategory = 'retail' | 'prescription' | 'lab_service' | 'service' | 'vaccine' | 'food';
 
 // PHASE 2 PREP: Added labParameters to support Dynamic Test Categories
 export interface InventoryItem { 
@@ -40,6 +40,7 @@ export interface ClinicQueueItem {
   serviceType: string;
   checkInTime: string;
   status: QueueStatus;
+  priority?: number;
   assignedVet?: string;
   prescribedMeds?: Array<{ itemId: string; name: string; quantity: number }>;
 }
@@ -53,6 +54,7 @@ export interface Appointment {
   breed: string; 
   weight?: number;
   sex?: string;
+  age?: string;
   ownerName: string; 
   ownerPhone: string; 
   alternatePhone?: string;
@@ -63,11 +65,19 @@ export interface Appointment {
   veterinarian: string; 
   reason: string; 
   status: AppointmentStatus; 
+  urgency?: 'routine' | 'non-emergency' | 'emergency';
+  emergencyBackfillRequired?: boolean;
   admissionType?: 'OPD' | 'Pet Boarding' | 'Hospital Admission' | 'Vaccination' | 'Grooming Salon'; 
   assignedVet?: string; 
   created_at?: string; 
   updated_at?: string; 
   is_deleted?: boolean; 
+  surgeryChecklist?: {
+    fastingStartTime?: string;
+    rabiesProof: boolean;
+    dhlpProof: boolean;
+    fleaTickUpToDate: boolean;
+  };
 }
 
 export interface Pet {
@@ -92,8 +102,8 @@ export interface Pet {
 export interface Vaccination { id: string; petId: string; itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 export interface LabResult { id: string; petId: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: string; frequency?: string; remarks?: string; vetId: string; }
-export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
-export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; groomingInstructions?: { bathe: boolean; fullShave: boolean; trimOnly: boolean; nailClip: boolean; earClean: boolean; deShed: boolean; customNotes?: string; }; consentSignature?: string; consentTimestamp?: string; consentOwnerName?: string; }
+export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; hospitalProvidesLitter?: boolean; billingItems?: any[]; billed?: boolean; feedingPlan?: { inventoryItemId: string; itemName: string; quantityPerMeal: number; mealsPerDay: number; }; estimatedStayDays?: number; depositAmountCents?: number; totalChargesCents?: number; cageFeePerDayCents?: number; cleaningFeePerDayCents?: number; doctorFeePerVisitCents?: number; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 
 // ============================================================================
 // PHASE 1: ENTERPRISE EHR MATRIX
@@ -193,7 +203,7 @@ export interface ClientNotification { id: string; petName: string; ownerName: st
 export interface SystemAlert { id: string; severity: 'info' | 'warning' | 'urgent'; category: 'inventory' | 'appointment' | 'system' | 'lab'; message: string; timestamp: string; read: boolean; }
 export interface OfflineSyncItem { id: string; action: 'create_appointment' | 'create_invoice' | 'update_medical_record' | 'delete_medical_record' | 'checkout_pos' | 'update_stock' | 'add_inventory' | 'create_alert' | 'create_notification'; collection: 'appointments' | 'invoices' | 'records' | 'inventory' | 'alerts' | 'notifications'; payload: any; timestamp: string; }
 
-export const CATEGORY_DISPLAY_MAP: Record<string, string> = { 'service': 'Clinical Care', 'lab_service': 'Labs & Diagnostics', 'vaccine': 'Vaccinations', 'prescription': 'Pharmacy Rx', 'retail': 'Pet Supplies Shop', 'Taxes & Adjustments': 'Taxes & Adjustments', 'other': 'Other / Uncategorized' };
+export const CATEGORY_DISPLAY_MAP: Record<string, string> = { 'service': 'Clinical Care', 'lab_service': 'Labs & Diagnostics', 'vaccine': 'Vaccinations', 'prescription': 'Pharmacy Rx', 'retail': 'Pet Supplies Shop', 'food': 'Food & Feeding', 'Taxes & Adjustments': 'Taxes & Adjustments', 'other': 'Other / Uncategorized' };
 
 export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; created_at?: string; updated_at?: string; is_deleted?: boolean; petIds?: string[]; }
 

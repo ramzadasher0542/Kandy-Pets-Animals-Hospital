@@ -277,10 +277,14 @@ export class SyncEngine {
 
     if (dirtyRecords.length === 0) return 0;
 
-    // Strip _dirty before sending
+    // Strip _dirty before sending and map feedingPlan to feeding_plan for boarding_records
     const payload = dirtyRecords.map(({ record }) => {
-      const clean = { ...record };
+      let clean: any = { ...record };
       delete clean._dirty;
+      if (mapping.table === 'boarding_records' && clean.feedingPlan !== undefined) {
+        const { feedingPlan, ...rest } = clean;
+        clean = { ...rest, feeding_plan: feedingPlan };
+      }
       return clean;
     });
 
