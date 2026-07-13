@@ -16,12 +16,12 @@ import { showToast } from './Toast';
 
 const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] = [
   { id: 'All', label: 'All Items', color: 'bg-slate-100 text-slate-700' },
-  { id: 'retail', label: 'Retail & Supplies', color: 'bg-blue-50 text-blue-700' },
+  { id: 'retail', label: 'Retail & Supplies', color: 'bg-sky-50 text-sky-700' },
   { id: 'prescription', label: 'Pharmacy Rx', color: 'bg-emerald-50 text-emerald-700' },
   { id: 'vaccine', label: 'Vaccines', color: 'bg-amber-50 text-amber-700' },
-  { id: 'service', label: 'Clinical Services', color: 'bg-purple-50 text-purple-700' },
+  { id: 'service', label: 'Clinical Services', color: 'bg-indigo-50 text-indigo-700' },
   { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' },
-  { id: 'food', label: 'Food & Feeding', color: 'bg-orange-50 text-orange-700' }
+  { id: 'food', label: 'Food & Feeding', color: 'bg-amber-50 text-amber-700' }
 ];
 
 interface InventoryProps {
@@ -315,7 +315,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
               className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
-          <button onClick={openNew} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
+          <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
             <Plus className="w-4 h-4" /> Add Item
           </button>
         </div>
@@ -349,7 +349,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                         <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800">{b.lotNumber}</td>
                         <td className="px-6 py-4 text-xs font-mono font-bold flex items-center gap-2">
                           <span className={isExp ? 'text-rose-600' : 'text-amber-600'}>{b.expiryDate}</span>
-                          {isExp && <span className="bg-rose-100 text-rose-600 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
+                          {isExp && <span className="bg-rose-100 text-rose-600 text-[10px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
                         </td>
                         <td className="px-6 py-4 text-sm font-black text-slate-800">{b.quantityRemaining}</td>
                         <td className="px-6 py-4 text-xs font-black">
@@ -408,7 +408,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                         <div className="font-black text-slate-800 text-sm flex items-center gap-2">
                           {item.name}
                           {item.category === 'lab_service' && item.labParameters && item.labParameters.length > 0 && (
-                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[8px] px-1.5 py-0.5 rounded flex items-center gap-1"><TestTube className="w-2 h-2"/> {item.labParameters.length} Params</span>
+                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"><TestTube className="w-2 h-2"/> {item.labParameters.length} Params</span>
                           )}
                         </div>
                         <div className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">{item.sku}</div>
@@ -418,31 +418,31 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                           </button>
                         )}
                         {expiringSoonCount > 0 && !isExpanded && (
-                          <div className="mt-1 text-[9px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
+                          <div className="mt-1 text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3"/> {expiringSoonCount} units expiring within 30 days
                           </div>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border border-white/20 shadow-xs ${catInfo?.color || 'bg-slate-100 text-slate-600'}`}>
+                        <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border border-white/20 shadow-xs ${catInfo?.color || 'bg-slate-100 text-slate-600'}`}>
                           {catInfo?.label || item.category}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-mono text-xs font-black text-slate-800">{item.price.toFixed(2)}</div>
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {item.cost.toFixed(2)}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {item.cost.toFixed(2)}</div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         {isService ? (
                           <span className="text-lg font-black text-slate-300">∞</span>
                         ) : (
                           <div className="flex flex-col items-center gap-1">
-                            <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border ${isLow ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                              {item.stock} <span className="text-[9px] opacity-70 ml-0.5 uppercase">{item.unit}</span>
+                            <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border ${isLow ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                              {item.stock} <span className="text-[10px] opacity-70 ml-0.5 uppercase">{item.unit}</span>
                             </span>
-                            {isLow && <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
-                            {expiryStatus === 'expired' && <span className="text-[8px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
-                            {expiryStatus === 'soon' && <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
+                            {isLow && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
+                            {expiryStatus === 'expired' && <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
+                            {expiryStatus === 'soon' && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
                           </div>
                         )}
                       </td>
@@ -450,7 +450,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                         <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                           {!isService && (
                             <>
-                              <button onClick={() => setReceiveStockItem(item)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-1 mr-2" title="Receive Stock">
+                              <button onClick={() => setReceiveStockItem(item)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-1 mr-2" title="Receive Stock">
                                 <Package className="w-3 h-3" /> Receive
                               </button>
                               <button onClick={() => setAdjustItem(item)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer" title="Quick Adjust Stock">
@@ -474,10 +474,10 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                             <table className="w-full text-left">
                               <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
-                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Lot Number</th>
-                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Expiry Date</th>
-                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Qty Remaining</th>
-                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Supplier</th>
+                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Lot Number</th>
+                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Expiry Date</th>
+                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty Remaining</th>
+                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
@@ -490,8 +490,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                                       <td className="px-4 py-2 text-xs font-mono font-bold text-slate-800">{b.lotNumber}</td>
                                       <td className="px-4 py-2 text-xs font-mono font-bold flex items-center gap-2">
                                         <span className={isExp ? 'text-rose-600' : isSoon ? 'text-amber-600' : 'text-slate-600'}>{b.expiryDate}</span>
-                                        {isExp && <span className="bg-rose-100 text-rose-600 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
-                                        {isSoon && <span className="bg-amber-100 text-amber-600 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Soon</span>}
+                                        {isExp && <span className="bg-rose-100 text-rose-600 text-[10px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
+                                        {isSoon && <span className="bg-amber-100 text-amber-600 text-[10px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Soon</span>}
                                       </td>
                                       <td className="px-4 py-2 text-xs font-black text-slate-800">{b.quantityRemaining}</td>
                                       <td className="px-4 py-2 text-xs font-bold text-slate-500">{b.supplier || '-'}</td>
@@ -565,7 +565,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                     <div>
                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Current Stock</label>
                       <input type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
-                      <p className="text-[8px] font-bold text-amber-600 mt-1 uppercase tracking-widest">⚠ Manual adjustment — does not create a batch. Use Receive Stock for deliveries.</p>
+                      <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-widest">⚠ Manual adjustment — does not create a batch. Use Receive Stock for deliveries.</p>
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1.5">Alert Minimum</label>
@@ -593,13 +593,13 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
                 {isFormLab ? (
                   /* PHASE 2: DYNAMIC LAB PARAMETER BUILDER */
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 animate-fade-in shadow-inner">
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 animate-fade-in shadow-inner">
                     <div className="flex items-center justify-between border-b border-indigo-200 pb-3 mb-4">
                       <div>
                         <h4 className="text-xs font-black text-indigo-900 flex items-center gap-2"><TestTube className="w-4 h-4"/> Diagnostic Parameter Matrix</h4>
-                        <p className="text-[9px] font-bold text-indigo-600 mt-1 uppercase tracking-widest">Define the reference ranges & units for this specific test.</p>
+                        <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase tracking-widest">Define the reference ranges & units for this specific test.</p>
                       </div>
-                      <button type="button" onClick={handleAddLabParameter} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors cursor-pointer flex items-center gap-1">
+                      <button type="button" onClick={handleAddLabParameter} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors cursor-pointer flex items-center gap-1">
                         <Plus className="w-3 h-3"/> Add Parameter
                       </button>
                     </div>
@@ -617,26 +617,26 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                               placeholder="Name (e.g. WBC, RBC)" 
                               value={param.name} 
                               onChange={(e) => handleUpdateLabParameter(index, 'name', e.target.value)}
-                              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
                             />
                             <input 
                               type="text" 
                               placeholder="Range (e.g. 6.0 - 17.0)" 
                               value={param.referenceRange} 
                               onChange={(e) => handleUpdateLabParameter(index, 'referenceRange', e.target.value)}
-                              className="w-1/3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                              className="w-1/3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
                             />
                             <input 
                               type="text" 
                               placeholder="Unit (e.g. 10^9/L)" 
                               value={param.unit} 
                               onChange={(e) => handleUpdateLabParameter(index, 'unit', e.target.value)}
-                              className="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                              className="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
                             />
                             <button 
                               type="button" 
                               onClick={() => handleRemoveLabParameter(index)}
-                              className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                               title="Remove Parameter"
                             >
                               <MinusCircle className="w-5 h-5"/>
@@ -651,7 +651,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                     <Activity className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="text-xs font-black text-indigo-900">Infinite Capacity Service</h4>
-                      <p className="text-[10px] font-semibold text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Clinical Service, physical stock tracking is disabled.</p>
+                      <p className="text-[10px] font-black text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Clinical Service, physical stock tracking is disabled.</p>
                     </div>
                   </div>
                 )}

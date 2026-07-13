@@ -343,8 +343,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
 
   const renderVitalsTab = () => (
     <div className="space-y-6 animate-fade-in pb-10">
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Activity className="w-4 h-4"/> Objective Vitals</h3>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Activity className="w-4 h-4"/> Objective Vitals</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Temp (°C/°F)</label>
@@ -379,14 +379,14 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
         </div>
       </div>
 
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-        <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><History className="w-4 h-4"/> 1-Click Patient History</h3>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+        <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><History className="w-4 h-4"/> 1-Click Patient History</h3>
         
         <div>
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Duration of Illness</label>
           <div className="flex flex-wrap gap-2">
             {CLINICAL_TAGS.duration.map(tag => (
-              <button key={tag} onClick={() => setHistory({...history, duration: tag})} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${history.duration === tag ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+              <button key={tag} onClick={() => setHistory({...history, duration: tag})} className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border cursor-pointer ${history.duration === tag ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
                 {tag}
               </button>
             ))}
@@ -397,7 +397,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Progression</label>
           <div className="flex flex-wrap gap-2">
             {CLINICAL_TAGS.progression.map(tag => (
-              <button key={tag} onClick={() => setHistory({...history, progression: tag})} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${history.progression === tag ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+              <button key={tag} onClick={() => setHistory({...history, progression: tag})} className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border cursor-pointer ${history.progression === tag ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
                 {tag}
               </button>
             ))}
@@ -408,7 +408,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Diet</label>
           <div className="flex flex-wrap gap-2">
             {CLINICAL_TAGS.diet.map(tag => (
-              <button key={tag} onClick={() => setHistory({...history, diet: toggleArrayItem(history.diet, tag)})} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${history.diet?.includes(tag) ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+              <button key={tag} onClick={() => setHistory({...history, diet: toggleArrayItem(history.diet, tag)})} className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border cursor-pointer ${history.diet?.includes(tag) ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
                 {tag}
               </button>
             ))}
@@ -422,7 +422,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
             value={history.previousMedicalHistory?.join(', ') || ''} 
             onChange={e => setHistory({...history, previousMedicalHistory: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
             placeholder="Separate items with commas..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
           />
         </div>
 
@@ -433,7 +433,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
             value={history.currentMedications?.join(', ') || ''} 
             onChange={e => setHistory({...history, currentMedications: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
             placeholder="Separate items with commas..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
           />
         </div>
       </div>
@@ -465,7 +465,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                 <div className="flex items-center gap-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${isNormal ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
                   <span className={`text-xs font-black uppercase tracking-wider ${isNormal ? 'text-emerald-900' : 'text-rose-900'}`}>{SYSTEM_LABELS[systemKey]}</span>
-                  {hasAbnormalities && <span className="bg-rose-100 text-rose-700 text-[9px] px-2 py-0.5 rounded-full font-bold">{sysData.abnormalities?.length} issues</span>}
+                  {hasAbnormalities && <span className="bg-rose-100 text-rose-700 text-[10px] px-2 py-0.5 rounded-full font-bold">{sysData.abnormalities?.length} issues</span>}
                 </div>
               </div>
 
@@ -475,7 +475,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Quick Tags</span>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setExam({...exam, [systemKey]: { ...sysData, isNormal: true, abnormalities: [] }}); }}
-                      className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-emerald-100 transition-colors flex items-center gap-1"
+                      className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-bold cursor-pointer hover:bg-emerald-100 transition-colors flex items-center gap-1"
                     >
                       <CheckCircle2 className="w-3 h-3"/> Mark All Normal
                     </button>
@@ -491,7 +491,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                             const newAbnormals = toggleArrayItem(sysData.abnormalities, symptom);
                             setExam({...exam, [systemKey]: { ...sysData, isNormal: newAbnormals.length === 0, abnormalities: newAbnormals }});
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${isSelected ? 'bg-rose-600 text-white border-rose-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border cursor-pointer ${isSelected ? 'bg-rose-600 text-white border-rose-700 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
                         >
                           {symptom}
                         </button>
@@ -503,7 +503,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                     placeholder={`Additional ${SYSTEM_LABELS[systemKey]} notes...`}
                     value={sysData.notes || ''}
                     onChange={(e) => setExam({...exam, [systemKey]: { ...sysData, notes: e.target.value }})}
-                    className="w-full mt-4 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+                    className="w-full mt-4 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
                     rows={2}
                   />
                 </div>
@@ -517,8 +517,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
 
   const renderTreatmentTab = () => (
     <div className="space-y-6 animate-fade-in pb-10">
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-        <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+        <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2">
           <Activity className="w-4 h-4"/> Treatment Plan
         </h3>
         <div>
@@ -528,7 +528,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
             value={treatmentNotes} 
             onChange={e => setTreatmentNotes(e.target.value)}
             placeholder="Detailed treatment plan and notes..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
           />
         </div>
       </div>
@@ -537,8 +537,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
 
   const renderAssessmentTab = () => (
     <div className="space-y-6 animate-fade-in pb-10">
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-        <h3 className="text-[11px] font-black text-amber-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><AlertCircle className="w-4 h-4"/> Clinical Assessment</h3>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+        <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><AlertCircle className="w-4 h-4"/> Clinical Assessment</h3>
         
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -573,8 +573,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
         <div>
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Diagnosis Type</label>
           <div className="flex bg-slate-100 p-1 rounded-xl w-max">
-            <button onClick={() => setAssessment({...assessment, diagnosisType: 'Tentative'})} className={`px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${assessment.diagnosisType === 'Tentative' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Tentative</button>
-            <button onClick={() => setAssessment({...assessment, diagnosisType: 'Definitive'})} className={`px-4 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${assessment.diagnosisType === 'Definitive' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Definitive</button>
+            <button onClick={() => setAssessment({...assessment, diagnosisType: 'Tentative'})} className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${assessment.diagnosisType === 'Tentative' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Tentative</button>
+            <button onClick={() => setAssessment({...assessment, diagnosisType: 'Definitive'})} className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${assessment.diagnosisType === 'Definitive' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Definitive</button>
           </div>
         </div>
 
@@ -585,7 +585,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
             value={assessment.notes || ''} 
             onChange={e => setAssessment({...assessment, notes: e.target.value})}
             placeholder="Detailed diagnosis and case evaluation..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none"
           />
         </div>
       </div>
@@ -616,8 +616,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
 
     return (
       <div className="space-y-6 animate-fade-in h-full flex flex-col">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
-          <h3 className="text-[11px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Pill className="w-4 h-4"/> Pharmacy & Prescriptions</h3>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+          <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Pill className="w-4 h-4"/> Pharmacy & Prescriptions</h3>
           
           <div className="space-y-4">
             <div>
@@ -703,23 +703,23 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           </div>
         </div>
 
-        <div className="flex-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
+        <div className="flex-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Active Prescriptions List</h4>
           {prescribedMeds.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 font-medium text-xs border-2 border-dashed border-slate-100 rounded-xl">No medications prescribed yet.</div>
+            <div className="text-center py-8 text-slate-400 font-bold text-xs border-2 border-dashed border-slate-100 rounded-xl">No medications prescribed yet.</div>
           ) : (
             <div className="space-y-2">
               {prescribedMeds.map((med, idx) => (
                 <div key={idx} className="p-3 border border-indigo-100 bg-indigo-50/50 rounded-xl flex items-center justify-between group">
                   <div>
                     <div className="font-black text-indigo-900 text-xs">{med.name}</div>
-                    <div className="text-[10px] font-medium text-indigo-700 mt-0.5">
+                    <div className="text-[10px] font-black text-indigo-700 mt-0.5">
                       {med.route} · {med.frequency === 'Custom' ? med.frequencyCustom : med.frequency} • {med.dosage} • {med.duration} days • {med.instructions}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="bg-white px-2 py-1 rounded-md text-[10px] font-black text-indigo-600 border border-indigo-100 shadow-sm">Qty: {med.quantity}</span>
-                    <button onClick={() => setPrescribedMeds(prescribedMeds.filter((_, i) => i !== idx))} className="p-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"><X className="w-4 h-4"/></button>
+                    <span className="bg-white px-2 py-1 rounded-2xl text-[10px] font-black text-indigo-600 border border-indigo-100 shadow-sm">Qty: {med.quantity}</span>
+                    <button onClick={() => setPrescribedMeds(prescribedMeds.filter((_, i) => i !== idx))} className="p-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"><X className="w-4 h-4"/></button>
                   </div>
                 </div>
               ))}
@@ -770,8 +770,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
 
     return (
       <div className="space-y-6 animate-fade-in h-full flex flex-col">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
-          <h3 className="text-[11px] font-black text-rose-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Activity className="w-4 h-4"/> Add Log Entry</h3>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+          <h3 className="text-[10px] font-black text-rose-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Activity className="w-4 h-4"/> Add Log Entry</h3>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
@@ -840,14 +840,14 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           </button>
         </div>
 
-        <div className="flex-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
+        <div className="flex-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
           <div className="flex justify-between items-center mb-3">
             <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Inpatient Treatment Log</h4>
-            <span className="text-[9px] font-bold text-slate-400">Log entries are permanent clinical records.</span>
+            <span className="text-[10px] font-bold text-slate-400">Log entries are permanent clinical records.</span>
           </div>
           
           {logs.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 font-medium text-xs border-2 border-dashed border-slate-100 rounded-xl">No logs recorded yet.</div>
+            <div className="text-center py-8 text-slate-400 font-bold text-xs border-2 border-dashed border-slate-100 rounded-xl">No logs recorded yet.</div>
           ) : (
             <div className="space-y-3">
               {logs.map((log) => (
@@ -858,7 +858,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                   </div>
                   <div className="flex-1">
                     <div className="font-black text-slate-800 text-sm mb-1">{log.treatment}</div>
-                    <div className="text-[10px] font-medium text-slate-600 mb-1">
+                    <div className="text-[10px] font-black text-slate-600 mb-1">
                       <span className="font-bold text-indigo-600">{log.route}</span> · <span className="font-bold text-indigo-600">{log.frequency === 'custom' ? log.frequencyCustom : log.frequency}</span>
                       {log.temperature && ` • Temp: ${log.temperature}`}
                     </div>
@@ -882,17 +882,17 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
     <div className="h-full flex flex-col gap-4">
       {/* HEADER & CONTROLS */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between shrink-0">
-        <h2 className="text-lg font-extrabold text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-600"/> Charting Dashboard</h2>
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-600"/> Charting Dashboard</h2>
         <div className="flex items-center gap-4">
           <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner">
-            <button onClick={() => setShowQueueOnly(true)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>In Clinic</button>
-            <button onClick={() => setShowQueueOnly(false)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${!showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>All History</button>
+            <button onClick={() => setShowQueueOnly(true)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>In Clinic</button>
+            <button onClick={() => setShowQueueOnly(false)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${!showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>All History</button>
           </div>
           <div className="relative w-64">
             <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
             <input 
               type="text" placeholder="Search pets, owners..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" 
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" 
             />
           </div>
         </div>
@@ -921,10 +921,10 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                   <td className="py-4 px-6">
                     <div className="font-bold text-slate-800">{formatDisplayDate(patient.visitDate)}</div>
                     {patient.visitDate === todayStr && (
-                      <span className="mt-1 inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase tracking-widest rounded">Today</span>
+                      <span className="mt-1 inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded">Today</span>
                     )}
                     {patient.apptStatus === 'in-progress' && (
-                       <span className="mt-1 ml-1 inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest rounded">In Treatment</span>
+                       <span className="mt-1 ml-1 inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded">In Treatment</span>
                     )}
                   </td>
                   <td className="py-4 px-6">
@@ -933,7 +933,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                   </td>
                   <td className="py-4 px-6">
                     <div className="font-bold text-slate-700">{patient.ownerName}</div>
-                    <div className="text-[10px] text-slate-500 font-medium font-mono">{patient.ownerPhone}</div>
+                    <div className="text-[10px] text-slate-500 font-black font-mono">{patient.ownerPhone}</div>
                   </td>
                   <td className="py-4 px-6">
                     <div className="text-[10px] font-bold text-slate-600 truncate max-w-[250px]">
@@ -961,7 +961,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
               <button
                 onClick={() => setHistoryPage(p => Math.max(0, p - 1))}
                 disabled={historyPage === 0}
-                className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${historyPage === 0 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+                className={`px-3 py-1.5 rounded-xl border text-[10px] font-bold transition-all ${historyPage === 0 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
               >
                 Previous
               </button>
@@ -971,7 +971,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
               <button
                 onClick={() => setHistoryPage(p => Math.min(historyTotalPages - 1, p + 1))}
                 disabled={historyPage >= historyTotalPages - 1}
-                className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all ${historyPage >= historyTotalPages - 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+                className={`px-3 py-1.5 rounded-xl border text-[10px] font-bold transition-all ${historyPage >= historyTotalPages - 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
               >
                 Next
               </button>
@@ -987,7 +987,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
             
             {/* SIDEBAR NAVIGATION */}
             <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
-              <div className="p-5 border-b border-slate-100">
+              <div className="p-6 border-b border-slate-100">
                 <h2 className="text-xl font-black text-slate-800">{editingRecord.petName}</h2>
                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{editingRecord.petType} • {editingRecord.breed}</div>
               </div>

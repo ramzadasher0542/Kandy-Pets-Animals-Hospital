@@ -10,6 +10,9 @@ import {
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
   PenTool, CheckCircle2 // FIXED: Added missing icons
 } from 'lucide-react';
+import { Badge } from './ui/Badge';
+import { Button } from './ui/Button';
+import { EmptyState } from './ui/EmptyState';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem, User as UserType } from '../types';
 import { fetchInvoices, upsertInvoice, fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
@@ -388,7 +391,7 @@ export default function POSRegister({
       
       {/* LEFT PANE: CHECKOUT CART */}
       <aside className="w-1/2 min-w-[400px] max-w-[500px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0 z-10">
-        <div className="p-5 border-b border-slate-100 bg-slate-50 shrink-0 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0 flex items-center justify-between">
           <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-indigo-600" /> Active Register
           </h2>
@@ -412,7 +415,7 @@ export default function POSRegister({
           ) : (
             <div className="w-full grid grid-cols-2 gap-3">
               <div>
-                <input type="text" placeholder="Walk-in Name (Opt)" value={customClientName} onChange={e => setCustomClientName(e.target.value)} className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-[10px] font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                <input type="text" placeholder="Walk-in Name (Opt)" value={customClientName} onChange={e => setCustomClientName(e.target.value)} className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-[10px] font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500/20" />
               </div>
               <div>
                 <PhoneInput value={customClientPhone} onChange={setCustomClientPhone} className="w-full" />
@@ -424,10 +427,7 @@ export default function POSRegister({
         {/* Cart Items */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/30 p-2 space-y-2">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
-              <Receipt className="w-16 h-16 text-slate-300"/>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cart is empty</p>
-            </div>
+            <EmptyState icon={<Receipt className="w-6 h-6 text-slate-400" />} title="Cart is empty" className="opacity-50" />
           ) : (
             cart.map(item => (
               <div key={item.cartId} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group animate-fade-in">
@@ -436,7 +436,7 @@ export default function POSRegister({
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{item.category.replace('_', ' ')}</div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0">
-                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden shadow-inner">
+                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden shadow-inner">
                     <button onClick={() => updateCartQuantity(item.cartId, -1)} className="p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"><Minus className="w-3 h-3"/></button>
                     <div className="w-8 text-center text-xs font-black font-mono text-slate-800">{item.cartQuantity}</div>
                     <button onClick={() => updateCartQuantity(item.cartId, 1)} className="p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"><Plus className="w-3 h-3"/></button>
@@ -444,7 +444,7 @@ export default function POSRegister({
                   <div className="w-20 text-right font-black font-mono text-xs text-slate-800">
                     {(item.price * item.cartQuantity).toFixed(2)}
                   </div>
-                  <button onClick={() => removeFromCart(item.cartId)} className="p-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-lg transition-colors cursor-pointer">
+                  <button onClick={() => removeFromCart(item.cartId)} className="p-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-xl transition-colors cursor-pointer">
                     <Trash2 className="w-4 h-4"/>
                   </button>
                 </div>
@@ -454,7 +454,7 @@ export default function POSRegister({
         </div>
 
         {/* Financial Totals & Checkout */}
-        <div className="bg-white border-t border-slate-200 p-5 shrink-0 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-10">
+        <div className="bg-white border-t border-slate-200 p-4 shrink-0 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-10">
           <div className="space-y-2 mb-4">
             <div className="flex justify-between items-center text-xs font-bold text-slate-500">
               <span>Subtotal</span>
@@ -476,7 +476,7 @@ export default function POSRegister({
           <div className="flex gap-2 mb-4 bg-slate-50 p-1 rounded-xl border border-slate-200">
             <button 
               onClick={() => { setPaymentMethod('cash'); setSplitAmounts({ cash: 0, card: 0, bank_transfer: 0 }); }}
-              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod !== 'split' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod !== 'split' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Single
             </button>
@@ -485,7 +485,7 @@ export default function POSRegister({
                 setPaymentMethod('split'); 
                 setSplitAmounts({ cash: total, card: 0, bank_transfer: 0 }); 
               }}
-              className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'split' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === 'split' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Split Payment
             </button>
@@ -530,14 +530,14 @@ export default function POSRegister({
             </div>
           )}
 
-          <button
+          <Button
             data-testid="btn-checkout"
             onClick={handleCheckout}
             disabled={cart.length === 0 || (paymentMethod === 'split' && Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) >= 0.01)}
-            className={`w-full py-3.5 rounded-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all shadow-md ${(cart.length > 0 && (paymentMethod !== 'split' || Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) < 0.01)) ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}
+            className="w-full py-3.5"
           >
             <CheckCircle2 className="w-5 h-5"/> Process Transaction
-          </button>
+          </Button>
         </div>
       </aside>
 
@@ -545,7 +545,7 @@ export default function POSRegister({
       <main className="flex-1 bg-white rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
         
         {/* Top Search Bar */}
-        <div className="p-5 border-b border-slate-100 bg-white shrink-0 flex items-center gap-4 z-10 shadow-sm">
+        <div className="p-4 border-b border-slate-100 bg-white shrink-0 flex items-center gap-4 z-10 shadow-sm">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input 
@@ -556,7 +556,7 @@ export default function POSRegister({
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" 
               autoFocus
             />
-            <div className="text-[10px] text-slate-500 mt-2 font-medium">
+            <div className="text-[10px] text-slate-500 mt-2 font-black">
               Showing Retail &amp; Food only. Clinical services are added via Import from EHR.
             </div>
           </div>
@@ -574,12 +574,12 @@ export default function POSRegister({
                 <div key={item.id} onClick={() => addToCart(item, 1)} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
                   <div>
                     <div className="font-black text-slate-800 text-xs leading-tight mb-1">{item.name}</div>
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-3">{item.category.replace('_', ' ')}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{item.category.replace('_', ' ')}</div>
                   </div>
                   <div className="flex justify-between items-end border-t border-slate-50 pt-2">
                     <div className="font-mono text-xs font-black text-indigo-600">{item.price.toFixed(2)}</div>
                     {!['service', 'lab_service'].includes(item.category) && (
-                      <div className={`text-[9px] font-bold ${item.stock <= item.minStock ? 'text-rose-500' : 'text-slate-400'}`}>
+                      <div className={`text-[10px] font-bold ${item.stock <= item.minStock ? 'text-rose-500' : 'text-slate-400'}`}>
                         Stk: {item.stock}
                       </div>
                     )}
@@ -599,7 +599,7 @@ export default function POSRegister({
               
               {/* SECTION: Awaiting Checkout */}
               <div>
-                <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-3">Awaiting Checkout</h4>
+                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Awaiting Checkout</h4>
                 <div className="space-y-3">
                   {awaitingCheckoutQueue.length === 0 ? (
                     <div className="text-[10px] text-slate-400 italic px-2">No patients active.</div>
@@ -619,20 +619,20 @@ export default function POSRegister({
                           <div className="flex justify-between items-start mb-1">
                             <div className={`font-black text-sm truncate flex items-center gap-1.5 ${isSelected ? 'text-white' : 'text-slate-800'}`}>
                               {q.petName}
-                              {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                              {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                              {q.urgency === 'emergency' && <Badge tone="rose">EMERGENCY</Badge>}
+                              {q.urgency === 'non-emergency' && <Badge tone="amber">URGENT</Badge>}
                             </div>
-                            <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                            <div className={`text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
                               In Clinic
                             </div>
                           </div>
                           {q.emergencyBackfillRequired && (
-                            <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${isSelected ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                            <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${isSelected ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
                           )}
                           <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{q.ownerName} • {q.ownerPhone}</div>
 
                           <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
-                            <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
+                            <div className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
                               <FileText className="w-3 h-3"/> Import E.H.R Charges
                             </div>
                             <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
@@ -646,7 +646,7 @@ export default function POSRegister({
 
               {/* SECTION: Seen Today - Not Yet Billed */}
               <div>
-                <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-3">Seen Today — Not Yet Billed</h4>
+                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Seen Today — Not Yet Billed</h4>
                 <div className="space-y-3">
                   {unbilledAppointments.length === 0 ? (
                     <div className="text-[10px] text-slate-400 italic px-2">No unbilled checkouts.</div>
@@ -664,14 +664,14 @@ export default function POSRegister({
                           {!isSelected && <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>}
                           <div className="flex justify-between items-start mb-1">
                             <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{apt.petName}</div>
-                            <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                            <div className={`text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
                               Ready
                             </div>
                           </div>
                           <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{apt.ownerName} • {apt.ownerPhone}</div>
                           
                           <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
-                            <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
+                            <div className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
                               <FileText className="w-3 h-3"/> Import E.H.R Charges
                             </div>
                             <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
@@ -717,13 +717,14 @@ export default function POSRegister({
             </div>
 
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0">
-              <button 
+              <Button 
                 onClick={() => window.print()}
-                className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                className="flex-1"
               >
                 🖨 Print Receipt
-              </button>
-              <button 
+              </Button>
+              <Button 
+                variant="secondary"
                 onClick={() => {
                   setCart([]);
                   setDiscount(0);
@@ -733,10 +734,10 @@ export default function POSRegister({
                   setLastCompletedInvoice(null);
                   setShowReceiptModal(false);
                 }}
-                className="flex-1 py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-black uppercase tracking-widest transition-colors cursor-pointer shadow-sm"
+                className="flex-1 bg-white border border-slate-200"
               >
                 Done
-              </button>
+              </Button>
             </div>
           </div>
         </div>,

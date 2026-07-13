@@ -502,17 +502,17 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
                 key={o.key}
                 data-testid={`range-${o.key}`}
                 onClick={() => setRangePreset(o.key)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer ${rangePreset === o.key ? 'bg-indigo-500 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer ${rangePreset === o.key ? 'bg-indigo-500 text-white shadow' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
               >{o.label}</button>
             ))}
             {rangePreset === 'custom' && (
               <div className="flex items-center gap-2 ml-2">
-                <input data-testid="custom-start" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold bg-slate-800 text-white border border-slate-700" />
+                <input data-testid="custom-start" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="px-2 py-1.5 rounded-xl text-[10px] font-bold bg-slate-800 text-white border border-slate-700" />
                 <span className="text-slate-500 text-xs">→</span>
-                <input data-testid="custom-end" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold bg-slate-800 text-white border border-slate-700" />
+                <input data-testid="custom-end" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="px-2 py-1.5 rounded-xl text-[10px] font-bold bg-slate-800 text-white border border-slate-700" />
               </div>
             )}
-            <button onClick={exportReportCSV} className="ml-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> CSV</button>
+            <button onClick={exportReportCSV} className="ml-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"><Download className="w-3.5 h-3.5" /> CSV</button>
           </div>
         </div>
       </header>
@@ -523,53 +523,53 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
         <section>
           <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><TrendingUp className="w-4 h-4 text-indigo-500" /> Profit Analysis — {range.label}</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Gross Revenue</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Gross Revenue</span>
               <span data-testid="metric-total-revenue" data-value={report.grossRevenue} className="text-xl font-black text-slate-900 font-mono tracking-tight">{formatCurrency(report.grossRevenue)}</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">COGS</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">COGS</span>
               <span className="text-xl font-black text-slate-700 font-mono tracking-tight">{formatCurrency(report.cogs)}</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 block mb-2">Gross Profit</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 block mb-2">Gross Profit</span>
               <span data-testid="metric-gross-profit" className="text-xl font-black text-emerald-600 font-mono tracking-tight">{formatCurrency(report.grossProfit)}</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Gross Margin</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Gross Margin</span>
               <span className="text-xl font-black text-slate-900 font-mono tracking-tight">{report.grossMargin.toFixed(1)}%</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Staff Cost</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Staff Cost</span>
               <span className="text-xl font-black text-rose-600 font-mono tracking-tight">{formatCurrency(report.staffCost)}</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm relative overflow-hidden">
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-1.5 h-full bg-indigo-500"></div>
-              <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 block mb-2">Est. Net Profit</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 block mb-2">Est. Net Profit</span>
               <span data-testid="metric-net-profit" className={`text-xl font-black font-mono tracking-tight ${report.netProfit >= 0 ? 'text-indigo-700' : 'text-rose-600'}`}>{formatCurrency(report.netProfit)}</span>
             </div>
           </div>
-          <p className="text-[9px] font-bold text-slate-400 mt-2">* Estimated net profit = gross profit − staff cost. Excludes rent, utilities, and other fixed costs not tracked in this system. COGS derived from recorded cost/profit per invoice.</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-2">* Estimated net profit = gross profit − staff cost. Excludes rent, utilities, and other fixed costs not tracked in this system. COGS derived from recorded cost/profit per invoice.</p>
         </section>
 
         {/* TREND COMPARISON */}
         <section>
           <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><TrendingUp className="w-4 h-4 text-emerald-500" /> Trend vs {prevRange.label}</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div data-testid="trend-revenue" className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Revenue</span>
+            <div data-testid="trend-revenue" className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Revenue</span>
               <div className="flex items-baseline gap-2"><span className="text-2xl font-black text-slate-900 font-mono">{formatCurrency(report.grossRevenue)}</span><Trend t={report.rev} /></div>
-              <span className="text-[9px] font-bold text-slate-400 mt-1 block">vs {formatCurrency(report.prevRevenue)} prior</span>
+              <span className="text-[10px] font-bold text-slate-400 mt-1 block">vs {formatCurrency(report.prevRevenue)} prior</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Patients Seen</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Patients Seen</span>
               <div className="flex items-baseline gap-2"><span className="text-2xl font-black text-slate-900 font-mono">{report.patientsSeen}</span><Trend t={report.patients} /></div>
-              <span className="text-[9px] font-bold text-slate-400 mt-1 block">vs {report.prevPatients} prior</span>
+              <span className="text-[10px] font-bold text-slate-400 mt-1 block">vs {report.prevPatients} prior</span>
             </div>
-            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-2">Avg Transaction</span>
+            <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Avg Transaction</span>
               <div className="flex items-baseline gap-2"><span className="text-2xl font-black text-slate-900 font-mono">{formatCurrency(report.avgTxn)}</span><Trend t={report.avgTxnTrend} /></div>
-              <span className="text-[9px] font-bold text-slate-400 mt-1 block">vs {formatCurrency(report.prevAvgTxn)} prior</span>
+              <span className="text-[10px] font-bold text-slate-400 mt-1 block">vs {formatCurrency(report.prevAvgTxn)} prior</span>
             </div>
           </div>
         </section>
@@ -620,41 +620,41 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
               { label: 'Transactions', value: report.txnCount },
             ].map(s => (
               <div key={s.label} className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block mb-1">{s.label}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">{s.label}</span>
                 <span className="text-lg font-black text-slate-800 font-mono">{s.value}</span>
               </div>
             ))}
           </div>
-          <p className="text-[9px] font-bold text-slate-400 mt-2">* No-show is not a tracked appointment status in this system, so it cannot be reported.</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-2">* No-show is not a tracked appointment status in this system, so it cannot be reported.</p>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
             {/* Top by revenue */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Package className="w-3.5 h-3.5" /> Top Items — Revenue</h3>
               {report.topByRevenue.length === 0 ? <div className="text-[10px] text-slate-400 font-bold">No sales.</div> : report.topByRevenue.map((it, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
-                  <span className="text-[11px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
-                  <span className="text-[11px] font-mono font-black text-slate-800 shrink-0">{formatCurrency(it.revenue)}</span>
+                  <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
+                  <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{formatCurrency(it.revenue)}</span>
                 </div>
               ))}
             </div>
             {/* Top by qty */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Package className="w-3.5 h-3.5" /> Top Items — Quantity</h3>
               {report.topByQty.length === 0 ? <div className="text-[10px] text-slate-400 font-bold">No sales.</div> : report.topByQty.map((it, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
-                  <span className="text-[11px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
-                  <span className="text-[11px] font-mono font-black text-slate-800 shrink-0">{it.qty}</span>
+                  <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
+                  <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{it.qty}</span>
                 </div>
               ))}
             </div>
             {/* Vet productivity */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Stethoscope className="w-3.5 h-3.5" /> Vet Productivity (completed)</h3>
               {report.vetProductivity.length === 0 ? <div className="text-[10px] text-slate-400 font-bold">No completed appointments.</div> : report.vetProductivity.map((v, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
-                  <span className="text-[11px] font-bold text-slate-700 truncate pr-2">{v.vet}</span>
-                  <span className="text-[11px] font-mono font-black text-slate-800 shrink-0">{v.count}</span>
+                  <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{v.vet}</span>
+                  <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{v.count}</span>
                 </div>
               ))}
             </div>
@@ -673,8 +673,8 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
                 </div>
               </div>
               <div className="flex items-center gap-2 no-print">
-                <button data-testid="btn-print-zreport" onClick={handlePrintZReport} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"><Printer className="w-3.5 h-3.5" /> Print Z-Report</button>
-                <button data-testid="btn-email-zreport" onClick={handleEmailZReport} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-indigo-500 text-white hover:bg-indigo-600 transition-colors cursor-pointer flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email Z-Report</button>
+                <button data-testid="btn-print-zreport" onClick={handlePrintZReport} className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"><Printer className="w-3.5 h-3.5" /> Print Z-Report</button>
+                <button data-testid="btn-email-zreport" onClick={handleEmailZReport} className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-indigo-500 text-white hover:bg-indigo-600 transition-colors cursor-pointer flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email Z-Report</button>
               </div>
             </div>
 
@@ -718,7 +718,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Cash Adjustments (with reasons)</h3>
                 <div className="space-y-1">
                   {report.adjustmentsInRange.map(a => (
-                    <div key={a.id} className="flex justify-between text-[11px] font-bold text-slate-600"><span>{a.category} — {a.reason}</span><span className={`font-mono ${a.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>{a.type === 'IN' ? '+' : '-'}{formatCurrency(a.amount)}</span></div>
+                    <div key={a.id} className="flex justify-between text-[10px] font-bold text-slate-600"><span>{a.category} — {a.reason}</span><span className={`font-mono ${a.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>{a.type === 'IN' ? '+' : '-'}{formatCurrency(a.amount)}</span></div>
                   ))}
                 </div>
               </div>
@@ -738,7 +738,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
                 <Wallet className="w-8 h-8 text-emerald-400 mx-auto mb-3" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Physical Cash Vault (All-Time)</span>
                 <span className="text-4xl font-black text-white font-mono tracking-tight">{formatCurrency(metrics.vaultBalance)}</span>
-                <div className="flex justify-center gap-4 mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                <div className="flex justify-center gap-4 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3 text-emerald-400" /> {formatCurrency(metrics.cashSales + metrics.cashIn)} IN</span>
                   <span className="flex items-center gap-1"><ArrowDownRight className="w-3 h-3 text-rose-400" /> {formatCurrency(metrics.cashOut)} OUT</span>
                 </div>
@@ -760,8 +760,8 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
                       <div key={adj.id} className="p-4 bg-white border border-slate-100 rounded-xl shadow-xs flex justify-between items-center">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${adj.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{adj.category}</span>
-                            <span className="text-[9px] font-mono text-slate-400">{formatDate(adj.date)}</span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${adj.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{adj.category}</span>
+                            <span className="text-[10px] font-mono text-slate-400">{formatDate(adj.date)}</span>
                           </div>
                           <div className="text-xs font-black text-slate-800 line-clamp-1">{adj.reason}</div>
                         </div>
@@ -789,12 +789,12 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
           <div className="overflow-x-auto">
             <table data-testid="deletion-audit-table" className="w-full text-left text-xs border-collapse min-w-[640px]">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[9px]">
-                  <th className="py-4 px-5">Type</th>
-                  <th className="py-4 px-5">Name</th>
-                  <th className="py-4 px-5">Deleted By</th>
-                  <th className="py-4 px-5">When</th>
-                  <th className="py-4 px-5">History</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
+                  <th className="py-4 px-4">Type</th>
+                  <th className="py-4 px-4">Name</th>
+                  <th className="py-4 px-4">Deleted By</th>
+                  <th className="py-4 px-4">When</th>
+                  <th className="py-4 px-4">History</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -803,13 +803,13 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
                 ) : (
                   deletions.map(d => (
                     <tr key={d.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-4 px-5">
-                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${d.entity_type === 'client' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>{d.entity_type}</span>
+                      <td className="py-4 px-4">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${d.entity_type === 'client' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>{d.entity_type}</span>
                       </td>
-                      <td className="py-4 px-5 font-black text-slate-800">{d.entity_name || d.entity_id}</td>
-                      <td className="py-4 px-5 font-bold text-slate-600">{d.deleted_by}</td>
-                      <td className="py-4 px-5 font-mono text-slate-500">{formatDate(d.deleted_at)}</td>
-                      <td className="py-4 px-5">
+                      <td className="py-4 px-4 font-black text-slate-800">{d.entity_name || d.entity_id}</td>
+                      <td className="py-4 px-4 font-bold text-slate-600">{d.deleted_by}</td>
+                      <td className="py-4 px-4 font-mono text-slate-500">{formatDate(d.deleted_at)}</td>
+                      <td className="py-4 px-4">
                         {d.had_history ? (
                           <span className="text-[10px] font-bold text-rose-600" title={d.history_summary || ''}>Had history{d.history_summary ? ` — ${d.history_summary}` : ''}</span>
                         ) : (

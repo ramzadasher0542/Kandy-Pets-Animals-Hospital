@@ -111,17 +111,17 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
               <div className="flex justify-between items-center mb-1">
                 <div className="font-bold text-sm truncate flex items-center gap-1.5">
                   {q.petName}
-                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
                 </div>
-                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
                   Waiting
                 </div>
               </div>
               {q.emergencyBackfillRequired && (
-                <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
               )}
-              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-emerald-200' : 'text-slate-500'}`}>
+              <div className={`text-[10px] font-black ${selectedPatientId === q.petId ? 'text-emerald-200' : 'text-slate-500'}`}>
                 {q.ownerName}
               </div>
             </div>
@@ -138,7 +138,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
         <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600" /> Immunization Ops
             </h2>
           </div>
@@ -147,7 +147,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
             <input 
               type="text" placeholder="Search by Patient or Owner..." value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs" 
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-xs" 
             />
           </div>
         </div>
@@ -160,7 +160,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
               key={patient.patientId} onClick={() => setSelectedPatientId(patient.patientId)}
               className={`p-3 rounded-xl cursor-pointer transition-all border ${selectedPatientId === patient.patientId ? 'bg-emerald-50 border-emerald-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
             >
-              <div className="font-extrabold truncate text-sm text-slate-800 mb-1">{patient.pet?.name || 'Unknown'}</div>
+              <div className="font-bold truncate text-sm text-slate-800 mb-1">{patient.pet?.name || 'Unknown'}</div>
               <div className="text-[10px] font-bold text-slate-500 flex items-center justify-between">
                 <span>{patient.pet?.petType} • {patient.pet?.breed}</span>
                 <span className="flex items-center gap-1 text-slate-400"><User className="w-3 h-3"/> {patient.ownerName}</span>
@@ -175,8 +175,8 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
         {!selectedPatient ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
             <Syringe className="h-12 w-12 text-slate-300 mb-3" />
-            <h3 className="text-sm font-extrabold text-slate-500">Select a Patient</h3>
-            <p className="text-xs font-medium mt-1 text-slate-400">View vaccine passports and administer new doses.</p>
+            <h3 className="text-sm font-bold text-slate-500">Select a Patient</h3>
+            <p className="text-xs font-bold mt-1 text-slate-400">View vaccine passports and administer new doses.</p>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col relative">
@@ -202,14 +202,14 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
                     return (
                       <div key={item.id} className={`bg-white border rounded-xl p-3 flex flex-col justify-between h-full ${outOfStock ? 'border-rose-200 opacity-60' : 'border-slate-200 shadow-sm'}`}>
                         <div>
-                          <div className="text-xs font-extrabold text-slate-800 leading-tight mb-1">{item.name}</div>
+                          <div className="text-xs font-bold text-slate-800 leading-tight mb-1">{item.name}</div>
                           <div className="text-[10px] font-bold text-slate-400 flex justify-between">
                             <span>Stock: <span className={outOfStock ? 'text-rose-600' : 'text-emerald-600'}>{item.stock}</span></span>
                           </div>
                         </div>
                         <button 
                           onClick={() => handleAdminister(item)} disabled={outOfStock}
-                          className={`mt-3 w-full py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${outOfStock ? 'bg-rose-50 text-rose-500 cursor-not-allowed' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border border-emerald-200 cursor-pointer shadow-xs'}`}
+                          className={`mt-3 w-full py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-colors ${outOfStock ? 'bg-rose-50 text-rose-500 cursor-not-allowed' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-800 border border-emerald-200 cursor-pointer shadow-xs'}`}
                         >
                           {outOfStock ? 'Out of Stock' : 'Administer Dose'}
                         </button>
@@ -227,7 +227,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
                 <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[9px]">
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[10px]">
                         <th className="py-3 px-4">Date Administered</th>
                         <th className="py-3 px-4">Vaccine Name</th>
                         <th className="py-3 px-4 text-right">Next Due</th>

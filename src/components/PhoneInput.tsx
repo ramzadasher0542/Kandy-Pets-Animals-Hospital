@@ -37,7 +37,7 @@ export default function PhoneInput({ value, onChange, className = '', ...props }
         value={displayValue}
         onChange={handleChange}
         placeholder="774815692"
-        className="w-full pl-14 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-sm text-slate-700 placeholder-slate-400"
+        className="w-full pl-14 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-bold text-sm text-slate-700 placeholder-slate-400"
         {...props}
       />
     </div>

@@ -9,6 +9,7 @@ import { Lock, Calculator, AlertTriangle, CheckCircle2, FileText, User, Printer,
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
 import { db, stampRecord } from '../lib/localDb';
+import { Badge } from './ui/Badge';
 
 // --- Cash Adjustment Type ---
 interface CashAdjustment {
@@ -242,7 +243,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       <div className="flex-1 flex flex-col h-[calc(100vh-140px)] gap-4 print:hidden" id="shift-manager-module">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
               <Lock className="w-5 h-5 text-indigo-600" /> Terminal Control Center
             </h2>
             <p className="text-xs text-slate-500 font-bold mt-0.5">Secure drawer management, cash adjustments & reconciliation</p>
@@ -253,8 +254,8 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                 <Plus className="w-3.5 h-3.5" /> Adjust Drawer
               </button>
             )}
-            <div className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-[10px] font-extrabold shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-              <User className="w-3.5 h-3.5" /> Clerk: <span className="bg-white px-2 py-0.5 rounded-md border border-indigo-100">{currentUser.name}</span>
+            <div className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
+              <User className="w-3.5 h-3.5" /> Clerk: <span className="bg-white px-2 py-0.5 rounded-xl border border-indigo-100">{currentUser.name}</span>
             </div>
           </div>
         </div>
@@ -270,7 +271,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-slate-800 tracking-tight">Register is Closed</h3>
-                  <p className="text-xs font-semibold text-slate-500 mt-1">Enter the starting cash amount in the drawer to open the POS terminal.</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Enter the starting cash amount in the drawer to open the POS terminal.</p>
                 </div>
                 <div className="space-y-2 text-left">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block pl-1">Starting Float (LKR)</label>
@@ -296,10 +297,10 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
               <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl flex justify-between items-center">
                 <div>
                   <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest">Active Session</p>
-                  <p className="text-xs text-indigo-900 font-semibold mt-0.5">Opened at {new Date(activeShift.openedAt).toLocaleTimeString()} by {activeShift.openedByName}</p>
+                  <p className="text-xs text-indigo-900 font-bold mt-0.5">Opened at {new Date(activeShift.openedAt).toLocaleTimeString()} by {activeShift.openedByName}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest">Opening Float</p>
+                  <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest">Opening Float</p>
                   <p className="text-lg font-black font-mono text-indigo-900">{formatCurrency(activeShift.openingFloat)}</p>
                 </div>
               </div>
@@ -308,32 +309,32 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
                   <Banknote className="w-5 h-5 text-emerald-600 mx-auto mb-2" />
-                  <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Cash Sales</p>
+                  <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Cash Sales</p>
                   <p className="text-xl font-black font-mono text-emerald-900 mt-1">{formatCurrency(drawerMath.cashSales)}</p>
                 </div>
                 <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 text-center">
                   <CreditCard className="w-5 h-5 text-sky-600 mx-auto mb-2" />
-                  <p className="text-[9px] font-black text-sky-700 uppercase tracking-widest">Card Sales</p>
+                  <p className="text-[10px] font-black text-sky-700 uppercase tracking-widest">Card Sales</p>
                   <p className="text-xl font-black font-mono text-sky-900 mt-1">{formatCurrency(drawerMath.cardSales)}</p>
                 </div>
-                <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-center">
-                  <Building2 className="w-5 h-5 text-violet-600 mx-auto mb-2" />
-                  <p className="text-[9px] font-black text-violet-700 uppercase tracking-widest">Bank Transfers</p>
-                  <p className="text-xl font-black font-mono text-violet-900 mt-1">{formatCurrency(drawerMath.bankSales)}</p>
+                <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 text-center">
+                  <Building2 className="w-5 h-5 text-sky-600 mx-auto mb-2" />
+                  <p className="text-[10px] font-black text-sky-700 uppercase tracking-widest">Bank Transfers</p>
+                  <p className="text-xl font-black font-mono text-sky-900 mt-1">{formatCurrency(drawerMath.bankSales)}</p>
                 </div>
               </div>
 
               {/* Drawer Math Summary */}
-              <div className="bg-slate-900 rounded-2xl p-5 text-white">
+              <div className="bg-slate-900 rounded-2xl p-4 text-white">
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Drawer Balance Calculation</h3>
                 <div className="space-y-2 font-mono text-xs">
                   <div className="flex justify-between border-b border-slate-700 pb-1"><span className="text-slate-400">Opening Float</span> <span>{formatCurrency(activeShift.openingFloat)}</span></div>
                   <div className="flex justify-between border-b border-slate-700 pb-1"><span className="text-emerald-400">+ Cash Sales</span> <span className="text-emerald-400">{formatCurrency(drawerMath.cashSales)}</span></div>
                   {drawerMath.adjustIn > 0 && <div className="flex justify-between border-b border-slate-700 pb-1"><span className="text-emerald-400">+ Cash Added</span> <span className="text-emerald-400">{formatCurrency(drawerMath.adjustIn)}</span></div>}
                   {drawerMath.adjustOut > 0 && <div className="flex justify-between border-b border-slate-700 pb-1"><span className="text-rose-400">− Cash Removed</span> <span className="text-rose-400">-{formatCurrency(drawerMath.adjustOut)}</span></div>}
-                  <div className="flex justify-between pt-2 text-sm font-black text-yellow-300"><span>= Expected Drawer Cash</span> <span>{formatCurrency(drawerMath.expectedCash)}</span></div>
+                  <div className="flex justify-between pt-2 text-sm font-black text-amber-300"><span>= Expected Drawer Cash</span> <span>{formatCurrency(drawerMath.expectedCash)}</span></div>
                 </div>
-                <div className="mt-4 pt-3 border-t border-slate-700 flex justify-between items-center text-[9px] text-slate-500 uppercase tracking-widest">
+                <div className="mt-4 pt-3 border-t border-slate-700 flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-widest">
                   <span>{drawerMath.txCount} transactions this shift</span>
                   <span>Total Revenue: {formatCurrency(drawerMath.totalRevenue)}</span>
                 </div>
@@ -347,10 +348,10 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                   </div>
                   <div className="max-h-40 overflow-y-auto p-2 space-y-1.5">
                     {adjustments.map(adj => (
-                      <div key={adj.id} className="p-3 bg-white border border-slate-100 rounded-lg flex justify-between items-center text-xs">
+                      <div key={adj.id} className="p-3 bg-white border border-slate-100 rounded-xl flex justify-between items-center text-xs">
                         <div>
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${adj.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{adj.category}</span>
-                          <span className="ml-2 font-semibold text-slate-700">{adj.reason}</span>
+                          <Badge tone={adj.type === 'IN' ? 'emerald' : 'rose'}>{adj.category}</Badge>
+                          <span className="ml-2 font-bold text-slate-700">{adj.reason}</span>
                         </div>
                         <span className={`font-black font-mono ${adj.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {adj.type === 'IN' ? '+' : '-'}{formatCurrency(adj.amount)}
@@ -362,7 +363,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
               )}
 
               {/* Close Shift Section */}
-              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-5 space-y-4">
+              <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-4 space-y-4">
                 <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest text-center">End of Shift Reconciliation</h3>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block pl-1">Actual Counted Drawer Cash</label>
@@ -398,8 +399,8 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
             </div>
             <form onSubmit={handleSaveAdjustment} className="p-6 space-y-5">
               <div className="flex bg-slate-100 p-1 rounded-xl">
-                <button type="button" onClick={() => setAdjType('OUT')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer ${adjType === 'OUT' ? 'bg-white shadow-sm text-rose-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Take Cash Out</button>
-                <button type="button" onClick={() => setAdjType('IN')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer ${adjType === 'IN' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Add Cash In</button>
+                <button type="button" onClick={() => setAdjType('OUT')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${adjType === 'OUT' ? 'bg-white shadow-sm text-rose-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Take Cash Out</button>
+                <button type="button" onClick={() => setAdjType('IN')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${adjType === 'IN' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Add Cash In</button>
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Amount</label>
@@ -428,7 +429,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Reason / Details</label>
                 <input type="text" value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g. Bought cleaning supplies..."
-                  className="w-full px-4 py-3 text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500" required />
+                  className="w-full px-4 py-3 text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500" required />
               </div>
               <div className="pt-2">
                 <button type="submit" className={`w-full py-4 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-transform active:scale-95 cursor-pointer ${adjType === 'IN' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}>

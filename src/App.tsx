@@ -29,7 +29,7 @@ export class ClinicErrorBoundary extends React.Component<Props, State> {
         <div className="min-screen p-8 flex items-center justify-center bg-slate-50 text-xs">
           <div className="max-w-md w-full bg-white border border-rose-200 p-6 rounded-2xl shadow-sm text-center space-y-4">
             <div className="text-rose-600 text-lg font-black">🐾 Recovery Mode Intercepted</div>
-            <p className="text-slate-600 font-semibold leading-relaxed">
+            <p className="text-slate-600 font-bold leading-relaxed">
               A view formatting discrepancy occurred inside a panel. The data state wrapper has been kept isolated and preserved safely to prevent data loss.
             </p>
             <button
@@ -1317,7 +1317,7 @@ function App() {
             <CloudLightning className="w-10 h-10 text-rose-500" />
           </div>
           <h1 className="text-2xl font-black text-rose-500 uppercase tracking-widest">Critical Database Corruption Detected</h1>
-          <p className="text-slate-400 font-medium text-sm leading-relaxed">
+          <p className="text-slate-400 font-bold text-sm leading-relaxed">
             The local IndexedDB vault contains malformed structures preventing hydration. You must purge the local vault to restore system stability. All un-synced local data will be lost.
           </p>
           <button
@@ -1335,7 +1335,7 @@ function App() {
   if (isBooting) {
     return (
       <div className="h-screen w-full bg-slate-900 flex flex-col items-center justify-center text-white font-sans">
-        <div className="w-24 h-24 mb-8 bg-slate-800 rounded-3xl flex items-center justify-center animate-pulse border border-slate-700 shadow-2xl">
+        <div className="w-24 h-24 mb-8 bg-slate-800 rounded-2xl flex items-center justify-center animate-pulse border border-slate-700 shadow-2xl">
           <Activity className="w-12 h-12 text-indigo-400" />
         </div>
         <h1 className="text-2xl font-black tracking-widest text-slate-100 uppercase">CeylonPets Vault</h1>
@@ -1356,15 +1356,15 @@ function App() {
               <div className="p-8 bg-sky-600 text-white flex flex-col justify-between space-y-8 relative overflow-hidden">
                 <div className="relative z-10 font-sans flex flex-col h-full justify-between">
                   <div className="space-y-6">
-                    <span className="px-3 py-1 bg-white/20 text-white font-bold rounded-full text-[9px] uppercase tracking-wider flex items-center gap-1.5 w-max">
+                    <span className="px-3 py-1 bg-white/20 text-white font-bold rounded-full text-[10px] uppercase tracking-wider flex items-center gap-1.5 w-max">
                       <span className="text-sm select-none leading-none">{systemConfig.invoiceLogo}</span> {systemConfig.appName} Core Medical Suite
                     </span>
                     <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm border-2 border-white/30 border-dashed inline-block">
-                      <p className="text-white/70 font-bold text-xs uppercase tracking-widest text-center">Your Logo Here<br /><span className="text-[9px] font-medium opacity-75 capitalize mt-1 block">(Upload via System Settings)</span></p>
+                      <p className="text-white/70 font-bold text-xs uppercase tracking-widest text-center">Your Logo Here<br /><span className="text-[10px] font-bold opacity-75 capitalize mt-1 block">(Upload via System Settings)</span></p>
                     </div>
-                    <p className="text-white/80 leading-relaxed font-semibold text-sm max-w-sm">Serving Pet parents cleanly and securely. Tablet-ready clinical charts, custom billing registers, and automated client alerts.</p>
+                    <p className="text-white/80 leading-relaxed font-bold text-sm max-w-sm">Serving Pet parents cleanly and securely. Tablet-ready clinical charts, custom billing registers, and automated client alerts.</p>
                   </div>
-                  <div className="text-white/90 font-semibold tracking-wide text-[10px] uppercase flex flex-col gap-0.5 mt-12 pb-4">
+                  <div className="text-white/90 font-bold tracking-wide text-[10px] uppercase flex flex-col gap-0.5 mt-12 pb-4">
                     <span className="opacity-70 tracking-widest">CeylonPets Medical OS</span>
                     <span className="font-black text-[13px] tracking-widest drop-shadow-sm text-yellow-300">POWERED BY ASH POINT SOLUTIONS</span>
                   </div>
@@ -1383,7 +1383,7 @@ function App() {
                   <form onSubmit={handlePinSubmit} className="space-y-3">
                     <div className="space-y-1">
                       <label htmlFor="login-username" className="font-bold text-slate-700 block text-[10px]">Select Staff Member</label>
-                      <select id="login-username" name="username" autoComplete="username" value={selectedUsername} onChange={(e) => setSelectedUsername(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-semibold text-slate-700" required>
+                      <select id="login-username" name="username" autoComplete="username" value={selectedUsername} onChange={(e) => setSelectedUsername(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-bold text-slate-700" required>
                         <option value="" disabled>-- Choose Staff --</option>
                         <option value="ashpoint_owner">Service Provider (System Root Admin)</option>
                         {users.map((u) => <option key={u.id} value={u.username}>{u.name} ({u.role ? u.role.toUpperCase() : 'UNKNOWN'})</option>)}
@@ -1392,11 +1392,11 @@ function App() {
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <label htmlFor="login-pin" className="font-bold text-slate-700 block text-[10px]">Enter 4-Digit Passcode PIN</label>
-                        {pinError && <span className="text-[10px] text-rose-600 font-semibold animate-pulse">Incorrect passcode pin.</span>}
+                        {pinError && <span className="text-[10px] text-rose-600 font-bold animate-pulse">Incorrect passcode pin.</span>}
                       </div>
                       <div className="flex gap-2">
                         <input id="login-pin" data-testid="input-pin" name="pin" type="password" autoComplete="current-password" maxLength={4} placeholder="••••" value={enteredPin} onChange={(e) => setEnteredPin(e.target.value)} className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 text-center font-mono font-bold tracking-widest text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500" required />
-                        <button type="submit" data-testid="btn-verify-pin" className="px-5 bg-slate-800 hover:bg-slate-900 font-extrabold text-white rounded-xl transition-all font-mono">Verify</button>
+                        <button type="submit" data-testid="btn-verify-pin" className="px-5 bg-slate-800 hover:bg-slate-900 font-bold text-white rounded-xl transition-all font-mono">Verify</button>
                       </div>
                     </div>
                   </form>
@@ -1411,22 +1411,22 @@ function App() {
             <aside className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20 shadow-sm">
               <div className="h-16 flex items-center px-6 border-b border-gray-100">
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-600 p-1.5 rounded-lg shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
+                  <div className="bg-blue-600 p-1.5 rounded-xl shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
                   <div>
                     <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
                   </div>
                 </div>
               </div>
               <nav className="flex-1 overflow-y-auto p-3 space-y-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
-                  if (!item.isLive) return <a key={item.id} data-testid={`nav-${item.id}`} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
+                  if (!item.isLive) return <a key={item.id} data-testid={`nav-${item.id}`} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
                   const permissionKey = item.id === 'reports' || item.id === 'dashboard' ? 'dashboard' : item.id;
                   if (!isViewPermitted(permissionKey, currentUser)) return null;
                   const isSelected = activeView === item.id || (activeView === 'reports' && item.id === 'dashboard');
                   return (
-                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
+                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
                       <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />{item.label}
                     </button>
                   );
@@ -1435,13 +1435,13 @@ function App() {
               <div className="p-4 border-t border-gray-100 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <span className="block font-bold text-gray-800 text-xs truncate leading-tight">{currentUser.name}</span>
-                  <span className="block text-[10px] text-gray-400 capitalize font-medium mt-0.5 truncate">{currentUser.role} console</span>
+                  <span className="block text-[10px] text-gray-400 capitalize font-bold mt-0.5 truncate">{currentUser.role} console</span>
                 </div>
               </div>
               <div className="p-3 border-t border-gray-200 bg-gray-50/50 space-y-1">
                 {isViewPermitted('settings', currentUser) && (
                   <button onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeView === 'settings'
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                       }`}
@@ -1452,7 +1452,7 @@ function App() {
                 )}
                 <button
                   onClick={() => setCurrentUser(null)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
                 >
                   <LogOut className="w-5 h-5 text-rose-500" />
                   Lock/Logout
@@ -1472,7 +1472,7 @@ function App() {
                         setHistoryStack(s => s.slice(0, -1));
                         setActiveView(prevView);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-xl transition-all cursor-pointer"
                     >
                       <ChevronLeft className="w-3 h-3" /> Back
                     </button>
@@ -1483,7 +1483,7 @@ function App() {
                   <button onClick={() => setShowNotifications(true)} className="relative p-2 rounded-full hover:bg-slate-100 transition-colors">
                     <Bell className="w-5 h-5 text-slate-600" />
                     {alerts.filter(a => !a.read).length > 0 && (
-                      <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[8px] font-black text-white border-2 border-white">
+                      <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[10px] font-black text-white border-2 border-white">
                         {alerts.filter(a => !a.read).length}
                       </span>
                     )}

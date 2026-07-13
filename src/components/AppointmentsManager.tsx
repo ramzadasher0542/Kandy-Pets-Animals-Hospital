@@ -16,6 +16,7 @@ import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import PhoneInput from './PhoneInput'; 
 import { db } from '../lib/localDb'; 
 import { fetchPets, fetchClients, upsertPet } from '../lib/db';
+import { Badge } from './ui/Badge';
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -672,21 +673,20 @@ export default function AppointmentsManager({
   // ---------------------------------------------------------
   const getStatusPill = (status: string) => {
     const s = status.toLowerCase();
-    if (s === 'booked') return <span className="px-2.5 py-1 bg-amber-50 text-amber-600 rounded-md text-[10px] font-bold uppercase border border-amber-100">Pending</span>;
-    if (s === 'in-progress') return <span className="px-2.5 py-1 bg-sky-50 text-sky-600 rounded-md text-[10px] font-bold uppercase border border-sky-100 flex items-center gap-1 w-max"><Activity className="h-3 w-3 animate-pulse" /> In Treatment</span>;
-    if (s === 'completed') return <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-md text-[10px] font-bold uppercase border border-emerald-100">Completed</span>;
-    if (s === 'cancelled') return <span className="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-md text-[10px] font-bold uppercase border border-rose-100">Cancelled</span>;
-    return <span className="px-2.5 py-1 bg-slate-50 text-slate-600 rounded-md text-[10px] font-bold uppercase border border-slate-200">{status}</span>;
+    if (s === 'booked') return <Badge tone="amber">Pending</Badge>;
+    if (s === 'in-progress') return <Badge tone="sky" className="flex items-center gap-1 w-max"><Activity className="h-3 w-3 animate-pulse" /> In Treatment</Badge>;
+    if (s === 'completed') return <Badge tone="emerald">Completed</Badge>;
+    if (s === 'cancelled') return <Badge tone="rose">Cancelled</Badge>;
+    return <Badge tone="slate">{status}</Badge>;
   };
 
   const getServicePill = (apt: Appointment) => {
     const type = apt.admissionType || 'OPD';
-    let colors = 'bg-slate-50 text-slate-700 border-slate-200';
-    if (type === 'OPD') colors = 'bg-blue-50 text-blue-700 border-blue-200';
-    else if (type === 'Vaccination') colors = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    else if (type === 'Hospital Admission') colors = 'bg-rose-50 text-rose-700 border-rose-200';
-    else if (type === 'Pet Boarding') colors = 'bg-amber-50 text-amber-700 border-amber-200';
-    return <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border inline-block ${colors}`}>{type}</span>;
+    if (type === 'OPD') return <Badge tone="sky">OPD</Badge>;
+    if (type === 'Vaccination') return <Badge tone="emerald">Vaccination</Badge>;
+    if (type === 'Hospital Admission') return <Badge tone="rose">Hospital Admission</Badge>;
+    if (type === 'Pet Boarding') return <Badge tone="amber">Pet Boarding</Badge>;
+    return <Badge tone="slate">{type}</Badge>;
   };
 
   // ---------------------------------------------------------
@@ -731,7 +731,7 @@ export default function AppointmentsManager({
                             <div 
                               key={a.id} 
                               onClick={(e) => { e.stopPropagation(); setSelectedPopoverApt(a); }}
-                              className={`text-[10px] p-1.5 rounded-lg truncate shadow-xs font-medium transition-colors flex items-center justify-between ${
+                              className={`text-[10px] p-1.5 rounded-xl truncate shadow-xs font-black transition-colors flex items-center justify-between ${
                                 isLocked 
                                   ? 'bg-slate-50 text-slate-500 border border-slate-200' 
                                   : 'bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100'
@@ -747,7 +747,7 @@ export default function AppointmentsManager({
                         {hasOverflow && (
                           <div 
                             onClick={(e) => { e.stopPropagation(); setOverflowPopover({ date: dayStr, apts }); }}
-                            className="text-[9px] font-bold text-slate-500 hover:text-indigo-600 mt-1 cursor-pointer w-full text-center py-1 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-slate-100"
+                            className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 mt-1 cursor-pointer w-full text-center py-1 bg-slate-50 hover:bg-indigo-50 rounded-xl transition-colors border border-slate-100"
                           >
                             +{apts.length - 3} more
                           </div>
@@ -790,7 +790,7 @@ export default function AppointmentsManager({
               onClick={() => { setCurrentDate(d); setTimeframe('day'); }}
             >
               <div className={`text-[10px] uppercase font-bold ${d.toDateString() === new Date().toDateString() ? 'text-indigo-500' : 'text-slate-400'}`}>{d.toLocaleDateString('en-US', {weekday:'short'})}</div>
-              <div className={`text-sm font-extrabold mt-0.5 ${d.toDateString()===new Date().toDateString() ? 'text-indigo-600':'text-slate-700'}`}>{d.getDate()}</div>
+              <div className={`text-sm font-bold mt-0.5 ${d.toDateString()===new Date().toDateString() ? 'text-indigo-600':'text-slate-700'}`}>{d.getDate()}</div>
             </div>
           ))}
         </div>
@@ -828,7 +828,7 @@ export default function AppointmentsManager({
                             </div>
                             {isLocked && <Lock className="w-2.5 h-2.5 ml-1 opacity-50 shrink-0" />}
                           </div>
-                          <div className="truncate opacity-80 mt-0.5 font-medium">{a.ownerName} - {a.aptNumber}</div>
+                          <div className="truncate opacity-80 mt-0.5 font-bold">{a.ownerName} - {a.aptNumber}</div>
                         </div>
                       )
                     })}
@@ -848,34 +848,34 @@ export default function AppointmentsManager({
       <tr key={apt.id} className="hover:bg-slate-50 transition-colors group">
         <td className="py-4 px-4">
           <div className="font-bold text-slate-800">{formatDisplayDate(apt.date)}</div>
-          <div className="text-[10px] text-slate-500 font-medium">{formatDisplayTime(apt.time)}</div>
+          <div className="text-[10px] text-slate-500 font-black">{formatDisplayTime(apt.time)}</div>
         </td>
         <td className="py-4 px-4">
           <div className="flex flex-col items-start gap-1">
             <div className="font-bold text-slate-800 flex items-center gap-2">
               {apt.petName}
-              {apt.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">EMERGENCY</span>}
-              {apt.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">URGENT</span>}
+              {apt.urgency === 'emergency' && <Badge tone="rose">EMERGENCY</Badge>}
+              {apt.urgency === 'non-emergency' && <Badge tone="amber">URGENT</Badge>}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
-              <span className="text-[10px] text-slate-500 font-medium">{apt.petType} - {apt.breed || 'Mixed'}</span>
+              <span className="text-[10px] text-slate-500 font-black">{apt.petType} - {apt.breed || 'Mixed'}</span>
             </div>
             {apt.emergencyBackfillRequired && (
-              <span data-testid="badge-details-pending" className="mt-0.5 inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">⚠ Details Pending</span>
+              <Badge tone="amber" className="mt-0.5 inline-flex items-center gap-1">⚠ Details Pending</Badge>
             )}
           </div>
         </td>
         <td className="py-4 px-4">
           <div className="font-bold text-slate-700">{apt.ownerName}</div>
-          <div className="text-[10px] text-slate-500 font-medium font-mono mt-0.5 flex items-center gap-1">
+          <div className="text-[10px] text-slate-500 font-black font-mono mt-0.5 flex items-center gap-1">
             <Phone className="w-2.5 h-2.5" /> {apt.ownerPhone}
           </div>
         </td>
         <td className="py-4 px-4">
           <div className="flex flex-col items-start gap-1.5">
             {getServicePill(apt)}
-            <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1.5">
+            <div className="text-[10px] text-slate-500 font-black flex items-center gap-1.5">
               <Stethoscope className="w-3 h-3 text-slate-400" /> {apt.assignedVet || apt.veterinarian}
             </div>
           </div>
@@ -886,19 +886,19 @@ export default function AppointmentsManager({
         <td className="py-4 px-4 text-right w-32">
           <div className="flex items-center justify-end gap-1">
             {apt.emergencyBackfillRequired && !isLocked && (
-              <button data-testid="btn-complete-details" onClick={() => handleEditClick(apt)} title="Complete emergency patient details" className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer whitespace-nowrap">
+              <button data-testid="btn-complete-details" onClick={() => handleEditClick(apt)} title="Complete emergency patient details" className="px-2 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer whitespace-nowrap">
                 Complete Details
               </button>
             )}
             {apt.status === 'booked' && (
-              <button data-testid="btn-check-in" onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
+              <button data-testid="btn-check-in" onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-xl transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
                 <CheckCircle2 className="h-4 w-4" />
               </button>
             )}
-            <button onClick={() => !isLocked && handleEditClick(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Edit Details"} className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer'}`}>
+            <button onClick={() => !isLocked && handleEditClick(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Edit Details"} className={`p-1.5 rounded-xl transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer'}`}>
               {isLocked ? <Lock className="h-4 w-4" /> : <Edit2 className="h-4 w-4" />}
             </button>
-            <button onClick={() => !isLocked && handleCancelApt(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Cancel Appointment"} className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'}`}>
+            <button onClick={() => !isLocked && handleCancelApt(apt)} disabled={isLocked} title={isLocked ? "Record Locked" : "Cancel Appointment"} className={`p-1.5 rounded-xl transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'}`}>
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
@@ -950,7 +950,7 @@ export default function AppointmentsManager({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {todaysListApts.length === 0 ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-medium">No appointments scheduled for today.</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-bold">No appointments scheduled for today.</td></tr>
                 ) : todaysListApts.map(renderAptRow)}
               </tbody>
             </table>
@@ -966,7 +966,7 @@ export default function AppointmentsManager({
             <table className="w-full text-left text-xs border-collapse">
               <tbody className="divide-y divide-slate-100">
                 {futureListApts.length === 0 ? (
-                  <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-medium">No upcoming appointments found.</td></tr>
+                  <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-bold">No upcoming appointments found.</td></tr>
                 ) : futureListApts.map(renderAptRow)}
               </tbody>
             </table>
@@ -983,7 +983,7 @@ export default function AppointmentsManager({
               <table className="w-full text-left text-xs border-collapse">
                 <tbody className="divide-y divide-slate-100">
                   {pastListApts.length === 0 ? (
-                    <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-medium">No past appointments found.</td></tr>
+                    <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-bold">No past appointments found.</td></tr>
                   ) : pastListApts.map(renderAptRow)}
                 </tbody>
               </table>
@@ -1026,28 +1026,28 @@ export default function AppointmentsManager({
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 shrink-0">
         
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto">
-          <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
             Appointments
           </h2>
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-            <button onClick={() => setViewMode('list')} className={`p-1.5 px-3 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
+            <button onClick={() => setViewMode('list')} className={`p-1.5 px-3 rounded-xl flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
               <ListIcon className="h-4 w-4" /> List
             </button>
-            <button onClick={() => setViewMode('calendar')} className={`p-1.5 px-3 rounded-lg flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
+            <button onClick={() => setViewMode('calendar')} className={`p-1.5 px-3 rounded-xl flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
               <CalendarIcon className="h-4 w-4" /> Calendar
             </button>
           </div>
         </div>
 
         <div className="hidden lg:flex items-center gap-4 flex-1 justify-center px-4">
-          <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[10px] font-extrabold shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-            Today's Volume <span className="bg-white px-2 py-0.5 rounded-md border border-slate-100 text-slate-800">{todayVolume}</span>
+          <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
+            Today's Volume <span className="bg-white px-2 py-0.5 rounded-xl border border-slate-100 text-slate-800">{todayVolume}</span>
           </div>
-          <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-[10px] font-extrabold shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-            Awaiting Triage <span className="bg-white px-2 py-0.5 rounded-md border border-amber-100 text-amber-900">{awaitingTriage}</span>
+          <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
+            Awaiting Triage <span className="bg-white px-2 py-0.5 rounded-xl border border-amber-100 text-amber-900">{awaitingTriage}</span>
           </div>
-          <div className="px-3 py-1.5 bg-sky-50 border border-sky-200 text-sky-700 rounded-xl text-[10px] font-extrabold shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-            In-Treatment <span className="bg-white px-2 py-0.5 rounded-md border border-sky-100 text-sky-900">{inTreatment}</span>
+          <div className="px-3 py-1.5 bg-sky-50 border border-sky-200 text-sky-700 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
+            In-Treatment <span className="bg-white px-2 py-0.5 rounded-xl border border-sky-100 text-sky-900">{inTreatment}</span>
           </div>
         </div>
 
@@ -1059,10 +1059,10 @@ export default function AppointmentsManager({
               else if (timeframe === 'day') d.setDate(d.getDate() - 1);
               else d.setMonth(d.getMonth() - 1);
               setCurrentDate(d);
-            }} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
+            }} className="p-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button onClick={() => { setCurrentDate(new Date()); setTimeframe('day'); }} className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-[10px] font-extrabold text-slate-700 shadow-xs transition-colors cursor-pointer">
+            <button onClick={() => { setCurrentDate(new Date()); setTimeframe('day'); }} className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black text-slate-700 shadow-xs transition-colors cursor-pointer">
               Today
             </button>
             <button onClick={() => {
@@ -1071,10 +1071,10 @@ export default function AppointmentsManager({
               else if (timeframe === 'day') d.setDate(d.getDate() + 1);
               else d.setMonth(d.getMonth() + 1);
               setCurrentDate(d);
-            }} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
+            }} className="p-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
               <ChevronRight className="h-4 w-4" />
             </button>
-            <div className="px-3 text-[11px] font-extrabold text-slate-800 min-w-[140px] text-center">
+            <div className="px-3 text-[10px] font-black text-slate-800 min-w-[140px] text-center">
               {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </div>
           </div>
@@ -1088,14 +1088,14 @@ export default function AppointmentsManager({
               placeholder="Search ID, pet, phone..." 
               value={searchQuery} 
               onChange={e => setSearchQuery(e.target.value)} 
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" 
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" 
             />
           </div>
 
           {viewMode === 'calendar' && (
             <div className="flex bg-slate-100 p-1 rounded-xl hidden sm:flex gap-1">
               {['day', 'week', 'month'].map(t => (
-                <button key={t} onClick={() => setTimeframe(t as any)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold capitalize transition-all cursor-pointer ${timeframe === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+                <button key={t} onClick={() => setTimeframe(t as any)} className={`px-3 py-1.5 rounded-xl text-[10px] font-bold capitalize transition-all cursor-pointer ${timeframe === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
                   {t}
                 </button>
               ))}
@@ -1122,10 +1122,10 @@ export default function AppointmentsManager({
       {/* Overflow Appointments Mini-Popover */}
       {overflowPopover && createPortal(
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setOverflowPopover(null)}>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 max-w-sm w-full animate-fade-in relative max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setOverflowPopover(null)} className="absolute top-3 right-3 p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"><X className="h-4 w-4" /></button>
-            <h3 className="text-sm font-extrabold text-slate-800 mb-1">Appointments Overflow</h3>
-            <p className="text-[10px] text-slate-500 font-medium mb-4">{overflowPopover.date}</p>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-4 max-w-sm w-full animate-fade-in relative max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setOverflowPopover(null)} className="absolute top-3 right-3 p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"><X className="h-4 w-4" /></button>
+            <h3 className="text-sm font-bold text-slate-800 mb-1">Appointments Overflow</h3>
+            <p className="text-[10px] text-slate-500 font-black mb-4">{overflowPopover.date}</p>
             
             <div className="space-y-2 overflow-y-auto custom-scrollbar flex-1 pr-1">
               {overflowPopover.apts.map(a => {
@@ -1141,13 +1141,13 @@ export default function AppointmentsManager({
                     }`}
                   >
                     <div className="flex justify-between items-start mb-0.5">
-                      <div className="font-bold truncate">{a.petName} <span className="text-[9px] text-slate-400 ml-1">{a.aptNumber}</span></div>
+                      <div className="font-bold truncate">{a.petName} <span className="text-[10px] text-slate-400 ml-1">{a.aptNumber}</span></div>
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] font-mono bg-white px-1 py-0.5 rounded border border-slate-200">{a.time}</span>
+                        <span className="text-[10px] font-mono bg-white px-1 py-0.5 rounded border border-slate-200">{a.time}</span>
                         {isLocked && <Lock className="w-3 h-3 opacity-50 shrink-0" />}
                       </div>
                     </div>
-                    <div className="truncate opacity-80 text-[10px] font-medium">{a.ownerName} - {a.reason.replace(/:::METADATA(.*?):::/, '').substring(0, 30)}...</div>
+                    <div className="truncate opacity-80 text-[10px] font-black">{a.ownerName} - {a.reason.replace(/:::METADATA(.*?):::/, '').substring(0, 30)}...</div>
                   </div>
                 )
               })}
@@ -1160,15 +1160,15 @@ export default function AppointmentsManager({
       {/* Calendar Quick Action Popover Modal */}
       {selectedPopoverApt && createPortal(
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedPopoverApt(null)}>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 max-w-sm w-full animate-fade-in relative" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setSelectedPopoverApt(null)} className="absolute top-3 right-3 p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"><X className="h-4 w-4" /></button>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 max-w-sm w-full animate-fade-in relative" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setSelectedPopoverApt(null)} className="absolute top-3 right-3 p-1.5 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"><X className="h-4 w-4" /></button>
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-sm font-extrabold text-slate-800">{selectedPopoverApt.petName}</h3>
+              <h3 className="text-sm font-black text-slate-800">{selectedPopoverApt.petName}</h3>
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded">{selectedPopoverApt.aptNumber}</span>
             </div>
-            <p className="text-[10px] text-slate-500 font-medium mb-4">{selectedPopoverApt.date} at {selectedPopoverApt.time}</p>
+            <p className="text-[10px] text-slate-500 font-black mb-4">{selectedPopoverApt.date} at {selectedPopoverApt.time}</p>
             {selectedPopoverApt.emergencyBackfillRequired && (
-              <div className="mb-3 inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider">⚠ Details Pending</div>
+              <Badge tone="amber" className="mb-3 inline-flex items-center gap-1">⚠ Details Pending</Badge>
             )}
 
             <div className="space-y-2">
@@ -1217,7 +1217,7 @@ export default function AppointmentsManager({
                 <h4 className="text-base font-black text-slate-800 leading-none">{editingAptId ? 'Edit Appointment Details' : 'Schedule Veterinary Check-up'}</h4>
                 <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Central CRM & Schedule Link</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer transition-colors"><X className="w-5 h-5"/></button>
+              <button onClick={() => setShowAddModal(false)} className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-5 h-5"/></button>
             </div>
             
             <form onSubmit={handleCreateAppointment} className="flex flex-col min-h-0 overflow-hidden bg-slate-50/50">
@@ -1230,7 +1230,7 @@ export default function AppointmentsManager({
                   <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center gap-4">
                     <div className="bg-indigo-600 p-2 rounded-xl text-white"><SearchCode className="w-5 h-5"/></div>
                     <div className="flex-1">
-                      <label className="font-bold text-indigo-900 block text-[9px] uppercase tracking-widest mb-1.5">Identity Scanner: Auto-fill Existing Client by Phone</label>
+                      <label className="font-bold text-indigo-900 block text-[10px] uppercase tracking-widest mb-1.5">Identity Scanner: Auto-fill Existing Client by Phone</label>
                       <input 
                         type="text" 
                         placeholder="Type phone (e.g. 077 123 4567)" 
@@ -1241,7 +1241,7 @@ export default function AppointmentsManager({
                     </div>
                     {knownPets.length > 0 && (
                       <div className="flex-1">
-                        <label className="font-bold text-indigo-900 block text-[9px] uppercase tracking-widest mb-1.5">Detected Pets for {ownerName}</label>
+                        <label className="font-bold text-indigo-900 block text-[10px] uppercase tracking-widest mb-1.5">Detected Pets for {ownerName}</label>
                         <select onChange={(e) => {
                           const p = knownPets.find(k => k.name === e.target.value);
                           if(p) handleSelectKnownPet(p);
@@ -1255,14 +1255,14 @@ export default function AppointmentsManager({
                 )}
 
                 {/* TIER 1: Administration */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                  <div className="flex flex-col md:flex-row gap-5 mb-5">
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="flex flex-col md:flex-row gap-6 mb-6">
                     <div className="flex-1 w-full max-w-[150px]">
-                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">System Appointment ID</label>
+                      <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">System Appointment ID</label>
                       <input type="text" readOnly value={currentDisplayAptNumber} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-mono font-bold cursor-not-allowed outline-none text-xs" />
                     </div>
                     <div className="flex-1 w-full">
-                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Intake Tag (Admission Type)</label>
+                      <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Intake Tag (Admission Type)</label>
                       <select value={admissionType} onChange={(e) => setAdmissionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
                         <option value="OPD">OPD Consultation</option>
                         <option value="Vaccination">Vaccination Drop-off</option>
@@ -1274,8 +1274,8 @@ export default function AppointmentsManager({
                   </div>
 
                   {/* Urgency Selector */}
-                  <div className="mb-5">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Urgency Level</label>
+                  <div className="mb-6">
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Urgency Level</label>
                     <div className="flex gap-2">
                       <button type="button" onClick={() => setUrgency('routine')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors ${urgency === 'routine' ? 'bg-slate-800 text-white border-slate-900 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}>🟢 Routine</button>
                       <button type="button" onClick={() => setUrgency('non-emergency')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors ${urgency === 'non-emergency' ? 'bg-amber-500 text-white border-amber-600 shadow-sm' : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'}`}>🟡 Non-Emergency</button>
@@ -1285,19 +1285,19 @@ export default function AppointmentsManager({
                 </div>
 
                 {/* TIER 2: Patient & Owner Split */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                   {/* Patient Block */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                     <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><PawPrint className="w-3.5 h-3.5"/> Patient Details</h3>
                     <div className="space-y-3">
                       <div>
-                        <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name *</label>
+                        <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Patient Name *</label>
                         <input type="text" name="petName" required value={petName} onChange={(e) => { setPetName(e.target.value); setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !petName ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs`} />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Species</label>
+                          <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Species</label>
                           <select value={petType} onChange={(e) => setPetType(e.target.value as any)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
                             <option value="Canine">Canine</option>
                             <option value="Feline">Feline</option>
@@ -1308,7 +1308,7 @@ export default function AppointmentsManager({
                           </select>
                         </div>
                         <div>
-                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Breed</label>
+                          <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Breed</label>
                           <input type="text" value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="e.g. Labrador" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                         </div>
                       </div>
@@ -1316,11 +1316,11 @@ export default function AppointmentsManager({
                       {/* PHASE 1: Native Weight and Sex Inputs */}
                       <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
                         <div>
-                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Weight (kg)</label>
+                          <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Weight (kg)</label>
                           <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g. 15.5" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                         </div>
                         <div>
-                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Sex</label>
+                          <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Sex</label>
                           <select value={sex} onChange={(e) => setSex(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
                             <option value="Unknown">Unknown</option>
                             <option value="Male">Male</option>
@@ -1334,7 +1334,7 @@ export default function AppointmentsManager({
                   </div>
 
                   {/* Client Block */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col">
                     <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2 shrink-0"><User className="w-3.5 h-3.5"/> Client Details</h3>
 
                     {preFilledClient && !editingAptId ? (
@@ -1351,12 +1351,12 @@ export default function AppointmentsManager({
                     ) : (
                       <div className="space-y-3 flex-1">
                         <div>
-                          <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Owner Name *</label>
+                          <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Owner Name *</label>
                           <input type="text" name="ownerName" required value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Phone (+94 Format) *</label>
+                            <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Phone (+94 Format) *</label>
                             <PhoneInput
                               name="ownerPhone"
                               required
@@ -1365,7 +1365,7 @@ export default function AppointmentsManager({
                             />
                           </div>
                           <div>
-                            <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Email</label>
+                            <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Email</label>
                             <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs" />
                           </div>
                         </div>
@@ -1376,31 +1376,31 @@ export default function AppointmentsManager({
                 </div>
 
                 {/* TIER 3: Visit Logistics */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                   <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><Clock className="w-3.5 h-3.5"/> Schedule & Logistics</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Visit Date</label>
+                      <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Visit Date</label>
                       <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setFormError(''); }} className={`w-full px-3 py-2 bg-slate-50 border ${formError && !date ? 'border-rose-500' : 'border-slate-200'} rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer`} />
                     </div>
                     <div>
-                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Time Slot</label>
+                      <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Time Slot</label>
                       <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono text-xs cursor-pointer" />
                     </div>
                     <div>
-                      <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Attending Vet (Live DB)</label>
+                      <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Attending Vet (Live DB)</label>
                       <select value={veterinarian} onChange={(e) => setVeterinarian(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs cursor-pointer">
                         {liveVets.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
                       </select>
                     </div>
                   </div>
                   <div>
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Chief Complaint / Visit Notes *</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Chief Complaint / Visit Notes *</label>
                     <textarea name="reason" required rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Annual vaccinations, limping on front right leg..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-xs resize-none" />
                   </div>
 
                   {isSurgeryForm && (
-                    <div className="bg-amber-50 rounded-2xl p-5 border border-amber-200 mt-4 space-y-4 shadow-sm">
+                    <div className="bg-amber-50 rounded-2xl p-6 border border-amber-200 mt-4 space-y-4 shadow-sm">
                       <h3 className="text-[10px] font-black text-amber-800 uppercase tracking-widest flex items-center gap-2"><Activity className="w-3.5 h-3.5"/> Pre-Surgery Checklist</h3>
                       
                       {under6Months && (
@@ -1411,7 +1411,7 @@ export default function AppointmentsManager({
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="font-bold text-amber-800 block text-[9px] uppercase tracking-widest mb-1.5">Fasting Start Time</label>
+                          <label className="font-bold text-amber-800 block text-[10px] uppercase tracking-widest mb-1.5">Fasting Start Time</label>
                           <input type="datetime-local" value={fastingStartTime} onChange={(e) => setFastingStartTime(e.target.value)} className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 font-bold text-xs" />
                           {fastingStartTime && date && time && (
                             <div className={`mt-1.5 text-[10px] font-bold ${fastingHours < 5 ? 'text-amber-600' : fastingHours < 10 ? 'text-rose-600' : 'text-emerald-600'}`}>
@@ -1444,7 +1444,7 @@ export default function AppointmentsManager({
               </div>
               
               <div className="shrink-0 flex gap-3 p-6 justify-end border-t border-slate-200 bg-white shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-10">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
                 <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl cursor-pointer shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4"/> {editingAptId ? 'Save Changes' : 'Confirm Appointment'}
                 </button>
@@ -1458,12 +1458,12 @@ export default function AppointmentsManager({
       {showEmergencyModal && createPortal(
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowEmergencyModal(false)}>
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-rose-200" onClick={e => e.stopPropagation()}>
-            <div className="bg-rose-50 p-5 border-b border-rose-100 flex items-center justify-between">
+            <div className="bg-rose-50 p-6 border-b border-rose-100 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-black text-rose-700 flex items-center gap-2 tracking-tight">
                   <span className="text-xl">⚡</span> Emergency Intake
                 </h2>
-                <p className="text-rose-600/80 text-xs font-semibold mt-1">Bypass triage and push directly to active queue.</p>
+                <p className="text-rose-600/80 text-xs font-bold mt-1">Bypass triage and push directly to active queue.</p>
               </div>
               <button onClick={() => setShowEmergencyModal(false)} className="text-rose-400 hover:text-rose-700 hover:bg-rose-100 p-2 rounded-xl transition-colors cursor-pointer">
                 <X className="h-5 w-5" />
@@ -1472,33 +1472,33 @@ export default function AppointmentsManager({
             
             <div className="p-6 space-y-5">
               <div>
-                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Patient Name *</label>
+                <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Patient Name *</label>
                 <input type="text" autoFocus value={emergencyPetName} onChange={e => setEmergencyPetName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" placeholder="e.g. Buddy" />
               </div>
               
               <div>
-                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Owner Phone (Optional)</label>
+                <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Owner Phone (Optional)</label>
                 <PhoneInput value={emergencyOwnerPhone} onChange={setEmergencyOwnerPhone} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" />
               </div>
               
               <div>
-                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Chief Complaint *</label>
+                <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Chief Complaint *</label>
                 <input type="text" value={emergencyComplaint} onChange={e => setEmergencyComplaint(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" placeholder="e.g. Hit by vehicle, actively seizing..." />
               </div>
               
               <div>
-                <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Assigned Veterinarian</label>
+                <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Assigned Veterinarian</label>
                 <select value={emergencyVet} onChange={e => setEmergencyVet(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm cursor-pointer">
                   {liveVets.map(v => <option key={v.id} value={v.name}>Dr. {v.name}</option>)}
                 </select>
               </div>
             </div>
             
-            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-              <button onClick={() => setShowEmergencyModal(false)} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer shadow-sm">
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setShowEmergencyModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer shadow-sm">
                 Cancel
               </button>
-              <button onClick={handleEmergencyIntake} className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-200 flex items-center gap-2">
+              <button onClick={handleEmergencyIntake} className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-200 flex items-center gap-2">
                 <span className="text-sm">⚡</span> Create Emergency Intake
               </button>
             </div>

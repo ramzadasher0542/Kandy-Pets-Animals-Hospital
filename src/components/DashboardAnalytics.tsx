@@ -230,7 +230,7 @@ export default function DashboardAnalytics({
         
         {/* TOP ROW: TODAY AT A GLANCE */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
             <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
               <Users className="w-7 h-7 text-indigo-600" />
             </div>
@@ -242,7 +242,7 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
             <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
               <Calendar className="w-7 h-7 text-sky-600" />
             </div>
@@ -254,7 +254,7 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
             <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
               <TrendingUp className="w-7 h-7 text-emerald-600" />
             </div>
@@ -266,7 +266,7 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
             <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
               <CreditCard className="w-7 h-7 text-slate-600" />
             </div>
@@ -283,13 +283,13 @@ export default function DashboardAnalytics({
           
           {/* PRIMARY ROW: NEEDS ATTENTION */}
           <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[450px]">
-            <div className="p-5 border-b border-slate-100 shrink-0 bg-slate-50 rounded-t-2xl flex justify-between items-center">
+            <div className="p-6 border-b border-slate-100 shrink-0 bg-slate-50 rounded-t-2xl flex justify-between items-center">
               <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-500" /> Needs Attention
               </h2>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white px-2 py-1 rounded shadow-xs border border-slate-200">{needsAttention.length} Issues</span>
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
               {needsAttention.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-2"><CheckCircle className="w-6 h-6 text-emerald-500" /></div>
@@ -315,7 +315,7 @@ export default function DashboardAnalytics({
           {/* RIGHT COLUMN */}
           <div className="flex flex-col gap-6 h-[450px]">
             {/* REVENUE CHART */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 shrink-0">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 shrink-0">
               <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue This Week
               </h2>
@@ -328,11 +328,11 @@ export default function DashboardAnalytics({
                         style={{ height: `${(d.value / weekChart.maxVal) * 100}%`, minHeight: d.value > 0 ? '4px' : '0' }}
                       ></div>
                       {/* Tooltip */}
-                      <div className="absolute -top-8 bg-slate-800 text-white text-[9px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                      <div className="absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                         {formatCurrency(d.value)}
                       </div>
                     </div>
-                    <div className="text-[8px] font-bold text-slate-400 uppercase mt-1">{d.label}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase mt-1">{d.label}</div>
                   </div>
                 ))}
               </div>
@@ -353,7 +353,7 @@ export default function DashboardAnalytics({
                     <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0 last:pb-0">
                       <div>
                         <div className="text-xs font-black text-slate-800">{s.staff?.fullName || 'Unknown'}</div>
-                        <div className="text-[9px] font-bold text-slate-500">{s.role}</div>
+                        <div className="text-[10px] font-bold text-slate-500">{s.role}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="text-[10px] font-mono font-bold text-slate-600">
@@ -371,7 +371,7 @@ export default function DashboardAnalytics({
 
         {/* BOTTOM ROW: LIVE QUEUE */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col h-[350px]">
-          <div className="p-5 border-b border-slate-100 shrink-0 bg-slate-50 rounded-t-2xl flex justify-between items-center">
+          <div className="p-6 border-b border-slate-100 shrink-0 bg-slate-50 rounded-t-2xl flex justify-between items-center">
             <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
               <Activity className="w-4 h-4 text-sky-500" /> Live Queue
             </h2>
@@ -379,7 +379,7 @@ export default function DashboardAnalytics({
               {sortedQueue.length} Waiting
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
             {sortedQueue.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-3">
                 <Users className="w-10 h-10 opacity-50" />
@@ -398,19 +398,19 @@ export default function DashboardAnalytics({
                       <div>
                         <div className="text-sm font-black text-slate-800 flex items-center gap-1.5">
                           {q.petName}
-                          {q.urgency === 'emergency' && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[9px] font-black uppercase tracking-widest rounded shrink-0">EMERGENCY</span>}
-                          {q.urgency === 'non-emergency' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-widest rounded shrink-0">URGENT</span>}
+                          {q.urgency === 'emergency' && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-widest rounded shrink-0">EMERGENCY</span>}
+                          {q.urgency === 'non-emergency' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded shrink-0">URGENT</span>}
                         </div>
                         {q.emergencyBackfillRequired && (
-                          <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mt-0.5">⚠ DETAILS PENDING</div>
+                          <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 mt-0.5">⚠ DETAILS PENDING</div>
                         )}
                         <div className="text-[10px] font-bold text-slate-500 mt-0.5">{q.ownerName} • {q.serviceType}</div>
                       </div>
                     </div>
                     <div>
                       {/* Wait, ClinicQueueItem status is QueueStatus ('scheduled' | 'active' | 'completed'). Let's just say it's active. */}
-                      {q.status === 'active' && <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Active</span>}
-                      {q.status === 'scheduled' && <span className="px-3 py-1.5 bg-sky-100 text-sky-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs">Scheduled</span>}
+                      {q.status === 'active' && <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded shadow-xs">Active</span>}
+                      {q.status === 'scheduled' && <span className="px-3 py-1.5 bg-sky-100 text-sky-700 text-[10px] font-black uppercase tracking-widest rounded shadow-xs">Scheduled</span>}
                     </div>
                   </div>
                 );

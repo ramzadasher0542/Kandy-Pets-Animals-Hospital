@@ -228,17 +228,17 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
               <div className="flex justify-between items-center mb-1">
                 <div className="font-bold text-sm truncate flex items-center gap-1.5">
                   {q.petName}
-                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
                 </div>
-                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                   Pending Labs
                 </div>
               </div>
               {q.emergencyBackfillRequired && (
-                <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
               )}
-              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
+              <div className={`text-[10px] font-black ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
                 {q.ownerName}
               </div>
             </div>
@@ -252,14 +252,14 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
     <div className="flex h-full w-full gap-4 overflow-hidden" id="laboratory-module-container">
       
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
-        <div className="p-5 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
+        <div className="p-6 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
               <TestTube className="w-4 h-4 text-indigo-600" /> Lab Patients
             </h2>
-            <div className="flex bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
-              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
-              <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All</button>
+            <div className="flex bg-white border border-slate-200 rounded-2xl p-0.5 shadow-xs">
+              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
+              <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All</button>
             </div>
           </div>
           <div className="relative">
@@ -267,7 +267,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
             <input 
               type="text" placeholder="Search Pet or Owner..." value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs" 
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs" 
             />
           </div>
         </div>
@@ -285,10 +285,10 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
               >
                 <div className="flex justify-between items-start mb-1">
                   <div className={`font-black truncate text-sm ${selectedPatientId === patient.patientId ? 'text-white' : 'text-slate-800'}`}>{patient.petName}</div>
-                  {showQueueOnly && <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${selectedPatientId === patient.patientId ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>Queued</span>}
+                  {showQueueOnly && <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${selectedPatientId === patient.patientId ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>Queued</span>}
                 </div>
                 <div className={`text-[10px] font-bold ${selectedPatientId === patient.patientId ? 'text-indigo-200' : 'text-slate-500'}`}>{patient.petType} • {patient.breed}</div>
-                <div className={`text-[10px] font-semibold mt-2 pt-2 border-t flex items-center gap-1.5 ${selectedPatientId === patient.patientId ? 'text-indigo-100 border-indigo-500' : 'text-slate-400 border-slate-100'}`}>
+                <div className={`text-[10px] font-black mt-2 pt-2 border-t flex items-center gap-1.5 ${selectedPatientId === patient.patientId ? 'text-indigo-100 border-indigo-500' : 'text-slate-400 border-slate-100'}`}>
                   <User className="w-3 h-3" /> {patient.ownerName}
                 </div>
               </div>
@@ -335,7 +335,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                     <div className="bg-white border border-rose-200 rounded-2xl p-8 text-center shadow-sm">
                       <TestTube className="w-10 h-10 text-rose-300 mx-auto mb-3"/>
                       <h4 className="text-sm font-black text-rose-800">No Lab Services Configured</h4>
-                      <p className="text-xs text-rose-600 mt-2 font-medium">Go to Inventory Manager and create items with category 'Lab Service' to populate this matrix.</p>
+                      <p className="text-xs text-rose-600 mt-2 font-bold">Go to Inventory Manager and create items with category 'Lab Service' to populate this matrix.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -346,8 +346,8 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                           
                           {test.labParameters && test.labParameters.length > 0 && (
                             <div className="mb-4 flex flex-wrap gap-1">
-                              {test.labParameters.slice(0,3).map(p => <span key={p.name} className="bg-slate-100 text-slate-500 text-[8px] font-black px-1.5 py-0.5 rounded">{p.name}</span>)}
-                              {test.labParameters.length > 3 && <span className="bg-slate-100 text-slate-500 text-[8px] font-black px-1.5 py-0.5 rounded">+{test.labParameters.length - 3}</span>}
+                              {test.labParameters.slice(0,3).map(p => <span key={p.name} className="bg-slate-100 text-slate-500 text-[10px] font-black px-1.5 py-0.5 rounded">{p.name}</span>)}
+                              {test.labParameters.length > 3 && <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-1.5 py-0.5 rounded">+{test.labParameters.length - 3}</span>}
                             </div>
                           )}
 
@@ -367,11 +367,11 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in max-w-5xl mx-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[9px]">
-                        <th className="py-4 px-5">Request Date</th>
-                        <th className="py-4 px-5">Diagnostic Test</th>
-                        <th className="py-4 px-5">Status</th>
-                        <th className="py-4 px-5 text-right">Action</th>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
+                        <th className="py-4 px-6">Request Date</th>
+                        <th className="py-4 px-6">Diagnostic Test</th>
+                        <th className="py-4 px-6">Status</th>
+                        <th className="py-4 px-6 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -380,20 +380,20 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                       ) : (
                         allLabResults.map((lab, i) => (
                           <tr key={i} className="hover:bg-slate-50 transition-colors group">
-                            <td className="py-4 px-5 font-bold text-slate-600">{formatDisplayDate(lab.requestDate)}</td>
-                            <td className="py-4 px-5 font-black text-slate-800">{lab.testName}</td>
-                            <td className="py-4 px-5">
-                              <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${lab.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                            <td className="py-4 px-6 font-bold text-slate-600">{formatDisplayDate(lab.requestDate)}</td>
+                            <td className="py-4 px-6 font-black text-slate-800">{lab.testName}</td>
+                            <td className="py-4 px-6">
+                              <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${lab.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                                 {lab.status}
                               </span>
                             </td>
-                            <td className="py-4 px-5 text-right">
+                            <td className="py-4 px-6 text-right">
                               {lab.status === 'pending' ? (
-                                <button onClick={() => openResultModal(lab, lab.recordId)} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors shadow-xs cursor-pointer inline-flex items-center gap-1.5">
+                                <button onClick={() => openResultModal(lab, lab.recordId)} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors shadow-xs cursor-pointer inline-flex items-center gap-1.5">
                                   <ClipboardList className="w-3 h-3"/> Enter Data
                                 </button>
                               ) : (
-                                <button onClick={() => openResultModal(lab, lab.recordId)} className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer inline-flex items-center gap-1.5">
+                                <button onClick={() => openResultModal(lab, lab.recordId)} className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer inline-flex items-center gap-1.5">
                                   <FileText className="w-3 h-3"/> View Report
                                 </button>
                               )}
@@ -417,21 +417,21 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
             <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-5 shrink-0">
               <div>
                 <h3 className="text-lg font-black text-slate-800 tracking-tight">Diagnostic Report</h3>
-                <p className="text-[11px] text-indigo-600 font-black mt-1 uppercase tracking-widest">{activeLabResult.result.testName}</p>
+                <p className="text-[10px] text-indigo-600 font-black mt-1 uppercase tracking-widest">{activeLabResult.result.testName}</p>
               </div>
               <button onClick={() => setShowResultModal(false)} className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 transition-colors"><X className="w-5 h-5"/></button>
             </div>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
               {activeTestSchema && activeTestSchema.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
                   <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Measured Parameters</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {activeTestSchema.map(param => (
                       <div key={param.name} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col">
                         <div className="flex justify-between items-end mb-2">
                           <label className="text-xs font-black text-slate-800">{param.name}</label>
-                          <span className="text-[9px] font-bold text-slate-400 font-mono">Range: {param.referenceRange}</span>
+                          <span className="text-[10px] font-bold text-slate-400 font-mono">Range: {param.referenceRange}</span>
                         </div>
                         <div className="relative">
                           <input 
@@ -439,7 +439,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                             value={parameterValues[param.name] || ''} 
                             onChange={e => setParameterValues({...parameterValues, [param.name]: e.target.value})}
                             readOnly={activeLabResult.result.status === 'completed'}
-                            className={`w-full px-3 py-2 border rounded-lg text-sm font-bold font-mono focus:outline-none pr-12 ${activeLabResult.result.status === 'completed' ? 'bg-slate-50 border-transparent text-slate-700 cursor-not-allowed' : 'bg-white border-slate-200 text-indigo-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20'}`}
+                            className={`w-full px-3 py-2 border rounded-xl text-sm font-bold font-mono focus:outline-none pr-12 ${activeLabResult.result.status === 'completed' ? 'bg-slate-50 border-transparent text-slate-700 cursor-not-allowed' : 'bg-white border-slate-200 text-indigo-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20'}`}
                           />
                           <span className="absolute right-3 top-2.5 text-[10px] font-black text-slate-400">{param.unit}</span>
                         </div>
@@ -457,7 +457,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                   onChange={e => setResultNotes(e.target.value)}
                   readOnly={activeLabResult.result.status === 'completed'}
                   placeholder="Enter morphological findings, cellular observations, or general remarks..."
-                  className={`w-full px-4 py-3 border rounded-2xl text-xs font-semibold focus:outline-none resize-none ${activeLabResult.result.status === 'completed' ? 'bg-slate-50 border-slate-200 text-slate-700 cursor-not-allowed' : 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-sm'}`}
+                  className={`w-full px-4 py-3 border rounded-2xl text-xs font-bold focus:outline-none resize-none ${activeLabResult.result.status === 'completed' ? 'bg-slate-50 border-slate-200 text-slate-700 cursor-not-allowed' : 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 shadow-sm'}`}
                 />
               </div>
 
@@ -465,7 +465,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
 
             {activeLabResult.result.status === 'pending' && (
               <div className="flex justify-end gap-3 border-t border-slate-100 pt-5 mt-4 shrink-0">
-                <button onClick={() => setShowResultModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 cursor-pointer text-[10px] transition-colors">Cancel</button>
+                <button onClick={() => setShowResultModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 cursor-pointer text-[10px] transition-colors">Cancel</button>
                 <button onClick={handleSaveResult} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest rounded-xl cursor-pointer shadow-md text-[10px] transition-colors flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4"/> Lock Results & Finalize
                 </button>

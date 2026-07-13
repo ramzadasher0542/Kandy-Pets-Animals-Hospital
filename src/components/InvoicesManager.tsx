@@ -12,6 +12,10 @@ import {
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 import { fetchPaginatedInvoices, fetchInvoiceStats } from '../lib/db';
+import { Badge } from './ui/Badge';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
+import { EmptyState } from './ui/EmptyState';
 
 interface InvoicesProps {
   invoices: any[];
@@ -150,7 +154,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             <button 
               key={status} 
               onClick={() => setStatusFilter(status as any)}
-              className={`whitespace-nowrap px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+              className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                 statusFilter === status 
                   ? 'bg-slate-800 text-white shadow-md' 
                   : `bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200`
@@ -163,12 +167,12 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
 
         <div className="relative w-full md:w-80">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input 
+          <Input 
             type="text" 
             placeholder="Search Invoice #, Client, or Pet..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            className="!pl-9 !py-2.5"
           />
         </div>
       </div>
@@ -196,9 +200,8 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                 </tr>
               ) : pageInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
-                    <FileText className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                    <div className="text-sm font-black text-slate-500">No invoices match the current filter.</div>
+                  <td colSpan={6} className="py-16">
+                    <EmptyState icon={<FileText className="w-6 h-6 text-slate-400" />} title="No invoices match the current filter." />
                   </td>
                 </tr>
               ) : pageInvoices.map(inv => {
@@ -229,22 +232,18 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                       <div className={`font-mono text-sm font-black ${isVoid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
                         {currencySign}{(inv.sales_total || 0).toFixed(2)}
                       </div>
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
                         {inv.paymentMethod === 'split' ? 'SPLIT TENDER' : inv.paymentMethod}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-xs inline-flex items-center gap-1 ${
-                        isVoid 
-                          ? 'bg-rose-50 text-rose-700 border-rose-200' 
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      }`}>
+                      <Badge tone={isVoid ? 'rose' : 'emerald'} className="inline-flex items-center gap-1">
                         {isVoid ? <X className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
                         {inv.paymentStatus}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => setSelectedInvoice(inv)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 font-bold rounded-lg text-[10px] uppercase tracking-widest transition-all cursor-pointer shadow-xs inline-flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100">
+                      <button onClick={() => setSelectedInvoice(inv)} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all cursor-pointer shadow-xs inline-flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100">
                         Inspect <ArrowRight className="w-3 h-3" />
                       </button>
                     </td>
@@ -265,7 +264,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
               <button
                 onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
                 disabled={currentPage === 0}
-                className={`p-2 rounded-lg border transition-all ${currentPage === 0 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+                className={`p-2 rounded-xl border transition-all ${currentPage === 0 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -275,7 +274,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
                 disabled={currentPage >= totalPages - 1}
-                className={`p-2 rounded-lg border transition-all ${currentPage >= totalPages - 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
+                className={`p-2 rounded-xl border transition-all ${currentPage >= totalPages - 1 ? 'text-slate-300 border-slate-100 cursor-not-allowed' : 'text-slate-600 border-slate-200 hover:bg-slate-100 cursor-pointer'}`}
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -293,7 +292,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             <div className="p-4 border-b border-slate-100 shrink-0 flex justify-between items-center bg-slate-50/50 print:hidden">
               <div>
                 <h2 className="text-sm font-black text-slate-800">Receipt Inspector</h2>
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Financial Archive Record</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Financial Archive Record</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={handlePrint} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl cursor-pointer transition-colors"><Printer className="w-4 h-4"/></button>
@@ -312,20 +311,20 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
 
               <div className="text-center border-b border-slate-200 pb-6 mb-6">
                 <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">{systemConfig?.hospitalName || 'CeylonPets Hospital'}</h1>
-                <p className="text-xs font-semibold text-slate-500 mt-1">{systemConfig?.hospitalAddress || 'Kandy, Sri Lanka'}</p>
-                <p className="text-xs font-semibold text-slate-500">{systemConfig?.hospitalPhone || '+94 81 234 5678'}</p>
+                <p className="text-xs font-bold text-slate-500 mt-1">{systemConfig?.hospitalAddress || 'Kandy, Sri Lanka'}</p>
+                <p className="text-xs font-bold text-slate-500">{systemConfig?.hospitalPhone || '+94 81 234 5678'}</p>
               </div>
 
               <div className="flex justify-between items-end mb-6 text-sm">
                 <div>
                   <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Billed To</p>
                   <p className="font-black text-slate-800">{selectedInvoice.ownerName || 'Walk-in Client'}</p>
-                  {selectedInvoice.petName && <p className="font-semibold text-slate-600 text-xs mt-0.5">Patient: {selectedInvoice.petName}</p>}
+                  {selectedInvoice.petName && <p className="font-bold text-slate-600 text-xs mt-0.5">Patient: {selectedInvoice.petName}</p>}
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Invoice No.</p>
                   <p className="font-mono font-black text-slate-800">{selectedInvoice.invoiceNumber || selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8)}</p>
-                  <p className="font-mono font-semibold text-slate-500 text-xs mt-0.5">{new Date(selectedInvoice.date).toLocaleDateString()} {new Date(selectedInvoice.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                  <p className="font-mono font-bold text-slate-500 text-xs mt-0.5">{new Date(selectedInvoice.date).toLocaleDateString()} {new Date(selectedInvoice.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                 </div>
               </div>
 
@@ -346,7 +345,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                     
                     return (
                     <tr key={idx}>
-                      <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-semibold text-slate-400">@ {currencySign}{price.toFixed(2)}</div></td>
+                      <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-black text-slate-400">@ {currencySign}{price.toFixed(2)}</div></td>
                       <td className="py-3 px-2 text-center font-mono font-bold text-slate-600">{qty}</td>
                       <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{total.toFixed(2)}</td>
                     </tr>
@@ -389,18 +388,18 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
             {/* Modal Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-between items-center print:hidden">
               {selectedInvoice.paymentStatus !== 'void' ? (
-                <button data-testid="btn-void-invoice" onClick={handleVoid} className="px-5 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">
+                <button data-testid="btn-void-invoice" onClick={handleVoid} className="px-4 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4"/> Execute Void Protocol
                 </button>
               ) : (
-                <div className="px-5 py-2.5 bg-slate-200 text-slate-500 font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-not-allowed">
+                <Button disabled variant="secondary">
                   <X className="w-4 h-4"/> Already Voided
-                </div>
+                </Button>
               )}
               
-              <button onClick={handlePrint} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+              <Button onClick={handlePrint} className="px-8">
                 <Printer className="w-4 h-4"/> Print Receipt
-              </button>
+              </Button>
             </div>
             
           </div>

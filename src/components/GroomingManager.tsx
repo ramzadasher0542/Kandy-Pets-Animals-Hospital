@@ -297,17 +297,17 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
               <div className="flex justify-between items-center mb-1">
                 <div className="font-bold text-sm truncate flex items-center gap-1.5">
                   {q.petName}
-                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
                 </div>
-                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                   Waiting
                 </div>
               </div>
               {q.emergencyBackfillRequired && (
-                <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
               )}
-              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
+              <div className={`text-[10px] font-black ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
                 {q.ownerName}
               </div>
             </div>
@@ -323,7 +323,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
       {/* LEFT PANE: Patient Directory */}
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
         <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
-          <h2 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <Scissors className="w-5 h-5 text-indigo-600" /> Salon Intake Directory
           </h2>
           <div className="relative">
@@ -331,7 +331,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
             <input 
               type="text" placeholder="Search Patient or Owner..." value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs" 
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs" 
             />
           </div>
         </div>
@@ -344,7 +344,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
               key={patient.patientId} onClick={() => { setSelectedPatientId(patient.patientId); setSelectedServices([]); setActiveTab('new_session'); }}
               className={`p-3 rounded-xl cursor-pointer transition-all border ${selectedPatientId === patient.patientId ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
             >
-              <div className="font-extrabold truncate text-sm text-slate-800 mb-1">{patient.pet?.name || 'Unknown'}</div>
+              <div className="font-bold truncate text-sm text-slate-800 mb-1">{patient.pet?.name || 'Unknown'}</div>
               <div className="text-[10px] font-bold text-slate-500 flex items-center justify-between">
                 <span>{patient.pet?.petType} • {patient.pet?.breed}</span>
                 <span className="flex items-center gap-1 text-slate-400"><User className="w-3 h-3"/> {patient.ownerName}</span>
@@ -359,8 +359,8 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
         {!selectedPatient ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
             <Scissors className="h-12 w-12 text-slate-300 mb-3" />
-            <h3 className="text-sm font-extrabold text-slate-500">Select a Patient</h3>
-            <p className="text-xs font-medium mt-1 text-slate-400">Choose a patient to begin a new grooming session.</p>
+            <h3 className="text-sm font-bold text-slate-500">Select a Patient</h3>
+            <p className="text-xs font-bold mt-1 text-slate-400">Choose a patient to begin a new grooming session.</p>
           </div>
         ) : (
           <div className="flex-1 flex flex-col relative overflow-hidden">
@@ -386,7 +386,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
               {/* TAB: New Session */}
               {activeTab === 'new_session' && (
                 <div className="flex flex-col h-full space-y-6">
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                     <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Grooming Instructions</h3>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                       {(['bathe', 'fullShave', 'trimOnly', 'nailClip', 'earClean', 'deShed'] as const).map(key => {
@@ -400,7 +400,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                               if (key === 'trimOnly' && !isChecked) newInst.fullShave = false;
                               setGroomingInstructions(newInst);
                             }} />
-                            <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
+                            <div className={`w-5 h-5 rounded-xl flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
                               {isChecked && <CheckCircle2 className="w-4 h-4" />}
                             </div>
                             <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{labelMap[key]}</span>
@@ -436,14 +436,14 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                         />
                       </div>
                       <div className="mt-2">
-                        <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors">Clear Signature</button>
+                        <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">Clear Signature</button>
                       </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
                     {GROOMING_SERVICES.map(group => (
-                      <div key={group.category} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm h-fit">
+                      <div key={group.category} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit">
                         <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">{group.category}</h3>
                         <div className="space-y-3">
                           {group.items.map(item => {
@@ -456,7 +456,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                                   checked={isChecked} 
                                   onChange={() => toggleService(item)} 
                                 />
-                                <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
+                                <div className={`w-5 h-5 rounded-xl flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
                                   {isChecked && <CheckCircle2 className="w-4 h-4" />}
                                 </div>
                                 <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{item}</span>
@@ -469,10 +469,10 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                   </div>
 
                   {/* Checkout Footer */}
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 flex items-center justify-between shrink-0">
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6 flex items-center justify-between shrink-0">
                     <div>
                       <h4 className="text-sm font-black text-indigo-900 flex items-center gap-2"><Activity className="w-4 h-4" /> Ready for POS Billing</h4>
-                      <p className="text-xs text-indigo-700 font-semibold mt-1">Selected services will be mapped to inventory prices and pushed to the patient's checkout queue.</p>
+                      <p className="text-xs text-indigo-700 font-bold mt-1">Selected services will be mapped to inventory prices and pushed to the patient's checkout queue.</p>
                       <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-2">
                         {selectedServices.length} Services Selected
                       </div>
@@ -493,7 +493,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[9px]">
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[10px]">
                         <th className="py-3 px-4 w-40">Date</th>
                         <th className="py-3 px-4">Services Rendered</th>
                       </tr>
@@ -531,22 +531,22 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                               </details>
                             </td>
                             <td className="py-4 px-4 text-right flex flex-col items-end gap-2">
-                              <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                              <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
                                 {log.status}
                               </span>
                               {log.consentSignature ? (
                                 <>
-                                  <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-white flex items-center gap-1">
+                                  <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white flex items-center gap-1">
                                     <CheckCircle2 className="w-3 h-3" /> CONSENT SIGNED
                                   </span>
                                   <button onClick={() => setSignatureModal(log.consentSignature!)} className="text-[10px] font-bold text-indigo-600 hover:underline">View Signature</button>
                                 </>
                               ) : (
-                                <span className="px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-rose-500 text-white flex items-center gap-1">
+                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500 text-white flex items-center gap-1">
                                   <AlertTriangle className="w-3 h-3" /> NO CONSENT
                                 </span>
                               )}
-                              <button onClick={() => handlePrintConsent(log)} className="mt-1 flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-colors border border-slate-300">
+                              <button onClick={() => handlePrintConsent(log)} className="mt-1 flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-xl transition-colors border border-slate-300">
                                 🖨 Print Consent Form
                               </button>
                             </td>
@@ -570,11 +570,11 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
               <h3 className="text-lg font-black text-amber-900 flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-amber-600" /> Missing Signature
               </h3>
-              <p className="text-sm font-medium text-amber-800 mt-2">No signature captured. Save anyway?</p>
+              <p className="text-sm font-bold text-amber-800 mt-2">No signature captured. Save anyway?</p>
             </div>
             <div className="p-4 flex gap-3 justify-end bg-slate-50 border-t border-slate-100">
-              <button onClick={() => setShowWarningModal(false)} className="px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-              <button onClick={processFinalization} className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md">Confirm Save</button>
+              <button onClick={() => setShowWarningModal(false)} className="px-6 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+              <button onClick={processFinalization} className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md">Confirm Save</button>
             </div>
           </div>
         </div>
@@ -584,7 +584,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSignatureModal(null)}>
           <div className="bg-white rounded-2xl p-4 shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
             <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Customer Signature</h3>
-            <img src={signatureModal} alt="Signature" className="border border-slate-200 rounded-lg w-full md:w-[400px]" />
+            <img src={signatureModal} alt="Signature" className="border border-slate-200 rounded-2xl w-full md:w-[400px]" />
             <button onClick={() => setSignatureModal(null)} className="w-full mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">Close</button>
           </div>
         </div>

@@ -122,7 +122,7 @@ export default function SystemSettings({
     
     let avatarColor = 'bg-slate-100 text-slate-700 border-slate-200';
     if (newStaff.role === 'veterinarian') avatarColor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (newStaff.role === 'cashier') avatarColor = 'bg-blue-100 text-blue-700 border-blue-200';
+    if (newStaff.role === 'cashier') avatarColor = 'bg-sky-100 text-sky-700 border-sky-200';
     if (newStaff.role === 'admin' || newStaff.role === 'owner') avatarColor = 'bg-indigo-100 text-indigo-700 border-indigo-200';
 
     await onAddUser({
@@ -371,7 +371,7 @@ export default function SystemSettings({
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-500" /> Identity & Branding</h3>
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Hospital Name</label>
                     <input type="text" value={localConfig.hospitalName} onChange={e => updateConfig('hospitalName', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
@@ -399,7 +399,7 @@ export default function SystemSettings({
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-500" /> Email (Z-Report) — EmailJS</h3>
                 <p className="text-[10px] font-bold text-slate-400 -mt-3">Configure your own EmailJS account to email the end-of-day Z-Report. Nothing is sent until all three fields are filled. Recipients use the "Public Email" above.</p>
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Service ID</label>
                     <input type="text" value={localConfig.emailjsServiceId || ''} onChange={e => updateConfig('emailjsServiceId', e.target.value)} placeholder="service_xxxxxxx" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
@@ -417,7 +417,7 @@ export default function SystemSettings({
 
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Printer className="w-4 h-4 text-indigo-500" /> POS & Invoice Defaults</h3>
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Currency Symbol</label>
                     <input type="text" value={localConfig.currencySymbol} onChange={e => updateConfig('currencySymbol', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
@@ -444,7 +444,7 @@ export default function SystemSettings({
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Printer className="w-4 h-4 text-emerald-500" /> Receipt Printer Configuration</h3>
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Primary Target Printer (Browser Match)</label>
                     <input type="text" value={localConfig.selectedReceiptPrinter} onChange={e => updateConfig('selectedReceiptPrinter', e.target.value)} placeholder="e.g. EPSON TM-T20III" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20" />
@@ -474,10 +474,10 @@ export default function SystemSettings({
             <div className="space-y-6 animate-fade-in flex flex-col h-full">
               <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0">
                 <div>
-                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Lock className="w-4 h-4 text-blue-500" /> Access Control & Registry</h3>
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Lock className="w-4 h-4 text-sky-500" /> Access Control & Registry</h3>
                   <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Manage clinical staff and terminal PINs</p>
                 </div>
-                <button onClick={() => setShowAddStaff(true)} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-sm text-[10px] uppercase tracking-widest flex items-center gap-2 transition-colors cursor-pointer">
+                <button onClick={() => setShowAddStaff(true)} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-sm text-[10px] uppercase tracking-widest flex items-center gap-2 transition-colors cursor-pointer">
                   <Plus className="w-4 h-4" /> Issue ID Card
                 </button>
               </div>
@@ -486,10 +486,10 @@ export default function SystemSettings({
                 {users.map(u => (
                   <div key={u.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col relative group">
                     <div className="h-12 bg-slate-50 border-b border-slate-100 flex items-center justify-center shrink-0">
-                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Terminal Access Key</span>
+                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Terminal Access Key</span>
                     </div>
-                    <div className="p-5 text-center flex-1 flex flex-col items-center justify-center relative">
-                      <button onClick={() => onRemoveUser(u.id)} className="absolute top-2 right-2 p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors cursor-pointer opacity-0 group-hover:opacity-100" title="Revoke Access">
+                    <div className="p-6 text-center flex-1 flex flex-col items-center justify-center relative">
+                      <button onClick={() => onRemoveUser(u.id)} className="absolute top-2 right-2 p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-colors cursor-pointer opacity-0 group-hover:opacity-100" title="Revoke Access">
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <div className={`w-14 h-14 rounded-full border-4 flex items-center justify-center mb-3 shadow-sm ${u.avatarColor || 'bg-slate-100 border-slate-200'}`}>
@@ -498,7 +498,7 @@ export default function SystemSettings({
                       <h4 className="text-base font-black text-slate-800 leading-tight">{u.name}</h4>
                       <p className="text-xs font-mono font-bold text-slate-500 mt-1">@{u.username}</p>
                     </div>
-                    <div className={`p-2.5 text-center border-t text-[10px] font-black uppercase tracking-widest shrink-0 ${u.role === 'admin' || u.role === 'owner' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : u.role === 'veterinarian' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                    <div className={`p-2.5 text-center border-t text-[10px] font-black uppercase tracking-widest shrink-0 ${u.role === 'admin' || u.role === 'owner' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : u.role === 'veterinarian' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-sky-50 text-sky-700 border-sky-100'}`}>
                       {u.role} Clearance
                     </div>
                   </div>
@@ -525,13 +525,13 @@ export default function SystemSettings({
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button onClick={handleDownloadBackup} className="p-5 bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 hover:border-indigo-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                  <button onClick={handleDownloadBackup} className="p-6 bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 hover:border-indigo-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
                     <div className="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform"><DownloadCloud className="w-6 h-6"/></div>
                     <span className="text-sm font-black text-slate-800 mt-1">Download Full System Backup</span>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Complete JSON Snapshot</span>
                   </button>
 
-                  <button onClick={handleRestoreBackupTrigger} className="p-5 bg-gradient-to-br from-amber-50 to-white border border-amber-200 hover:border-amber-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                  <button onClick={handleRestoreBackupTrigger} className="p-6 bg-gradient-to-br from-amber-50 to-white border border-amber-200 hover:border-amber-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
                     <input type="file" accept=".json" ref={backupInputRef} onChange={handleBackupFileUpload} className="hidden" />
                     <div className="w-12 h-12 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform"><UploadCloud className="w-6 h-6"/></div>
                     <span className="text-sm font-black text-slate-800 mt-1">Restore System from Backup</span>
@@ -545,20 +545,20 @@ export default function SystemSettings({
                     <button onClick={exportTemplate} className="p-4 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
                       <div className="w-10 h-10 bg-white text-indigo-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5"/></div>
                       <span className="text-xs font-black text-slate-800">Download Template</span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
                     </button>
                     
                     <button onClick={exportCurrentInventory} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
                       <div className="w-10 h-10 bg-white text-emerald-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Download className="w-5 h-5"/></div>
                       <span className="text-xs font-black text-slate-800">Export Registry</span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
                     </button>
 
                     <div className="p-4 bg-slate-50 border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative overflow-hidden group">
                       <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
                       <div className="w-10 h-10 bg-white text-sky-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Upload className="w-5 h-5"/></div>
                       <span className="text-xs font-black text-slate-800">Upload CSV</span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
                     </div>
                   </div>
                 </div>
@@ -572,7 +572,7 @@ export default function SystemSettings({
                   <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Actions executed in this sector are irreversible. Bypassing these safety interlocks will result in permanent deletion of the IndexedDB vault and local system configurations.</p>
                   
                   <div className="space-y-4">
-                    <div className="bg-white border border-rose-100 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                    <div className="bg-white border border-rose-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
                         <h4 className="text-sm font-black text-slate-800 flex items-center gap-2"><Database className="w-4 h-4 text-rose-500" /> Purge Local Database</h4>
                         <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Wipes all tables, inventory, and charts. Reboots app.</p>
@@ -582,7 +582,7 @@ export default function SystemSettings({
                       </button>
                     </div>
 
-                    <div className="bg-white border border-rose-100 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                    <div className="bg-white border border-rose-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
                         <h4 className="text-sm font-black text-slate-800 flex items-center gap-2"><Power className="w-4 h-4 text-rose-500" /> Factory System Reset</h4>
                         <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Destroys database, configs, users, and localStorage.</p>
@@ -766,7 +766,7 @@ export default function SystemSettings({
                         className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
                       />
                     </div>
-                    <p className="text-[10px] font-medium text-slate-400 mt-1">Flat deposit collected at every intake, regardless of estimated stay. All charges run against this at discharge.</p>
+                    <p className="text-[10px] font-black text-slate-400 mt-1">Flat deposit collected at every intake, regardless of estimated stay. All charges run against this at discharge.</p>
                   </div>
                 </div>
               </div>
@@ -799,12 +799,12 @@ export default function SystemSettings({
                   <table className="w-full text-left text-xs border-collapse min-w-[700px]">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                       <tr>
-                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">SKU</th>
-                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Name</th>
-                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Stock/Min</th>
-                        <th className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Cost/Price</th>
+                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">SKU</th>
+                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Name</th>
+                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stock/Min</th>
+                        <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Cost/Price</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -815,7 +815,7 @@ export default function SystemSettings({
                           </td>
                           <td className="px-4 py-2 font-mono font-bold text-slate-600">{row.sku || 'MISSING'}</td>
                           <td className="px-4 py-2 font-bold text-slate-800">{row.name || 'MISSING'}</td>
-                          <td className="px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-indigo-600">{row.category}</td>
+                          <td className="px-4 py-2 text-[10px] uppercase tracking-wider font-bold text-indigo-600">{row.category}</td>
                           <td className="px-4 py-2 font-mono font-bold text-right">{row.stock}/{row.minstock || row.minStock}</td>
                           <td className="px-4 py-2 font-mono font-bold text-right">{row.cost}/{row.price}</td>
                         </tr>
@@ -851,7 +851,7 @@ export default function SystemSettings({
                 <h3 className="text-base font-black text-slate-800">Issue Access Card</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Register new terminal user</p>
               </div>
-              <button onClick={() => setShowAddStaff(false)} className="p-1.5 hover:bg-slate-200 text-slate-400 rounded-lg transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
+              <button onClick={() => setShowAddStaff(false)} className="p-1.5 hover:bg-slate-200 text-slate-400 rounded-xl transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleCreateStaff} className="p-6 space-y-4">
               <div>

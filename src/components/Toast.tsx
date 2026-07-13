@@ -52,7 +52,7 @@ export default function ToastContainer() {
             exit={{ opacity: 0, y: 20, scale: 0.9, filter: 'blur(4px)' }}
             layout
             className={`
-              pointer-events-auto flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl min-w-[320px] max-w-md
+              pointer-events-auto flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl min-w-[320px] max-w-md
               ${toast.type === 'success' ? 'bg-emerald-950/95 border-emerald-800/50' : ''}
               ${toast.type === 'error' ? 'bg-rose-950/95 border-rose-800/50' : ''}
               ${toast.type === 'info' ? 'bg-indigo-950/95 border-indigo-800/50' : ''}
@@ -67,13 +67,13 @@ export default function ToastContainer() {
             </div>
             
             <div className="flex-1">
-              <span className="font-semibold text-[15px] text-slate-100 block mb-0.5">
+              <span className="font-bold text-[15px] text-slate-100 block mb-0.5">
                 {toast.type === 'success' && 'Successfully Saved!'}
                 {toast.type === 'error' && 'Error'}
                 {toast.type === 'warning' && 'Warning'}
                 {toast.type === 'info' && 'Information'}
               </span>
-              <span className="font-medium text-[13px] text-slate-300 leading-snug">{toast.message}</span>
+              <span className="font-bold text-[13px] text-slate-300 leading-snug">{toast.message}</span>
             </div>
             
             <button 

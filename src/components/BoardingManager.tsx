@@ -349,17 +349,17 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               <div className="flex justify-between items-center mb-1">
                 <div className="font-bold text-sm truncate flex items-center gap-1.5">
                   {q.petName}
-                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
                 </div>
-                <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+                <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                   Waiting
                 </div>
               </div>
               {q.emergencyBackfillRequired && (
-                <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
               )}
-              <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
+              <div className={`text-[10px] font-black ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
                 {q.ownerName}
               </div>
             </div>
@@ -369,7 +369,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     );
   };
 
-  const btnClass = "py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg flex items-center justify-center gap-1";
+  const btnClass = "py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/30 hover:shadow-lg flex items-center justify-center gap-1";
 
   const renderCageBilling = (cage: string, occupant: { boarding: BoardingRecord; pet: Pet | undefined; ownerName: string }) => {
     const b = occupant.boarding;
@@ -383,15 +383,15 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       <div className="mt-auto pt-3 space-y-2">
         {/* Billing type badge + estimated stay */}
         <div className="flex items-center gap-1.5">
-          <span data-testid={`type-badge-${cage}`} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md shadow-sm ${isAdmission ? 'bg-white text-rose-700' : 'bg-blue-500 text-white'}`}>{isAdmission ? 'Admission' : 'Boarding'}</span>
-          <span className="text-[8px] font-bold text-rose-100">~{b.estimatedStayDays ?? 1}d · deposit Rs. {(deposit / 100).toFixed(0)}</span>
+          <span data-testid={`type-badge-${cage}`} className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded shadow-sm ${isAdmission ? 'bg-white text-rose-700' : 'bg-sky-500 text-white'}`}>{isAdmission ? 'Admission' : 'Boarding'}</span>
+          <span className="text-[10px] font-bold text-rose-100">~{b.estimatedStayDays ?? 1}d · deposit Rs. {(deposit / 100).toFixed(0)}</span>
         </div>
 
         {/* Running settlement tab */}
-        <div data-testid={`billing-tab-${cage}`} className="text-[9px] font-bold text-white bg-black/25 rounded-md p-2 border border-white/10 space-y-0.5">
+        <div data-testid={`billing-tab-${cage}`} className="text-[10px] font-bold text-white bg-black/25 rounded-xl p-2 border border-white/10 space-y-0.5">
           <div>Deposit held: Rs. {(deposit / 100).toFixed(2)}</div>
           <div data-testid={`charges-${cage}`}>Charges to date: Rs. {(charges / 100).toFixed(2)}</div>
-          <div data-testid={`balance-${cage}`} className={balance < 0 ? 'text-red-300 font-black' : 'text-emerald-200 font-black'}>
+          <div data-testid={`balance-${cage}`} className={balance < 0 ? 'text-rose-300 font-black' : 'text-emerald-200 font-black'}>
             Balance: Rs. {(balance / 100).toFixed(2)} {balance < 0 ? '(owes more)' : balance > 0 ? '(refund)' : ''}
           </div>
         </div>
@@ -407,7 +407,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
             <button data-testid={`log-med-btn-${cage}`} onClick={(e) => { e.stopPropagation(); openMedModal(cage); }} className={btnClass}><Pill className="w-3 h-3" />Med</button>
           )}
         </div>
-        <button data-testid={`discharge-settle-btn-${cage}`} onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white text-rose-700 hover:bg-rose-50 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/60 hover:shadow-lg flex items-center justify-center gap-1"><Receipt className="w-3 h-3" />Discharge &amp; Settle</button>
+        <button data-testid={`discharge-settle-btn-${cage}`} onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white text-rose-700 hover:bg-rose-50 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/60 hover:shadow-lg flex items-center justify-center gap-1"><Receipt className="w-3 h-3" />Discharge &amp; Settle</button>
       </div>
     );
   };
@@ -418,7 +418,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       {/* LEFT PANE: Visual Kennel Board (40%) */}
       <aside className="w-2/5 min-w-[350px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
         <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
-          <h2 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <Home className="w-5 h-5 text-indigo-600" /> Live Kennel & Condo Board
           </h2>
           <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Select an empty space to check-in.</p>
@@ -444,15 +444,15 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                       
                       <div className="relative z-10 flex flex-col h-full">
                         <div className="flex justify-between items-start mb-2">
-                          <div className="text-[10px] font-black text-rose-100 uppercase tracking-widest bg-black/20 px-2 py-1 rounded-md backdrop-blur-sm border border-white/10">{cage}</div>
+                          <div className="text-[10px] font-black text-rose-100 uppercase tracking-widest bg-black/20 px-2 py-1 rounded backdrop-blur-sm border border-white/10">{cage}</div>
                           <Lock className="w-4 h-4 text-rose-200" />
                         </div>
                         <div className="font-black text-white text-lg tracking-tight truncate drop-shadow-sm">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate opacity-90">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-rose-200 truncate mt-0.5">Owner: {occupant.ownerName || 'Unknown'}</div>
-                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-md inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
                         {occupant.boarding.feedingPlan && (
-                          <div data-testid={`feeding-plan-${cage}`} className="text-[9px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-md inline-block mt-1 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
+                          <div data-testid={`feeding-plan-${cage}`} className="text-[10px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-xl inline-block mt-1 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
                         )}
                         {renderCageBilling(cage, occupant)}
                       </div>
@@ -494,15 +494,15 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                       
                       <div className="relative z-10 flex flex-col h-full">
                         <div className="flex justify-between items-start mb-2">
-                          <div className="text-[10px] font-black text-rose-100 uppercase tracking-widest bg-black/20 px-2.5 py-1 rounded-md backdrop-blur-sm border border-white/10 shadow-sm">{cage}</div>
+                          <div className="text-[10px] font-black text-rose-100 uppercase tracking-widest bg-black/20 px-2.5 py-1 rounded backdrop-blur-sm border border-white/10 shadow-sm">{cage}</div>
                           <Lock className="w-5 h-5 text-rose-200 drop-shadow-sm" />
                         </div>
                         <div className="font-black text-white text-xl tracking-tight truncate drop-shadow-md">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate mb-1 opacity-90 drop-shadow-sm">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-white/80 bg-black/20 px-2 py-0.5 rounded-full inline-block mb-1 border border-white/10 w-max mt-1">Owner: {occupant.ownerName}</div>
-                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-md inline-block mb-3 border border-white/10 w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mb-3 border border-white/10 w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
                         {occupant.boarding.feedingPlan && (
-                          <div data-testid={`feeding-plan-${cage}`} className="text-[9px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-md inline-block mb-2 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
+                          <div data-testid={`feeding-plan-${cage}`} className="text-[10px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-xl inline-block mb-2 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
                         )}
                         {renderCageBilling(cage, occupant)}
                       </div>
@@ -536,8 +536,8 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
         {!selectedCage ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
             <Home className="h-12 w-12 text-slate-300 mb-3" />
-            <h3 className="text-sm font-extrabold text-slate-500">Select an Empty Space</h3>
-            <p className="text-xs font-medium mt-1 text-slate-400">Choose a kennel or condo from the board to initiate intake.</p>
+            <h3 className="text-sm font-bold text-slate-500">Select an Empty Space</h3>
+            <p className="text-xs font-bold mt-1 text-slate-400">Choose a kennel or condo from the board to initiate intake.</p>
           </div>
         ) : (
           <form onSubmit={handleOpenGuard} className="flex-1 flex flex-col relative h-full">
@@ -590,7 +590,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                     onChange={e => setEstimatedStayDays(parseInt(e.target.value) || 1)}
                     className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
-                  <p className="text-[10px] font-medium text-slate-400">For planning &amp; staffing only — does not change the deposit.</p>
+                  <p className="text-[10px] font-black text-slate-400">For planning &amp; staffing only — does not change the deposit.</p>
                 </div>
               </div>
 
@@ -658,15 +658,15 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               )}
 
               <div data-testid="deposit-display" className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
-                <p className="text-sm font-black text-emerald-800">Deposit to collect: Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="font-semibold text-emerald-600">(standard admission deposit)</span></p>
-                <p className="text-xs text-emerald-700 font-semibold mt-1">All charges will run against this deposit at discharge.</p>
+                <p className="text-sm font-black text-emerald-800">Deposit to collect: Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="font-bold text-emerald-600">(standard admission deposit)</span></p>
+                <p className="text-xs text-emerald-700 font-bold mt-1">All charges will run against this deposit at discharge.</p>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex gap-3 items-start">
                 <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Financial Notice</h4>
-                  <p className="text-xs text-amber-700 font-semibold leading-relaxed">Booking this space will immediately generate a mandatory admission deposit in the POS billing queue. The space will be locked until checkout.</p>
+                  <p className="text-xs text-amber-700 font-bold leading-relaxed">Booking this space will immediately generate a mandatory admission deposit in the POS billing queue. The space will be locked until checkout.</p>
                 </div>
               </div>
 
@@ -689,7 +689,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
             
             <div>
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Mandatory Admission Deposit</h3>
-              <p className="text-slate-500 text-xs font-semibold mt-2 px-2">System protocol requires a deposit to secure {selectedCage} and lock the patient into the ward flowsheet.</p>
+              <p className="text-slate-500 text-xs font-bold mt-2 px-2">System protocol requires a deposit to secure {selectedCage} and lock the patient into the ward flowsheet.</p>
             </div>
 
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -711,7 +711,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
         <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setFeedingModalCage(null)}>
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center shadow-inner"><Utensils className="w-6 h-6" /></div>
+              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shadow-inner"><Utensils className="w-6 h-6" /></div>
               <div>
                 <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Feeding Plan</h3>
                 <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{feedingModalCage} • {activeBoardingMap.get(feedingModalCage)?.pet?.name || 'Unknown'}</p>
@@ -761,7 +761,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
 
             <div className="flex gap-2 pt-2">
               <button onClick={() => setFeedingModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-              <button data-testid="feeding-save-btn" onClick={handleSaveFeedingPlan} className="flex-[2] py-3 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Set Feeding Plan</button>
+              <button data-testid="feeding-save-btn" onClick={handleSaveFeedingPlan} className="flex-[2] py-3 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Set Feeding Plan</button>
             </div>
           </div>
         </div>,
@@ -782,17 +782,17 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
 
             <div>
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Discharge &amp; Settle</h3>
-              <p className="text-slate-500 text-xs font-semibold mt-2 px-2">Settle the account for {occ?.pet?.name || 'this patient'} in {dischargeModalCage} and free the cage.</p>
+              <p className="text-slate-500 text-xs font-bold mt-2 px-2">Settle the account for {occ?.pet?.name || 'this patient'} in {dischargeModalCage} and free the cage.</p>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="font-semibold text-slate-500">Deposit held</span><span data-testid="settle-deposit" className="font-mono font-black text-slate-800">Rs. {(deposit / 100).toFixed(2)}</span></div>
-              <div className="flex justify-between"><span className="font-semibold text-slate-500">Charges to date</span><span data-testid="settle-charges" className="font-mono font-black text-slate-800">Rs. {(charges / 100).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="font-bold text-slate-500">Deposit held</span><span data-testid="settle-deposit" className="font-mono font-black text-slate-800">Rs. {(deposit / 100).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="font-bold text-slate-500">Charges to date</span><span data-testid="settle-charges" className="font-mono font-black text-slate-800">Rs. {(charges / 100).toFixed(2)}</span></div>
               <div className="border-t border-slate-200 my-1"></div>
               {balance >= 0 ? (
                 <div className="flex justify-between"><span className="font-black text-emerald-700">Refund to owner</span><span data-testid="settle-balance" className="font-mono font-black text-emerald-700">Rs. {(balance / 100).toFixed(2)}</span></div>
               ) : (
-                <div className="flex justify-between"><span className="font-black text-red-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-red-600">Rs. {(Math.abs(balance) / 100).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="font-black text-rose-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-rose-600">Rs. {(Math.abs(balance) / 100).toFixed(2)}</span></div>
               )}
             </div>
 

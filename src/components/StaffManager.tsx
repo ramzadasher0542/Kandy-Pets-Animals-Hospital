@@ -414,7 +414,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
     const r = role.toLowerCase();
     if (r.includes('admin') || r.includes('owner') || r.includes('vet on call')) return 'bg-indigo-100 text-indigo-700 border-indigo-200';
     if (r.includes('veterinarian') || r.includes('vet')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (r.includes('cashier')) return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (r.includes('cashier')) return 'bg-sky-100 text-sky-700 border-sky-200';
     if (r.includes('groomer')) return 'bg-amber-100 text-amber-700 border-amber-200';
     return 'bg-slate-100 text-slate-700 border-slate-200';
   };
@@ -482,24 +482,24 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         {activeTab === 'roster' ? (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-extrabold text-slate-800 tracking-tight">Active Roster</h2>
-              <button onClick={openNew} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
+              <h2 className="text-lg font-bold text-slate-800 tracking-tight">Active Roster</h2>
+              <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
                 <Plus className="w-4 h-4"/> Add Staff Member
               </button>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {activeProfiles.map(p => (
-                <div key={p.id} className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm flex flex-col justify-between relative group hover:border-indigo-300 transition-colors">
+                <div key={p.id} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm flex flex-col justify-between relative group hover:border-indigo-300 transition-colors">
                   <div className="space-y-2">
                     <h3 className="text-lg font-black text-slate-800 tracking-tight">{p.fullName}</h3>
                     <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{p.position} {p.department ? `• ${p.department}` : ''}</div>
                     <div className="flex flex-wrap gap-2 pt-1">
-                      <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${p.employmentType === 'hourly' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${p.employmentType === 'hourly' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
                         {p.employmentType}
                       </span>
                       {p.userId && (
-                        <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">
                           Linked to Login
                         </span>
                       )}
@@ -521,19 +521,19 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
 
             {inactiveProfiles.length > 0 && (
               <div className="mt-12 pt-6 border-t border-slate-200">
-                <button onClick={() => setShowInactive(!showInactive)} className="flex items-center gap-2 text-sm font-extrabold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer">
+                <button onClick={() => setShowInactive(!showInactive)} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer">
                   {showInactive ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>} Inactive Staff ({inactiveProfiles.length})
                 </button>
                 {showInactive && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6 opacity-60">
                     {inactiveProfiles.map(p => (
-                      <div key={p.id} className="bg-slate-50 border border-slate-200 p-5 rounded-2xl flex flex-col justify-between">
+                      <div key={p.id} className="bg-slate-50 border border-slate-200 p-6 rounded-2xl flex flex-col justify-between">
                         <div className="space-y-2">
                           <h3 className="text-lg font-black text-slate-600 tracking-tight">{p.fullName}</h3>
                           <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{p.position} {p.department ? `• ${p.department}` : ''}</div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-slate-200 text-slate-500">Inactive</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-slate-200 text-slate-500">Inactive</span>
                           <button onClick={() => openEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer"><Edit className="w-4 h-4"/></button>
                         </div>
                       </div>
@@ -548,12 +548,12 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
             <div className="flex justify-between items-center bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
               <div className="flex items-center gap-4">
                 <button onClick={() => setScheduleWeekStart(d => new Date(d.getFullYear(), d.getMonth(), d.getDate() - 7))} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ChevronLeft className="w-5 h-5"/></button>
-                <div className="text-sm font-extrabold text-slate-800">
+                <div className="text-sm font-bold text-slate-800">
                   {weekDays[0].toLocaleDateString('en-GB', {day: 'numeric', month: 'short'})} - {weekDays[6].toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'})}
                 </div>
                 <button onClick={() => setScheduleWeekStart(d => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7))} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ChevronRight className="w-5 h-5"/></button>
               </div>
-              <button onClick={() => setShowScheduleModal(true)} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer">
+              <button onClick={() => setShowScheduleModal(true)} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer">
                 <CalendarIcon className="w-4 h-4"/> Add Shift
               </button>
             </div>
@@ -566,16 +566,16 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   <div key={i} className="flex flex-col gap-3 min-h-[500px] bg-slate-100/50 rounded-2xl p-3 border border-slate-200">
                     <div className="text-center pb-2 border-b border-slate-200">
                       <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{date.toLocaleDateString('en-US', {weekday: 'short'})}</div>
-                      <div className="text-lg font-extrabold text-slate-800">{date.getDate()} {date.toLocaleDateString('en-US', {month: 'short'})}</div>
+                      <div className="text-lg font-bold text-slate-800">{date.getDate()} {date.toLocaleDateString('en-US', {month: 'short'})}</div>
                     </div>
                     {dayShifts.map(shift => {
                       const p = staffProfiles.find(s => s.id === shift.staffId);
                       const colorClass = getRoleColor(shift.role);
                       return (
                         <div key={shift.id} className={`p-3 rounded-xl border relative group ${colorClass}`}>
-                          <button onClick={() => onDeleteScheduleEntry(shift.id)} className="absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"><X className="w-3 h-3"/></button>
-                          <div className="font-extrabold text-xs">{p?.fullName || 'Unknown'}</div>
-                          <div className="text-[9px] font-black uppercase tracking-widest opacity-80 mt-1">{shift.role}</div>
+                          <button onClick={() => onDeleteScheduleEntry(shift.id)} className="absolute top-1 right-1 p-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10"><X className="w-3 h-3"/></button>
+                          <div className="font-bold text-xs">{p?.fullName || 'Unknown'}</div>
+                          <div className="text-[10px] font-black uppercase tracking-widest opacity-80 mt-1">{shift.role}</div>
                           <div className="text-xs font-mono font-bold mt-2 pt-2 border-t border-black/10">
                             {new Date(shift.shiftStart).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})}–{new Date(shift.shiftEnd).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false})}
                           </div>
@@ -591,7 +591,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
           <div className="space-y-8 max-w-4xl">
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
               <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2"><Link className="w-4 h-4 text-indigo-500"/> Connect Staff to System Logins</h3>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Link className="w-4 h-4 text-indigo-500"/> Connect Staff to System Logins</h3>
                 <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Profiles without an attached user account cannot sign in to the POS or Vault.</p>
               </div>
               <table className="w-full text-left text-sm">
@@ -602,17 +602,17 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   {unlinkedProfiles.map(p => (
                     <tr key={p.id} className="hover:bg-slate-50/50">
                       <td className="p-4">
-                        <div className="font-extrabold text-slate-800">{p.fullName}</div>
+                        <div className="font-bold text-slate-800">{p.fullName}</div>
                         <div className="text-[10px] font-bold text-slate-400">{p.position}</div>
                       </td>
                       <td className="p-4">
-                        <select value={selectedUserIds[p.id] || ''} onChange={(e) => setSelectedUserIds(prev => ({...prev, [p.id]: e.target.value}))} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <select value={selectedUserIds[p.id] || ''} onChange={(e) => setSelectedUserIds(prev => ({...prev, [p.id]: e.target.value}))} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
                           <option value="">-- Select User Account --</option>
                           {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.username})</option>)}
                         </select>
                       </td>
                       <td className="p-4 text-right">
-                        <button onClick={() => handleLink(p)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer shadow-sm">Link</button>
+                        <button onClick={() => handleLink(p)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer shadow-sm">Link</button>
                       </td>
                     </tr>
                   ))}
@@ -623,7 +623,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
 
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden opacity-80">
               <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500"/> Linked Profiles</h3>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500"/> Linked Profiles</h3>
               </div>
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-widest font-black text-slate-500">
@@ -634,10 +634,10 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                     const u = users.find(u => u.id === p.userId);
                     return (
                       <tr key={p.id} className="hover:bg-slate-50/50">
-                        <td className="p-4 font-extrabold text-slate-800">{p.fullName}</td>
+                        <td className="p-4 font-bold text-slate-800">{p.fullName}</td>
                         <td className="p-4 font-mono text-xs text-slate-600">{u ? u.username : 'Unknown (Invalid ID)'}</td>
                         <td className="p-4 text-right">
-                          <button onClick={() => handleUnlink(p)} className="px-3 py-1.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer flex items-center gap-1 ml-auto"><Unlink className="w-3 h-3"/> Unlink</button>
+                          <button onClick={() => handleUnlink(p)} className="px-3 py-1.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer flex items-center gap-1 ml-auto"><Unlink className="w-3 h-3"/> Unlink</button>
                         </td>
                       </tr>
                     );
@@ -651,9 +651,9 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row gap-6">
               <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col items-center">
-                <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2 mb-6"><Clock className="w-5 h-5 text-indigo-500"/> Quick Clock Panel</h2>
+                <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2 mb-6"><Clock className="w-5 h-5 text-indigo-500"/> Quick Clock Panel</h2>
                 <div className="w-full max-w-sm space-y-6">
-                  <select value={clockSelectedStaff} onChange={e => setClockSelectedStaff(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                  <select value={clockSelectedStaff} onChange={e => setClockSelectedStaff(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="">-- Select Staff Member --</option>
                     {activeProfiles.map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
                   </select>
@@ -666,9 +666,9 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   <div className="text-center">
                     {clockSelectedStaff ? (
                       selectedStaffOpenEntry ? (
-                        <p className="text-sm font-bold text-emerald-600 bg-emerald-50 py-2 rounded-lg border border-emerald-100">{activeProfiles.find(p => p.id === clockSelectedStaff)?.fullName} is currently CLOCKED IN since {new Date(selectedStaffOpenEntry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                        <p className="text-sm font-bold text-emerald-600 bg-emerald-50 py-2 rounded-xl border border-emerald-100">{activeProfiles.find(p => p.id === clockSelectedStaff)?.fullName} is currently CLOCKED IN since {new Date(selectedStaffOpenEntry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                       ) : (
-                        <p className="text-sm font-bold text-slate-500 bg-slate-50 py-2 rounded-lg border border-slate-200">{activeProfiles.find(p => p.id === clockSelectedStaff)?.fullName} is not clocked in today.</p>
+                        <p className="text-sm font-bold text-slate-500 bg-slate-50 py-2 rounded-2xl border border-slate-200">{activeProfiles.find(p => p.id === clockSelectedStaff)?.fullName} is not clocked in today.</p>
                       )
                     ) : (
                        <p className="text-sm font-bold text-slate-400">Select a profile to view status</p>
@@ -678,37 +678,37 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
               </div>
               
               <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <h2 className="text-lg font-extrabold text-slate-800 tracking-tight mb-6">Manager Override — Edit / Add Entry</h2>
+                <h2 className="text-lg font-bold text-slate-800 tracking-tight mb-6">Manager Override — Edit / Add Entry</h2>
                 <form onSubmit={handleManualSave} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Staff Profile</label>
-                      <select required value={manualClockData.staffId} onChange={e => setManualClockData({...manualClockData, staffId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      <select required value={manualClockData.staffId} onChange={e => setManualClockData({...manualClockData, staffId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
                         <option value="">-- Select --</option>
                         {activeProfiles.map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Date</label>
-                      <input required type="date" value={manualClockData.date} onChange={e => setManualClockData({...manualClockData, date: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                      <input required type="date" value={manualClockData.date} onChange={e => setManualClockData({...manualClockData, date: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Clock In Time</label>
-                      <input required type="time" value={manualClockData.clockIn} onChange={e => setManualClockData({...manualClockData, clockIn: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                      <input required type="time" value={manualClockData.clockIn} onChange={e => setManualClockData({...manualClockData, clockIn: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Clock Out Time (Optional)</label>
-                      <input type="time" value={manualClockData.clockOut} onChange={e => setManualClockData({...manualClockData, clockOut: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                      <input type="time" value={manualClockData.clockOut} onChange={e => setManualClockData({...manualClockData, clockOut: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Notes (Optional)</label>
-                    <input type="text" value={manualClockData.notes} onChange={e => setManualClockData({...manualClockData, notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="Reason for override..." />
+                    <input type="text" value={manualClockData.notes} onChange={e => setManualClockData({...manualClockData, notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="Reason for override..." />
                   </div>
                   <div className="pt-2 flex justify-end">
-                    <button type="submit" className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Entry</button>
+                    <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Entry</button>
                   </div>
                 </form>
               </div>
@@ -716,7 +716,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
 
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
               <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">Today's Entries</h3>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">Today's Entries</h3>
               </div>
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase tracking-widest font-black text-slate-500">
@@ -727,13 +727,13 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                     const profile = staffProfiles.find(p => p.id === entry.staffId);
                     return (
                       <tr key={entry.id} className="hover:bg-slate-50/50">
-                        <td className="p-4 font-extrabold text-slate-800">{profile?.fullName || 'Unknown'}</td>
+                        <td className="p-4 font-bold text-slate-800">{profile?.fullName || 'Unknown'}</td>
                         <td className="p-4 font-mono text-xs text-slate-600">
                           {new Date(entry.clockIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {entry.clockOut ? new Date(entry.clockOut).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : <span className="text-emerald-600 font-bold bg-emerald-50 px-1 py-0.5 rounded">Still in</span>}
                         </td>
                         <td className="p-4 text-slate-600 font-bold text-xs">{entry.durationMinutes !== undefined ? `${Math.floor(entry.durationMinutes/60)}h ${entry.durationMinutes%60}m` : '--'}</td>
                         <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${entry.source === 'manager' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{entry.source}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${entry.source === 'manager' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{entry.source}</span>
                         </td>
                       </tr>
                     );
@@ -747,11 +747,11 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* LEFT — Generate New Payslip */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-              <h2 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2"><Wallet className="w-5 h-5 text-indigo-500"/> Generate New Payslip</h2>
+              <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2"><Wallet className="w-5 h-5 text-indigo-500"/> Generate New Payslip</h2>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Staff Member</label>
-                <select data-testid="payslip-staff-select" value={payslipStaffId} onChange={e => { setPayslipStaffId(e.target.value); setPayslipCalculated(null); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <select data-testid="payslip-staff-select" value={payslipStaffId} onChange={e => { setPayslipStaffId(e.target.value); setPayslipCalculated(null); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
                   <option value="">-- Select Staff --</option>
                   {activeProfiles.map(p => <option key={p.id} value={p.id}>{p.fullName} ({p.employmentType})</option>)}
                 </select>
@@ -760,11 +760,11 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Period Start</label>
-                  <input data-testid="payslip-period-start" type="date" value={payslipPeriodStart} onChange={e => setPayslipPeriodStart(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input data-testid="payslip-period-start" type="date" value={payslipPeriodStart} onChange={e => setPayslipPeriodStart(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Period End</label>
-                  <input data-testid="payslip-period-end" type="date" value={payslipPeriodEnd} onChange={e => setPayslipPeriodEnd(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input data-testid="payslip-period-end" type="date" value={payslipPeriodEnd} onChange={e => setPayslipPeriodEnd(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               </div>
 
@@ -781,7 +781,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                           const hours = (t.durationMinutes || 0) / 60;
                           const rowCents = Math.round(hours * (selectedPayslipStaff.hourlyRate || 0));
                           return (
-                            <div key={t.id} className="flex justify-between text-xs font-mono bg-white p-2 rounded-lg border border-slate-100">
+                            <div key={t.id} className="flex justify-between text-xs font-mono bg-white p-2 rounded-xl border border-slate-100">
                               <span className="font-bold text-slate-600">{t.date}</span>
                               <span className="text-slate-500">{new Date(t.clockIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}–{t.clockOut ? new Date(t.clockOut).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}</span>
                               <span className="text-slate-500">{hours.toFixed(2)}h</span>
@@ -812,13 +812,13 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deductions</label>
-                    <button data-testid="payslip-add-deduction-btn" onClick={() => setPayslipDeductions(prev => [...prev, { label: '', amountRs: '' }])} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer flex items-center gap-1"><Plus className="w-3 h-3"/> Add Deduction</button>
+                    <button data-testid="payslip-add-deduction-btn" onClick={() => setPayslipDeductions(prev => [...prev, { label: '', amountRs: '' }])} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer flex items-center gap-1"><Plus className="w-3 h-3"/> Add Deduction</button>
                   </div>
                   {payslipDeductions.map((d, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                      <input data-testid={`payslip-deduction-label-${i}`} type="text" value={d.label} onChange={e => setPayslipDeductions(prev => prev.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} placeholder="Label (e.g. Advance)" className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                      <input data-testid={`payslip-deduction-amount-${i}`} type="number" step="0.01" min="0" value={d.amountRs} onChange={e => setPayslipDeductions(prev => prev.map((x, idx) => idx === i ? { ...x, amountRs: e.target.value } : x))} placeholder="Rs." className="w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
-                      <button onClick={() => setPayslipDeductions(prev => prev.filter((_, idx) => idx !== i))} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"><X className="w-4 h-4"/></button>
+                      <input data-testid={`payslip-deduction-label-${i}`} type="text" value={d.label} onChange={e => setPayslipDeductions(prev => prev.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} placeholder="Label (e.g. Advance)" className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                      <input data-testid={`payslip-deduction-amount-${i}`} type="number" step="0.01" min="0" value={d.amountRs} onChange={e => setPayslipDeductions(prev => prev.map((x, idx) => idx === i ? { ...x, amountRs: e.target.value } : x))} placeholder="Rs." className="w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                      <button onClick={() => setPayslipDeductions(prev => prev.filter((_, idx) => idx !== i))} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"><X className="w-4 h-4"/></button>
                     </div>
                   ))}
 
@@ -835,7 +835,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
             {/* RIGHT — Payslip History */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
               <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500"/> Payslip History</h3>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500"/> Payslip History</h3>
               </div>
               <div className="divide-y divide-slate-100">
                 {payslipHistorySorted.length === 0 && <div className="p-8 text-center text-slate-400 font-bold text-sm">No payslips generated yet.</div>}
@@ -845,21 +845,21 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   return (
                     <div key={p.id} data-testid={`payslip-row-${p.id}`} className="p-4 hover:bg-slate-50/50 flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className="font-extrabold text-slate-800 truncate">{staff?.fullName || 'Unknown Staff'}</div>
+                        <div className="font-bold text-slate-800 truncate">{staff?.fullName || 'Unknown Staff'}</div>
                         <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">{p.periodStart} → {p.periodEnd}</div>
                         <div className="text-xs font-mono font-bold text-slate-600 mt-1">Gross Rs. {(p.grossPayCents/100).toFixed(2)} · Net Rs. {(p.netPayCents/100).toFixed(2)}</div>
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
-                        <span data-testid={`payslip-status-${p.id}`} className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeCls}`}>{p.status}</span>
+                        <span data-testid={`payslip-status-${p.id}`} className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${badgeCls}`}>{p.status}</span>
                         <div className="flex gap-1">
                           {p.status === 'draft' && (
-                            <button data-testid={`payslip-finalize-${p.id}`} onClick={() => handleUpdatePayslipStatus(p, 'finalized')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Finalize</button>
+                            <button data-testid={`payslip-finalize-${p.id}`} onClick={() => handleUpdatePayslipStatus(p, 'finalized')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Finalize</button>
                           )}
                           {p.status === 'finalized' && (
-                            <button data-testid={`payslip-mark-paid-${p.id}`} onClick={() => handleUpdatePayslipStatus(p, 'paid')} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Mark Paid</button>
+                            <button data-testid={`payslip-mark-paid-${p.id}`} onClick={() => handleUpdatePayslipStatus(p, 'paid')} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Mark Paid</button>
                           )}
                           {(p.status === 'finalized' || p.status === 'paid') && (
-                            <button data-testid={`payslip-download-${p.id}`} onClick={() => staff && generatePayslipPDF(p, staff)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer">Download PDF</button>
+                            <button data-testid={`payslip-download-${p.id}`} onClick={() => staff && generatePayslipPDF(p, staff)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Download PDF</button>
                           )}
                         </div>
                       </div>
@@ -876,48 +876,48 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-              <h3 className="font-extrabold text-slate-800">{isEditing ? 'Edit Staff Profile' : 'New Staff Profile'}</h3>
+              <h3 className="font-bold text-slate-800">{isEditing ? 'Edit Staff Profile' : 'New Staff Profile'}</h3>
               <button onClick={() => setShowModal(false)} className="p-1 text-slate-400 hover:bg-slate-200 rounded transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleSave} className="p-6 overflow-y-auto max-h-[80vh] custom-scrollbar space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Full Name *</label>
-                <input required type="text" value={formData.fullName || ''} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                <input required type="text" value={formData.fullName || ''} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Position</label>
-                  <input type="text" value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  <input type="text" value={formData.position || ''} onChange={e => setFormData({...formData, position: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Department</label>
-                  <input type="text" value={formData.department || ''} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  <input type="text" value={formData.department || ''} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Employment Type</label>
-                  <select value={formData.employmentType || 'hourly'} onChange={e => setFormData({...formData, employmentType: e.target.value as any})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                  <select value={formData.employmentType || 'hourly'} onChange={e => setFormData({...formData, employmentType: e.target.value as any})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
                     <option value="hourly">Hourly</option>
                     <option value="monthly">Monthly</option>
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Hire Date</label>
-                  <input type="date" value={formData.hireDate || ''} onChange={e => setFormData({...formData, hireDate: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input type="date" value={formData.hireDate || ''} onChange={e => setFormData({...formData, hireDate: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               </div>
               
               {formData.employmentType === 'hourly' && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Hourly Rate (Rs.)</label>
-                  <input type="number" step="0.01" min="0" value={formData.hourlyRate || ''} onChange={e => setFormData({...formData, hourlyRate: e.target.value ? Number(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input type="number" step="0.01" min="0" value={formData.hourlyRate || ''} onChange={e => setFormData({...formData, hourlyRate: e.target.value ? Number(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               )}
               {formData.employmentType === 'monthly' && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Monthly Salary (Rs.)</label>
-                  <input type="number" step="0.01" min="0" value={formData.monthlySalary || ''} onChange={e => setFormData({...formData, monthlySalary: e.target.value ? Number(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input type="number" step="0.01" min="0" value={formData.monthlySalary || ''} onChange={e => setFormData({...formData, monthlySalary: e.target.value ? Number(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               )}
 
@@ -927,7 +927,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
               </div>
 
               <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 mt-6">
-                <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
                 <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Profile</button>
               </div>
             </form>
@@ -940,13 +940,13 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-              <h3 className="font-extrabold text-slate-800">Add Shift</h3>
+              <h3 className="font-bold text-slate-800">Add Shift</h3>
               <button onClick={() => setShowScheduleModal(false)} className="p-1 text-slate-400 hover:bg-slate-200 rounded transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleSaveSchedule} className="p-6 overflow-y-auto max-h-[80vh] custom-scrollbar space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Staff Profile *</label>
-                <select required value={scheduleData.staffId} onChange={e => setScheduleData({...scheduleData, staffId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <select required value={scheduleData.staffId} onChange={e => setScheduleData({...scheduleData, staffId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
                   <option value="">-- Select --</option>
                   {activeProfiles.map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
                 </select>
@@ -954,11 +954,11 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Date *</label>
-                  <input required type="date" value={scheduleData.date} onChange={e => setScheduleData({...scheduleData, date: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input required type="date" value={scheduleData.date} onChange={e => setScheduleData({...scheduleData, date: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Role/Capacity *</label>
-                  <input required type="text" list="roles-list" value={scheduleData.role} onChange={e => setScheduleData({...scheduleData, role: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Vet on Call" />
+                  <input required type="text" list="roles-list" value={scheduleData.role} onChange={e => setScheduleData({...scheduleData, role: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Vet on Call" />
                   <datalist id="roles-list">
                     <option value="Vet on Call" />
                     <option value="Cashier" />
@@ -971,20 +971,20 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Start Time *</label>
-                  <input required type="time" value={scheduleData.startTime} onChange={e => setScheduleData({...scheduleData, startTime: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input required type="time" value={scheduleData.startTime} onChange={e => setScheduleData({...scheduleData, startTime: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">End Time *</label>
-                  <input required type="time" value={scheduleData.endTime} onChange={e => setScheduleData({...scheduleData, endTime: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input required type="time" value={scheduleData.endTime} onChange={e => setScheduleData({...scheduleData, endTime: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Notes (Optional)</label>
-                <input type="text" value={scheduleData.notes} onChange={e => setScheduleData({...scheduleData, notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                <input type="text" value={scheduleData.notes} onChange={e => setScheduleData({...scheduleData, notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
 
               <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 mt-6">
-                <button type="button" onClick={() => setShowScheduleModal(false)} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => setShowScheduleModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
                 <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Shift</button>
               </div>
             </form>

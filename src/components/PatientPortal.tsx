@@ -170,14 +170,14 @@ export default function PatientPortal({
     <div className="flex h-full w-full gap-4 overflow-hidden" id="patient-portal-container">
       
       <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
-        <div className="p-5 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
+        <div className="p-6 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
               <PawPrint className="w-4 h-4 text-indigo-600" /> Patient Portal
             </h2>
-            <div className="flex bg-white border border-slate-200 rounded-lg p-0.5 shadow-xs">
-              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
-              <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-md transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All Pets</button>
+            <div className="flex bg-white border border-slate-200 rounded-xl p-0.5 shadow-xs">
+              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
+              <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All Pets</button>
             </div>
           </div>
           <div className="relative">
@@ -185,7 +185,7 @@ export default function PatientPortal({
             <input 
               type="text" placeholder="Search Pet or Owner..." value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs" 
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs" 
             />
           </div>
         </div>
@@ -201,10 +201,10 @@ export default function PatientPortal({
               >
                 <div className="flex justify-between items-start mb-1">
                   <div className={`font-black truncate text-sm ${selectedPatientId === pet.patientId ? 'text-white' : 'text-slate-800'}`}>{pet.petName}</div>
-                  {showQueueOnly && <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${selectedPatientId === pet.patientId ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>Queued</span>}
+                  {showQueueOnly && <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${selectedPatientId === pet.patientId ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>Queued</span>}
                 </div>
                 <div className={`text-[10px] font-bold ${selectedPatientId === pet.patientId ? 'text-indigo-200' : 'text-slate-500'}`}>{pet.petType} • {pet.breed}</div>
-                <div className={`text-[10px] font-semibold mt-2 pt-2 border-t flex items-center gap-1.5 ${selectedPatientId === pet.patientId ? 'text-indigo-100 border-indigo-500' : 'text-slate-400 border-slate-100'}`}>
+                <div className={`text-[10px] font-black mt-2 pt-2 border-t flex items-center gap-1.5 ${selectedPatientId === pet.patientId ? 'text-indigo-100 border-indigo-500' : 'text-slate-400 border-slate-100'}`}>
                   <User className="w-3 h-3" /> {pet.ownerName}
                 </div>
               </div>
@@ -226,12 +226,12 @@ export default function PatientPortal({
               <div className="px-6 py-4 flex items-center justify-end border-b border-slate-100 bg-slate-50/50">
                 <div className="flex gap-2">
                    {onGoToRecords && petRecords.length > 0 && activeDisplayPet && (
-                     <button onClick={() => onGoToRecords(activeDisplayPet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                     <button onClick={() => onGoToRecords(activeDisplayPet.patientId)} className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                        <Activity className="w-3.5 h-3.5"/> Open Current E.H.R
                      </button>
                    )}
                    {onGenerateConsent && activeDisplayPet && (
-                     <button onClick={() => onGenerateConsent(activeDisplayPet.ownerName, activePet.name)} className="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
+                     <button onClick={() => onGenerateConsent(activeDisplayPet.ownerName, activePet.name)} className="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer">
                        <PenTool className="w-3.5 h-3.5"/> Sign Waiver
                      </button>
                    )}
@@ -239,7 +239,7 @@ export default function PatientPortal({
               </div>
               
               <div className="p-6 flex flex-wrap xl:flex-nowrap gap-6 items-center justify-between">
-                <div className="flex items-center gap-5">
+                <div className="flex items-center gap-6">
                   <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center border border-indigo-200 shadow-inner">
                     <PawPrint className="w-8 h-8 text-indigo-500" />
                   </div>
@@ -259,15 +259,15 @@ export default function PatientPortal({
 
                 <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <div className="text-center px-4 border-r border-slate-200">
-                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Sex</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Sex</div>
                     <div className="text-xs font-black text-slate-700">{activePet.weight ? `${activePet.weight} kg` : 'N/A'}</div>
                   </div>
                   <div className="text-center px-4 border-r border-slate-200">
-                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Weight</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Weight</div>
                     <div className="text-xs font-black text-slate-700">{activePet.weight ? `${activePet.weight} kg` : 'N/A'}</div>
                   </div>
                   <div className="text-center px-4">
-                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Age</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Age</div>
                     <div className="text-xs font-black text-slate-700">{activePet.age || 'Unknown'}</div>
                   </div>
                   <button onClick={handleOpenEditPet} className="ml-2 p-2 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 rounded-xl transition-all shadow-xs cursor-pointer" title="Edit Master Identity">
@@ -303,24 +303,24 @@ export default function PatientPortal({
                       {idx !== petRecords.length - 1 && <div className="absolute left-3.5 top-8 bottom-0 w-0.5 bg-slate-200 group-hover:bg-indigo-200 transition-colors"></div>}
                       <div className="absolute left-1.5 top-1.5 w-4 h-4 rounded-full border-4 border-white bg-indigo-400 shadow-sm group-hover:scale-125 transition-transform"></div>
                       
-                      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <div className="text-xs font-black text-slate-800 flex items-center gap-2">
                               {formatDisplayDate(record.visitDate)}
-                              {record.visitDate === todayStr && <span className="bg-emerald-100 text-emerald-700 text-[8px] px-1.5 py-0.5 rounded uppercase tracking-widest">Today</span>}
+                              {record.visitDate === todayStr && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-widest">Today</span>}
                             </div>
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Attending: {record.attendingVet || 'Unknown'}</div>
                           </div>
                           {record.assessment?.severity && (
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${record.assessment.severity === 'Critical' ? 'bg-rose-100 text-rose-700' : record.assessment.severity === 'Severe' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${record.assessment.severity === 'Critical' ? 'bg-rose-100 text-rose-700' : record.assessment.severity === 'Severe' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                               {record.assessment.severity}
                             </span>
                           )}
                         </div>
                         
                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-3">
-                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Diagnosis / Assessment</div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Diagnosis / Assessment</div>
                           <div className="text-xs font-bold text-slate-700 leading-relaxed">
                             {record.assessment?.diagnosisType ? `${record.assessment.diagnosisType}: ${record.assessment.notes}` : (record.diagnosis || 'No formal diagnosis recorded.')}
                           </div>
@@ -328,10 +328,10 @@ export default function PatientPortal({
 
                         {record.prescribedMeds && record.prescribedMeds.length > 0 && (
                           <div>
-                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Dispensed / Prescribed</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Dispensed / Prescribed</div>
                             <div className="flex flex-wrap gap-2">
                               {record.prescribedMeds.map((m, i) => (
-                                <span key={i} className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[9px] font-black px-2 py-1 rounded-md shadow-xs">
+                                <span key={i} className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-1 rounded shadow-xs">
                                   {m.name} {m.dosage ? `(${m.dosage})` : ''}
                                 </span>
                               ))}
@@ -352,7 +352,7 @@ export default function PatientPortal({
                     const abnormalSystems = Object.entries(exam).filter(([_, data]) => !data.isNormal || (data.abnormalities && data.abnormalities.length > 0));
                     
                     return (
-                      <div key={record.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                      <div key={record.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                         <div className="text-xs font-black text-slate-800 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
                           <Clock className="w-4 h-4 text-slate-400"/> {formatDisplayDate(record.visitDate)} Systemic Review
                         </div>
@@ -371,7 +371,7 @@ export default function PatientPortal({
                                 <ul className="list-disc list-inside text-xs font-bold text-rose-600 pl-1 space-y-1">
                                   {data.abnormalities?.map((ab, i) => <li key={i}>{ab}</li>)}
                                 </ul>
-                                {data.notes && <div className="text-[10px] font-medium text-rose-700 mt-2 italic border-t border-rose-100 pt-2">"{data.notes}"</div>}
+                                {data.notes && <div className="text-[10px] font-black text-rose-700 mt-2 italic border-t border-rose-100 pt-2">"{data.notes}"</div>}
                               </div>
                             ))}
                           </div>
@@ -386,11 +386,11 @@ export default function PatientPortal({
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in max-w-4xl mx-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[9px]">
-                        <th className="py-4 px-5">Date</th>
-                        <th className="py-4 px-5">Diagnostic Test</th>
-                        <th className="py-4 px-5">Status</th>
-                        <th className="py-4 px-5">Results / Matrix</th>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
+                        <th className="py-4 px-6">Date</th>
+                        <th className="py-4 px-6">Diagnostic Test</th>
+                        <th className="py-4 px-6">Status</th>
+                        <th className="py-4 px-6">Results / Matrix</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -399,14 +399,14 @@ export default function PatientPortal({
                       ) : (
                         allPetLabs.map((lab, i) => (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
-                            <td className="py-4 px-5 font-bold text-slate-600">{formatDisplayDate(lab.visitDate)}</td>
-                            <td className="py-4 px-5 font-black text-slate-800">{lab.testName}</td>
-                            <td className="py-4 px-5">
-                              <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${lab.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                            <td className="py-4 px-6 font-bold text-slate-600">{formatDisplayDate(lab.visitDate)}</td>
+                            <td className="py-4 px-6 font-black text-slate-800">{lab.testName}</td>
+                            <td className="py-4 px-6">
+                              <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${lab.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                                 {lab.status}
                               </span>
                             </td>
-                            <td className="py-4 px-5">
+                            <td className="py-4 px-6">
                               {lab.status === 'completed' ? (
                                  <div className="text-[10px] font-bold text-slate-600 line-clamp-2">
                                    {lab.value?.startsWith('{') ? 'Structured Parameters Logged' : (lab.notes || 'Results recorded in main lab module.')}
@@ -427,11 +427,11 @@ export default function PatientPortal({
                 <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden animate-fade-in max-w-4xl mx-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[9px]">
-                        <th className="py-4 px-5">Date Administered</th>
-                        <th className="py-4 px-5">Vaccine / Preventative</th>
-                        <th className="py-4 px-5">Next Due Date</th>
-                        <th className="py-4 px-5">Status</th>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
+                        <th className="py-4 px-6">Date Administered</th>
+                        <th className="py-4 px-6">Vaccine / Preventative</th>
+                        <th className="py-4 px-6">Next Due Date</th>
+                        <th className="py-4 px-6">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -442,11 +442,11 @@ export default function PatientPortal({
                           const isOverdue = new Date() > new Date(vax.nextDueDate);
                           return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
-                            <td className="py-4 px-5 font-bold text-slate-600">{formatDisplayDate(vax.dateAdministered)}</td>
-                            <td className="py-4 px-5 font-black text-slate-800">{vax.name}</td>
-                            <td className={`py-4 px-5 font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-600'}`}>{formatDisplayDate(vax.nextDueDate)}</td>
-                            <td className="py-4 px-5">
-                              <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                            <td className="py-4 px-6 font-bold text-slate-600">{formatDisplayDate(vax.dateAdministered)}</td>
+                            <td className="py-4 px-6 font-black text-slate-800">{vax.name}</td>
+                            <td className={`py-4 px-6 font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-600'}`}>{formatDisplayDate(vax.nextDueDate)}</td>
+                            <td className="py-4 px-6">
+                              <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                                 {isOverdue ? 'Overdue' : 'Active'}
                               </span>
                             </td>
@@ -472,18 +472,18 @@ export default function PatientPortal({
                 <h4 className="text-sm font-black text-slate-800 leading-none">Edit Master Identity</h4>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Updates propagate to all historical E.H.R</p>
               </div>
-              <button onClick={() => setShowEditPetModal(false)} className="p-1 hover:bg-slate-200 text-slate-400 rounded-lg cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
+              <button onClick={() => setShowEditPetModal(false)} className="p-1 hover:bg-slate-200 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
             </div>
             
             <form onSubmit={handleSavePetEdits} className="flex flex-col min-h-0">
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Patient Name *</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Patient Name *</label>
                     <input type="text" required value={editPetData.petName} onChange={e => setEditPetData({...editPetData, petName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold" />
                   </div>
                   <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Species</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Species</label>
                     <select value={editPetData.petType} onChange={e => setEditPetData({...editPetData, petType: e.target.value as PetClassification})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold cursor-pointer">
                       <option value="Canine">Canine</option>
                       <option value="Feline">Feline</option>
@@ -494,11 +494,11 @@ export default function PatientPortal({
                     </select>
                   </div>
                   <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Breed</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Breed</label>
                     <input type="text" value={editPetData.breed} onChange={e => setEditPetData({...editPetData, breed: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold" />
                   </div>
                   <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Sex</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Sex</label>
                     <select value={editPetData.sex} onChange={e => setEditPetData({...editPetData, sex: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold cursor-pointer">
                       <option value="Unknown">Unknown</option>
                       <option value="Male">Male</option>
@@ -508,18 +508,18 @@ export default function PatientPortal({
                     </select>
                   </div>
                   <div className="space-y-1 col-span-1">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Age (DOB / Approx)</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Age (DOB / Approx)</label>
                     <input type="text" value={editPetData.age} onChange={e => setEditPetData({...editPetData, age: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold" />
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest">Latest Weight (kg)</label>
+                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Latest Weight (kg)</label>
                     <input type="number" step="0.1" min="0" value={editPetData.weight} onChange={e => setEditPetData({...editPetData, weight: parseFloat(e.target.value)})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono" />
                   </div>
                 </div>
               </div>
               
               <div className="shrink-0 flex gap-2 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
-                <button type="button" onClick={() => setShowEditPetModal(false)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-[10px] uppercase tracking-widest cursor-pointer transition-colors">Cancel</button>
+                <button type="button" onClick={() => setShowEditPetModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-[10px] uppercase tracking-widest cursor-pointer transition-colors">Cancel</button>
                 <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest cursor-pointer shadow-md flex items-center gap-2 transition-colors">
                   <CheckCircle2 className="w-4 h-4"/> Sync Updates
                 </button>
