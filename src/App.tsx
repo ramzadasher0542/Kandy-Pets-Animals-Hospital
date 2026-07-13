@@ -547,11 +547,27 @@ function App() {
     try {
       await upsertAppointment(updated);
       setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
+
+      // F-8: the queue item's emergencyBackfillRequired is a snapshot copied at
+      // check-in time (App.tsx queue construction), not a live reference to the
+      // appointment. If a backfill just cleared it on the appointment (F-2's
+      // "Complete Details" flow), the matching queue item must be cleared too,
+      // or every panel would keep showing "DETAILS PENDING" forever. The
+      // urgency field is untouched here — the EMERGENCY badge should remain.
+      if (updated.emergencyBackfillRequired === false) {
+        const queueItem = clinicQueue.find(q => q.appointmentId === updated.id && q.emergencyBackfillRequired);
+        if (queueItem) {
+          const updatedQueueItem = { ...queueItem, emergencyBackfillRequired: false };
+          await db.clinicQueue.setItem(queueItem.id, stampRecord(updatedQueueItem));
+          setClinicQueue(prev => prev.map(q => q.id === queueItem.id ? updatedQueueItem : q));
+        }
+      }
+
       showToast(`Appointment for ${updated.petName} updated successfully.`);
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, []);
+  }, [clinicQueue]);
 
   const closeVisit = useCallback(async (appointmentId: string) => {
     const apt = appointments.find(a => a.id === appointmentId);
@@ -574,7 +590,18 @@ function App() {
   }, [appointments, clinicQueue]);
 
   const handleUpdateAppointmentStatus = useCallback(async (id: string, status: AppointmentStatus) => {
-    const apt = appointments.find(a => a.id === id);
+    let apt: Appointment | undefined = appointments.find(a => a.id === id);
+    if (!apt) {
+      // F-8 FIX: Emergency Intake calls onAddAppointment then handleCheckIn
+      // back-to-back in the same handler, with no re-render between them, so
+      // the just-created appointment isn't in this closure's `appointments`
+      // state yet and the lookup above misses it. Fall back to the record
+      // that was just persisted to IndexedDB so the status transition (and,
+      // for 'in-progress', the queue-item construction below) still fires —
+      // otherwise an emergency intake's queue item is silently never created.
+      const dbApt = await db.appointments.getItem<Appointment>(id);
+      if (dbApt) apt = dbApt;
+    }
     if (apt) {
       try {
         if (status === 'completed') {
