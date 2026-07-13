@@ -28,6 +28,7 @@ interface StoreMapping {
 
 const STORE_MAPPINGS: StoreMapping[] = [
   { storeKey: 'inventory',    table: DB_TABLES.INVENTORY,     idField: 'id' },
+  { storeKey: 'inventoryBatches', table: 'inventory_batches', idField: 'id' },
   { storeKey: 'appointments', table: DB_TABLES.APPOINTMENTS,  idField: 'id' },
   { storeKey: 'records',      table: DB_TABLES.RECORDS,       idField: 'id' },
   { storeKey: 'invoices',     table: DB_TABLES.INVOICES,      idField: 'id' },
@@ -49,6 +50,7 @@ const STORE_MAPPINGS: StoreMapping[] = [
   { storeKey: 'timeEntries',      table: 'time_entries',      idField: 'id' },
   { storeKey: 'scheduleEntries',  table: 'schedule_entries',  idField: 'id' },
   { storeKey: 'payslips',         table: 'payslips',          idField: 'id' },
+  { storeKey: 'deletionAudit',    table: 'deletion_audit',    idField: 'id' },
 ];
 
 // ---------------------------------------------------------------------------

@@ -698,3 +698,58 @@ ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS deposit_amount_cents INTEG
 ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS cage_fee_per_day_cents INTEGER DEFAULT 0;
 ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS cleaning_fee_per_day_cents INTEGER DEFAULT 0;
 ALTER TABLE boarding_records ADD COLUMN IF NOT EXISTS doctor_fee_per_visit_cents INTEGER DEFAULT 0;
+
+
+-- =============================================================
+-- F-3: Deletion audit trail for soft-deleted clients and pets
+-- =============================================================
+CREATE TABLE IF NOT EXISTS deletion_audit (
+  "id"                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "entity_type"        TEXT NOT NULL,     -- 'client' | 'pet'
+  "entity_id"          TEXT NOT NULL,
+  "entity_name"        TEXT DEFAULT '',
+  "deleted_by"         TEXT NOT NULL,     -- User.name
+  "deleted_at"         TEXT NOT NULL,
+  "had_history"        BOOLEAN DEFAULT false,   -- did it have linked records?
+  "history_summary"    TEXT DEFAULT '',         -- e.g. "3 invoices, 2 medical records"
+  "override_confirmed" BOOLEAN DEFAULT false,
+  "created_at"         TIMESTAMPTZ DEFAULT now(),
+  "updated_at"         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"         BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"             BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_deletion_audit_updated_at ON deletion_audit ("updated_at");
+ALTER TABLE deletion_audit ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon read access on deletion_audit" ON deletion_audit;
+DROP POLICY IF EXISTS "Allow anon write access on deletion_audit" ON deletion_audit;
+CREATE POLICY "Allow anon write access on deletion_audit"
+  ON deletion_audit FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+
+-- =============================================================
+-- F-4: Inventory Batch Tracking with FEFO
+-- =============================================================
+CREATE TABLE IF NOT EXISTS inventory_batches (
+  "id"                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "inventoryItemId"    TEXT NOT NULL,
+  "lotNumber"          TEXT NOT NULL,
+  "expiryDate"         TEXT NOT NULL,
+  "quantityReceived"   INTEGER NOT NULL,
+  "quantityRemaining"  INTEGER NOT NULL,
+  "receivedDate"       TEXT NOT NULL,
+  "supplier"           TEXT DEFAULT NULL,
+  "costPerUnit"        INTEGER DEFAULT NULL,
+  "created_at"         TIMESTAMPTZ DEFAULT now(),
+  "updated_at"         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "is_deleted"         BOOLEAN NOT NULL DEFAULT false,
+  "_dirty"             BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_batches_updated_at ON inventory_batches ("updated_at");
+ALTER TABLE inventory_batches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow anon read access on inventory_batches" ON inventory_batches;
+DROP POLICY IF EXISTS "Allow anon write access on inventory_batches" ON inventory_batches;
+CREATE POLICY "Allow anon write access on inventory_batches"
+  ON inventory_batches FOR ALL TO anon
+  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
+  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');

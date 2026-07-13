@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import { createPortal } from 'react-dom';
 import { Invoice } from '../types';
 
 interface POSReceiptProps {
@@ -36,8 +35,8 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
 
   const capitalizeFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
-  return createPortal(
-    <div id="pos-thermal-receipt" style={{ position: 'fixed', left: '-9999px', top: 0 }}>
+  return (
+    <div id="pos-thermal-receipt" style={{ background: 'white' }}>
       <style>{`
         @media print {
           @page { size: 80mm auto; margin: 0; }
@@ -185,7 +184,6 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
         <div style={{ height: '48px' }}></div>
         <br /><br /><br /><br />
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

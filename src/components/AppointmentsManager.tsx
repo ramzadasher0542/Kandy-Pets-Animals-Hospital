@@ -311,14 +311,26 @@ export default function AppointmentsManager({
     const now = new Date().toISOString();
     const targetVet = emergencyVet || (liveVets[0]?.name || '');
 
+    // COLLISION FIX: handleCheckIn derives client_id/pet id from normalizeSearchPhone
+    // (last 9 digits). A shared placeholder like '0000000000' would normalize to the
+    // SAME value for every phoneless emergency, merging them all into one client.
+    // If no real phone was entered, mint a unique ALL-DIGIT sentinel instead so each
+    // emergency keeps its own identity until backfilled. (A literal "TEMP-" prefix
+    // cannot survive normalizeSearchPhone's \D strip, so we use an all-digit token.)
+    const enteredPhoneDigits = normalizeSearchPhone(emergencyOwnerPhone || '');
+    const hasRealPhone = enteredPhoneDigits.length >= 9;
+    const tempPhone = hasRealPhone
+      ? enforcePhoneFormat(emergencyOwnerPhone)
+      : `9${Date.now()}${Math.floor(Math.random() * 90 + 10)}`;
+
     const newApt = {
       id: aptId,
       aptNumber,
       petName: emergencyPetName.trim(),
       petType: 'Canine' as any,
       breed: 'Unknown',
-      ownerName: 'Emergency Unknown',
-      ownerPhone: enforcePhoneFormat(emergencyOwnerPhone || '0000000000'),
+      ownerName: 'Emergency — Details Pending',
+      ownerPhone: tempPhone,
       date: formatDisplayDate(new Date()),
       time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
       veterinarian: targetVet,
@@ -357,17 +369,24 @@ export default function AppointmentsManager({
     const displayDate = formatDisplayDate(date);
     const displayTime = formatDisplayTime(time);
 
-    const conflict = allAppointments.find(a => 
-      a.veterinarian === veterinarian &&
-      a.date === displayDate &&
-      a.time === displayTime &&
-      (a.status === 'booked' || a.status === 'in-progress') &&
-      a.id !== editingAptId
-    );
+    // Double-booking guard — but emergencies are exempt. Two emergencies can
+    // legitimately arrive for the same vet in the same minute; blocking that would
+    // make it impossible to ever complete the second one's details (F-2 backfill).
+    // The guard still fully protects routine/urgent bookings from double-booking.
+    if (urgency !== 'emergency') {
+      const conflict = allAppointments.find(a =>
+        a.veterinarian === veterinarian &&
+        a.date === displayDate &&
+        a.time === displayTime &&
+        (a.status === 'booked' || a.status === 'in-progress') &&
+        a.id !== editingAptId &&        // never conflict with the appointment being edited
+        a.urgency !== 'emergency'       // an emergency never blocks another booking
+      );
 
-    if (conflict) {
-      setFormError(`Dr. ${veterinarian} already has an appointment at ${displayTime} on ${displayDate}. Choose a different time or vet.`);
-      return;
+      if (conflict) {
+        setFormError(`Dr. ${veterinarian} already has an appointment at ${displayTime} on ${displayDate}. Choose a different time or vet.`);
+        return;
+      }
     }
 
     const now = new Date().toISOString();
@@ -382,6 +401,61 @@ export default function AppointmentsManager({
 
     if (editingAptId) {
       const existingApt = allAppointments.find(a => a.id === editingAptId);
+      const wasBackfillPending = (existingApt as any)?.emergencyBackfillRequired === true;
+
+      // EMERGENCY BACKFILL: completing the details of an emergency intake.
+      // The emergency Client + Pet were created at intake with ids derived from a
+      // temporary phone. We must update those records IN PLACE (keeping their original
+      // ids) rather than re-deriving new deterministic ids from the real phone —
+      // otherwise any medical record / queue item / billing already attached to the
+      // emergency visit would be orphaned. Identity stability > id-format purity once
+      // clinical records exist.
+      if (wasBackfillPending) {
+        const oldPhoneNorm = normalizeSearchPhone((existingApt as any).ownerPhone);
+        const oldClientId = `client_${oldPhoneNorm}`;
+        const oldPetId = `${((existingApt as any).petName || '').trim().toLowerCase()}_${oldPhoneNorm}`;
+
+        // Update the existing Client in place (same client_id, new name/phone).
+        try {
+          let existingClient: any = null;
+          await db.clients.iterate((value: any) => {
+            if (value && !Array.isArray(value) && value.client_id === oldClientId) {
+              existingClient = value;
+              return false;
+            }
+          });
+          if (existingClient && onUpdateClient) {
+            await onUpdateClient({
+              ...existingClient,
+              full_name: ownerName.trim(),
+              primary_phone: enforcePhoneFormat(ownerPhone),
+              alternate_phone: phone2 || existingClient.alternate_phone || '',
+              physical_address: address || existingClient.physical_address || '',
+              updated_at: now
+            });
+          }
+        } catch (err) {
+          console.error('[Emergency Backfill] client update-in-place failed:', err);
+        }
+
+        // Update the existing Pet in place (same id, corrected type/breed/etc).
+        const existingPet = pets.find(p => p.id === oldPetId);
+        if (existingPet) {
+          const updatedPet: Pet = {
+            ...existingPet,
+            name: petName.trim(),
+            petType,
+            breed: breed || 'Mixed breed',
+            weight: currentWeight,
+            sex,
+            updated_at: now
+          };
+          await upsertPet(updatedPet);
+          setPets(prev => prev.map(p => (p.id === updatedPet.id ? updatedPet : p)));
+          if (onUpdatePet) onUpdatePet(updatedPet.id, updatedPet.name, updatedPet);
+        }
+      }
+
       const updatedApt = {
         ...existingApt,
         id: editingAptId,
@@ -403,6 +477,8 @@ export default function AppointmentsManager({
         alternatePhone: phone2,
         address: address,
         surgeryChecklist: surgeryChecklistObj,
+        // Details are now complete — clear the pending flag and hide the amber banner.
+        emergencyBackfillRequired: wasBackfillPending ? false : (existingApt as any)?.emergencyBackfillRequired,
         updated_at: now
       } as any;
       if (onUpdateAppointment) onUpdateAppointment(updatedApt);
@@ -785,6 +861,9 @@ export default function AppointmentsManager({
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
               <span className="text-[10px] text-slate-500 font-medium">{apt.petType} - {apt.breed || 'Mixed'}</span>
             </div>
+            {apt.emergencyBackfillRequired && (
+              <span data-testid="badge-details-pending" className="mt-0.5 inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">⚠ Details Pending</span>
+            )}
           </div>
         </td>
         <td className="py-4 px-4">
@@ -806,6 +885,11 @@ export default function AppointmentsManager({
         </td>
         <td className="py-4 px-4 text-right w-32">
           <div className="flex items-center justify-end gap-1">
+            {apt.emergencyBackfillRequired && !isLocked && (
+              <button data-testid="btn-complete-details" onClick={() => handleEditClick(apt)} title="Complete emergency patient details" className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer whitespace-nowrap">
+                Complete Details
+              </button>
+            )}
             {apt.status === 'booked' && (
               <button data-testid="btn-check-in" onClick={() => !isLocked && handleCheckIn(apt)} disabled={isLocked} title="Check In" className={`p-1.5 rounded-lg transition-colors ${isLocked ? 'text-slate-300 opacity-50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer'}`}>
                 <CheckCircle2 className="h-4 w-4" />
@@ -1083,7 +1167,10 @@ export default function AppointmentsManager({
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded">{selectedPopoverApt.aptNumber}</span>
             </div>
             <p className="text-[10px] text-slate-500 font-medium mb-4">{selectedPopoverApt.date} at {selectedPopoverApt.time}</p>
-            
+            {selectedPopoverApt.emergencyBackfillRequired && (
+              <div className="mb-3 inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-300 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider">⚠ Details Pending</div>
+            )}
+
             <div className="space-y-2">
               {selectedPopoverApt.status === 'booked' && (
                 <button onClick={() => handleCheckIn(selectedPopoverApt)} className="w-full py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-250 font-bold rounded-xl text-[10px] uppercase tracking-wide flex justify-center items-center gap-2 cursor-pointer transition-colors">

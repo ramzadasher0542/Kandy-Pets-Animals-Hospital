@@ -18,6 +18,7 @@ interface RecordsProps {
   clients: Client[];
   pets: Pet[];
   records: MedicalRecord[];
+  boardingRecords?: import('../types').BoardingRecord[];
   inventory: InventoryItem[];
   appointments?: Appointment[];
   onAddRecord: (record: MedicalRecord) => void;
@@ -71,12 +72,12 @@ const SYSTEM_LABELS: Record<keyof PhysicalExamination, string> = {
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function MedicalRecordsManager({ clients, pets, records, inventory, appointments, clinicQueue, systemConfig, viewPayload, onAddRecord, onUpdateRecord, onUpdateRecordsBulk }: RecordsProps) {
+export default function MedicalRecordsManager({ clients, pets, records, boardingRecords, inventory, appointments, clinicQueue, systemConfig, viewPayload, onAddRecord, onUpdateRecord, onUpdateRecordsBulk }: RecordsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showQueueOnly, setShowQueueOnly] = useState(true); // Default to Queue
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'treatment' | 'pharmacy'>('vitals');
+  const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'treatment' | 'pharmacy' | 'inpatient'>('vitals');
 
   // Form State
   const [vitals, setVitals] = useState<Vitals>({});
@@ -102,6 +103,15 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
   const [medDuration, setMedDuration] = useState('');
   const [medInstructions, setMedInstructions] = useState('After Meal');
   const [medQty, setMedQty] = useState(1);
+
+  const [inpatientTreatment, setInpatientTreatment] = useState('');
+  const [inpatientRoute, setInpatientRoute] = useState<'IV' | 'IM' | 'SC' | 'Oral' | 'Suppository'>('IV');
+  const [inpatientFreq, setInpatientFreq] = useState<'TDS' | 'BD' | 'Noct' | 'Mane' | 'SOS' | 'Stat' | 'custom'>('BD');
+  const [inpatientFreqCustom, setInpatientFreqCustom] = useState('');
+  const [inpatientRemarks, setInpatientRemarks] = useState('');
+  const [inpatientTemp, setInpatientTemp] = useState('');
+  const [inpatientDate, setInpatientDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [inpatientTime, setInpatientTime] = useState(() => new Date().toTimeString().slice(0,5));
 
   const [expandedSystem, setExpandedSystem] = useState<keyof PhysicalExamination | null>('general');
 
@@ -258,6 +268,7 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
         diagnosis: '',
         treatmentNotes: '',
         prescribedMeds: [],
+        inpatientLogs: [],
         createdDate: todayStr
       };
       // ONLY trigger App.tsx upstream save if we actually originated from the clinic queue check-in
@@ -304,8 +315,10 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
       patientHistory: history,
       physicalExam: exam,
       assessment,
-      treatmentNotes,
-      prescribedMeds,
+      treatmentNotes: editingRecord.treatmentNotes,
+      prescribedMeds: prescribedMeds,
+      inpatientLogs: editingRecord.inpatientLogs,
+      subjectiveTags: editingRecord.subjectiveTags,
       symptoms: compiledSymptoms, 
       diagnosis: compiledDiagnosis 
     };
@@ -717,6 +730,154 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
     );
   };
 
+  const renderInpatientTab = () => {
+    const handleAddLogInpatient = () => {
+      if (!inpatientTreatment) {
+        showToast('Treatment is required', 'error');
+        return;
+      }
+      if (!editingRecord) return;
+      const vetId = systemConfig?.currentUser?.name || 'Veterinarian';
+      const newLog: import('../types').InpatientLog = {
+        id: crypto.randomUUID(),
+        date: inpatientDate,
+        time: inpatientTime,
+        temperature: inpatientTemp || undefined,
+        treatment: inpatientTreatment,
+        route: inpatientRoute,
+        frequency: inpatientFreq,
+        frequencyCustom: inpatientFreq === 'custom' ? inpatientFreqCustom : undefined,
+        remarks: inpatientRemarks || undefined,
+        vetId: vetId
+      };
+      const updatedLogs = [...(editingRecord.inpatientLogs || []), newLog];
+      
+      const updatedRecord = { ...editingRecord, inpatientLogs: updatedLogs };
+      setEditingRecord(updatedRecord);
+      onUpdateRecord(updatedRecord);
+      
+      setInpatientTreatment('');
+      setInpatientRemarks('');
+      setInpatientTemp('');
+      setInpatientFreqCustom('');
+    };
+
+    const logs = [...(editingRecord?.inpatientLogs || [])].sort((a, b) => {
+      const dtA = new Date(`${a.date}T${a.time}`);
+      const dtB = new Date(`${b.date}T${b.time}`);
+      return dtB.getTime() - dtA.getTime();
+    });
+
+    return (
+      <div className="space-y-6 animate-fade-in h-full flex flex-col">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+          <h3 className="text-[11px] font-black text-rose-600 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4 flex items-center gap-2"><Activity className="w-4 h-4"/> Add Log Entry</h3>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Date</label>
+              <input type="date" value={inpatientDate} onChange={e => setInpatientDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Time</label>
+              <input type="time" value={inpatientTime} onChange={e => setInpatientTime(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Temperature</label>
+              <input type="text" placeholder="e.g. 38.5°C" value={inpatientTemp} onChange={e => setInpatientTemp(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Vet</label>
+              <input type="text" disabled value={systemConfig?.currentUser?.name || 'Veterinarian'} className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-500 cursor-not-allowed" />
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Treatment / Medication Given *</label>
+            <input type="text" placeholder="e.g. Ceftriaxone 1g" value={inpatientTreatment} onChange={e => setInpatientTreatment(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Route</label>
+              <select value={inpatientRoute} onChange={e => setInpatientRoute(e.target.value as any)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer">
+                <option value="IV">IV (Intravenous)</option>
+                <option value="IM">IM (Intramuscular)</option>
+                <option value="SC">SC (Subcutaneous)</option>
+                <option value="Oral">Oral</option>
+                <option value="Suppository">Suppository</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Frequency</label>
+              <select value={inpatientFreq} onChange={e => setInpatientFreq(e.target.value as any)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none cursor-pointer mb-2">
+                <option value="TDS">TDS (3×/day)</option>
+                <option value="BD">BD (Twice daily)</option>
+                <option value="Noct">Noct (Night only)</option>
+                <option value="Mane">Mane (Morning only)</option>
+                <option value="SOS">SOS (As needed)</option>
+                <option value="Stat">Stat (Immediately)</option>
+                <option value="custom">Custom</option>
+              </select>
+              {inpatientFreq === 'custom' && (
+                <input type="text" placeholder="e.g. Every 8hrs" value={inpatientFreqCustom} onChange={e => setInpatientFreqCustom(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" />
+              )}
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Remarks</label>
+            <textarea placeholder="Observations..." rows={2} value={inpatientRemarks} onChange={e => setInpatientRemarks(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none custom-scrollbar" />
+          </div>
+
+          <button 
+            type="button"
+            onClick={handleAddLogInpatient}
+            disabled={!inpatientTreatment}
+            className={`w-full py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${inpatientTreatment ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+          >
+            Add Log Entry
+          </button>
+        </div>
+
+        <div className="flex-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
+          <div className="flex justify-between items-center mb-3">
+            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Inpatient Treatment Log</h4>
+            <span className="text-[9px] font-bold text-slate-400">Log entries are permanent clinical records.</span>
+          </div>
+          
+          {logs.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 font-medium text-xs border-2 border-dashed border-slate-100 rounded-xl">No logs recorded yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div key={log.id} className="p-3 border border-slate-200 bg-slate-50 rounded-xl flex items-start gap-4">
+                  <div className="text-center w-20 shrink-0">
+                    <div className="font-black text-slate-800 text-xs">{formatDisplayDate(new Date(log.date))}</div>
+                    <div className="text-[10px] font-bold text-slate-500 mt-1">{log.time}</div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-black text-slate-800 text-sm mb-1">{log.treatment}</div>
+                    <div className="text-[10px] font-medium text-slate-600 mb-1">
+                      <span className="font-bold text-indigo-600">{log.route}</span> · <span className="font-bold text-indigo-600">{log.frequency === 'custom' ? log.frequencyCustom : log.frequency}</span>
+                      {log.temperature && ` • Temp: ${log.temperature}`}
+                    </div>
+                    {log.remarks && (
+                      <div className="text-xs text-slate-500 italic mt-2">{log.remarks}</div>
+                    )}
+                  </div>
+                  <div className="text-right text-[10px] font-bold text-slate-400 shrink-0">
+                    By {log.vetId}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col gap-4">
       {/* HEADER & CONTROLS */}
@@ -852,6 +1013,12 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
                   <Pill className={`w-4 h-4 ${activeTab === 'pharmacy' ? 'text-emerald-200' : 'text-slate-400'}`}/> Pharmacy & Rx
                 </button>
 
+                {editingRecord && (boardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) && (
+                  <button onClick={() => setActiveTab('inpatient')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'inpatient' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
+                    <ClipboardList className={`w-4 h-4 ${activeTab === 'inpatient' ? 'text-rose-200' : 'text-slate-400'}`}/> Inpatient Log
+                  </button>
+                )}
+
               </div>
               <div className="p-4 border-t border-slate-100 bg-slate-50/50">
                  <button onClick={saveRecord} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer">
@@ -871,6 +1038,7 @@ export default function MedicalRecordsManager({ clients, pets, records, inventor
                 {activeTab === 'assessment' && renderAssessmentTab()}
                 {activeTab === 'treatment' && renderTreatmentTab()}
                 {activeTab === 'pharmacy' && renderPharmacyTab()}
+                {activeTab === 'inpatient' && renderInpatientTab()}
               </div>
             </div>
 

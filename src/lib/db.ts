@@ -22,7 +22,8 @@ import {
   Vaccination,
   LabResult,
   GroomingLog,
-  BoardingRecord
+  BoardingRecord,
+  InventoryBatch
 } from '../types';
 
 // Clients DB is imported from localDb.ts
@@ -38,6 +39,14 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
   return items;
 }
 
+export async function fetchInventoryBatches(): Promise<InventoryBatch[]> {
+  const batches: InventoryBatch[] = [];
+  await db.inventoryBatches.iterate((value: InventoryBatch) => {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) batches.push(value);
+  });
+  return batches;
+}
+
 export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   if (!item || !item.id) return;
   
@@ -48,7 +57,12 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   }
   
   // True Delta Update - No race conditions + Sync Engine dirty stamp
-  await db.inventory.setItem(item.id, stampRecord(item));
+  await safeDbWrite(db.inventory, item.id, stampRecord(item));
+}
+
+export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void> {
+  if (!batch || !batch.id) return;
+  await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
 }
 
 export async function deleteInventoryItem(id: string): Promise<void> {
@@ -57,14 +71,14 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   const item = await db.inventory.getItem<InventoryItem>(id);
   if (item) {
     (item as any).is_deleted = true;
-    await db.inventory.setItem(id, stampRecord(item));
+    await safeDbWrite(db.inventory, id, stampRecord(item));
   }
 }
 
 /**
  * AUDIT FIX: True atomic stock decrement — reads current stock from IndexedDB
  * (not stale React state), applies delta, and writes back.
- * Returns the new stock value on success, or throws on failure.
+ * Implements FEFO (First Expiry, First Out) batch consumption.
  */
 export async function atomicStockDecrement(itemId: string, qtyDelta: number): Promise<number> {
   const unlock = await globalMutex.lock();
@@ -75,6 +89,49 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
     }
     const newStock = Math.max(0, item.stock + qtyDelta);
     item.stock = newStock;
+
+    // Fetch all batches for this item
+    const batches: InventoryBatch[] = [];
+    await db.inventoryBatches.iterate((b: InventoryBatch) => {
+      if (b && !b.is_deleted && b.inventoryItemId === itemId) {
+        batches.push(b);
+      }
+    });
+
+    if (batches.length > 0) {
+      if (qtyDelta < 0) {
+        let remainingToConsume = Math.abs(qtyDelta);
+        // Sort by expiry ascending (soonest first)
+        const activeBatches = batches.filter(b => b.quantityRemaining > 0).sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+        
+        for (const batch of activeBatches) {
+          if (remainingToConsume <= 0) break;
+          const consumeFromBatch = Math.min(batch.quantityRemaining, remainingToConsume);
+          batch.quantityRemaining -= consumeFromBatch;
+          remainingToConsume -= consumeFromBatch;
+          await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
+        }
+      } else if (qtyDelta > 0) {
+        // For returns/voids, add to the newest batch
+        const sortedBatches = batches.sort((a, b) => new Date(b.expiryDate).getTime() - new Date(a.expiryDate).getTime());
+        if (sortedBatches.length > 0) {
+          const newestBatch = sortedBatches[0];
+          newestBatch.quantityRemaining += qtyDelta;
+          await safeDbWrite(db.inventoryBatches, newestBatch.id, stampRecord(newestBatch));
+        }
+      }
+
+      // Recompute item expiry/lot for the soonest-expiring active batch
+      const remainingBatches = batches.filter(b => b.quantityRemaining > 0).sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+      if (remainingBatches.length > 0) {
+        item.expiryDate = remainingBatches[0].expiryDate;
+        item.lotNumber = remainingBatches[0].lotNumber;
+      } else {
+        item.expiryDate = undefined;
+        item.lotNumber = undefined;
+      }
+    }
+
     // BUG #7 FIX: Stamp for sync so stock changes reach Supabase
     await safeDbWrite(db.inventory, itemId, stampRecord(item));
     return newStock;
@@ -432,7 +489,7 @@ export async function fetchClients(): Promise<Client[]> {
   let hasWalkIn = false;
 
   await db.clients.iterate((value: Client) => {
-    if (value && !Array.isArray(value)) {
+    if (value && !Array.isArray(value) && !(value as any).is_deleted) {
       clients.push(value);
       if (value.client_id === 'walk_in_retail') hasWalkIn = true;
     }

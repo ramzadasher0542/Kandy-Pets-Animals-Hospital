@@ -43,6 +43,10 @@ export interface SystemConfig {
     owner: string[];
   };
   masterPin?: string;
+  // F-5: EmailJS credentials for emailing the Z-Report (owner-configured, never hardcoded)
+  emailjsServiceId?: string;
+  emailjsTemplateId?: string;
+  emailjsPublicKey?: string;
   boardingRates?: {
     catNofoodCents: number;
     catWithfoodCents: number;
@@ -387,6 +391,26 @@ export default function SystemSettings({
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Public Email</label>
                     <input type="email" value={localConfig.hospitalEmail} onChange={e => updateConfig('hospitalEmail', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                </div>
+              </div>
+
+              {/* F-5: EmailJS configuration for Z-Report delivery */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-500" /> Email (Z-Report) — EmailJS</h3>
+                <p className="text-[10px] font-bold text-slate-400 -mt-3">Configure your own EmailJS account to email the end-of-day Z-Report. Nothing is sent until all three fields are filled. Recipients use the "Public Email" above.</p>
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Service ID</label>
+                    <input type="text" value={localConfig.emailjsServiceId || ''} onChange={e => updateConfig('emailjsServiceId', e.target.value)} placeholder="service_xxxxxxx" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Template ID</label>
+                    <input type="text" value={localConfig.emailjsTemplateId || ''} onChange={e => updateConfig('emailjsTemplateId', e.target.value)} placeholder="template_xxxxxxx" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Public Key</label>
+                    <input type="text" value={localConfig.emailjsPublicKey || ''} onChange={e => updateConfig('emailjsPublicKey', e.target.value)} placeholder="Your EmailJS public key" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
                   </div>
                 </div>
               </div>

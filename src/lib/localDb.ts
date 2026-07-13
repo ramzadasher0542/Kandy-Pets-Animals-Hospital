@@ -16,6 +16,7 @@ localforage.config({
 // 2. Create isolated instances (Tables) for each major data matrix
 export const db = {
   inventory: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'inventory' }),
+  inventoryBatches: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'inventory_batches' }),
   appointments: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'appointments' }),
   records: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'records' }),
   invoices: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'invoices' }),
@@ -44,7 +45,10 @@ export const db = {
   staffProfiles: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'staff_profiles' }),
   timeEntries: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'time_entries' }),
   scheduleEntries: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'schedule_entries' }),
-  payslips: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'payslips' })
+  payslips: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'payslips' }),
+
+  // F-3: Audit trail for soft-deletions of clients and pets (owner oversight)
+  deletionAudit: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'deletion_audit' })
 };
 
 /**

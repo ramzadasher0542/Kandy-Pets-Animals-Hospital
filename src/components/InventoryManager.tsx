@@ -9,8 +9,8 @@ import {
   Search, Plus, Edit2, Trash2, AlertTriangle, 
   Package, Activity, X, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
 } from 'lucide-react';
-import { InventoryItem, ItemCategory } from '../types';
-import { fetchInventory } from '../lib/db';
+import { InventoryItem, ItemCategory, InventoryBatch } from '../types';
+import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch } from '../lib/db';
 import { db } from '../lib/localDb'; 
 import { showToast } from './Toast';
 
@@ -36,8 +36,9 @@ interface InventoryProps {
 
 export default function InventoryManager({ inventory, onUpdateInventory, onDeleteInventory }: InventoryProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<ItemCategory | 'All'>('All');
+  const [activeCategory, setActiveCategory] = useState<ItemCategory | 'All' | 'Expiring'>('All');
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,6 +48,21 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
   const [adjustItem, setAdjustItem] = useState<InventoryItem | null>(null);
   const [adjustAmount, setAdjustAmount] = useState<number | string>('');
 
+  // Receive Stock State
+  const [receiveStockItem, setReceiveStockItem] = useState<InventoryItem | null>(null);
+  const [receiveFormData, setReceiveFormData] = useState<Partial<InventoryBatch>>({
+    lotNumber: '', expiryDate: '', quantityReceived: 0, supplier: '', costPerUnit: 0, receivedDate: new Date().toISOString().split('T')[0]
+  });
+
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
+
+  const toggleBatches = (itemId: string) => {
+    const newSet = new Set(expandedBatches);
+    if (newSet.has(itemId)) newSet.delete(itemId);
+    else newSet.add(itemId);
+    setExpandedBatches(newSet);
+  };
+
   const [formData, setFormData] = useState<Partial<InventoryItem>>({
     sku: '', name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', labParameters: []
   });
@@ -55,6 +71,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     const data = await fetchInventory();
     const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
     setItems(sorted);
+    const dataBatches = await fetchInventoryBatches();
+    setBatches(dataBatches);
   }, [inventory]);
 
   useEffect(() => {
@@ -82,7 +100,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       minStock: isPhysical ? (Number(formData.minStock) || 0) : 0,
       unit: formData.unit || 'unit',
       location: formData.location || '',
-      labParameters: isLab ? (formData.labParameters || []) : undefined
+      labParameters: isLab ? (formData.labParameters || []) : undefined,
+      is_deleted: editingItem ? (editingItem.is_deleted || false) : false
     };
 
     if (onUpdateInventory) {
@@ -111,6 +130,58 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     setAdjustItem(null);
     setAdjustAmount('');
     showToast(`Stock adjusted by ${delta > 0 ? '+' + delta : delta}.`, 'success');
+  };
+
+  const handleReceiveStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receiveStockItem) return;
+
+    const qty = Number(receiveFormData.quantityReceived) || 0;
+    if (qty <= 0) {
+      showToast('Quantity must be greater than 0', 'error');
+      return;
+    }
+
+    const batch: InventoryBatch = {
+      id: crypto.randomUUID(),
+      inventoryItemId: receiveStockItem.id,
+      lotNumber: receiveFormData.lotNumber || 'N/A',
+      expiryDate: receiveFormData.expiryDate || '2099-12-31',
+      quantityReceived: qty,
+      quantityRemaining: qty,
+      receivedDate: receiveFormData.receivedDate || new Date().toISOString().split('T')[0],
+      supplier: receiveFormData.supplier,
+      costPerUnit: receiveFormData.costPerUnit ? Math.round(Number(receiveFormData.costPerUnit) * 100) : undefined,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      is_deleted: false,
+      _dirty: true
+    };
+
+    const updatedItem = { ...receiveStockItem, stock: receiveStockItem.stock + qty };
+    const itemBatches = batches.filter(b => b.inventoryItemId === receiveStockItem.id && b.quantityRemaining > 0);
+    itemBatches.push(batch);
+    itemBatches.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+    
+    updatedItem.expiryDate = itemBatches[0].expiryDate;
+    updatedItem.lotNumber = itemBatches[0].lotNumber;
+
+    console.log('[InventoryManager] Receiving stock. Qty:', qty, 'Old stock:', receiveStockItem.stock, 'New stock:', updatedItem.stock);
+
+    if (onUpdateInventory) {
+      await upsertInventoryBatch(batch);
+      console.log('[InventoryManager] Calling onUpdateInventory with new stock:', updatedItem.stock);
+      await onUpdateInventory(updatedItem);
+    }
+
+    
+    await loadInventory();
+    
+    setReceiveStockItem(null);
+    setReceiveFormData({
+      lotNumber: '', expiryDate: '', quantityReceived: 0, supplier: '', costPerUnit: 0, receivedDate: new Date().toISOString().split('T')[0]
+    });
+    showToast('Stock received and batch created', 'success');
   };
 
   const handleDelete = async (id: string) => {
@@ -156,6 +227,13 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   // Compute filtering and stats
   const filteredItems = items.filter(item => {
+    if (activeCategory === 'Expiring') {
+      const itemBatches = batches.filter(b => b.inventoryItemId === item.id && b.quantityRemaining > 0);
+      return itemBatches.some(b => {
+        const daysDiff = (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
+        return daysDiff <= 60;
+      });
+    }
     if (activeCategory !== 'All' && item.category !== activeCategory) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -216,6 +294,14 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
               {cat.label}
             </button>
           ))}
+          <button 
+            onClick={() => setActiveCategory('Expiring')}
+            className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+              activeCategory === 'Expiring' ? 'bg-amber-500 text-white shadow-md' : `bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200`
+            }`}
+          >
+            <AlertTriangle className="w-3 h-3"/> Expiring Stock
+          </button>
         </div>
 
         <div className="flex items-center gap-3 w-full xl:w-auto justify-end flex-wrap">
@@ -238,93 +324,192 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       {/* Main Data Grid */}
       <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[900px]">
-            <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-              <tr>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">SKU & Item Name</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost / Price</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Stock Level</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredItems.length === 0 ? (
+          {activeCategory === 'Expiring' ? (
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead className="bg-amber-50 border-b border-amber-200 sticky top-0 z-10">
                 <tr>
-                  <td colSpan={5} className="py-16 text-center">
-                    <Package className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                    <div className="text-sm font-black text-slate-500">No items found in registry.</div>
-                  </td>
+                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Item Name</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Lot Number</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Expiry Date</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Qty Remaining</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Days Until Expiry</th>
                 </tr>
-              ) : filteredItems.map(item => {
-                const catInfo = CATEGORIES.find(c => c.id === item.category);
-                const isService = ['service', 'lab_service'].includes(item.category);
-                const isLow = !isService && item.stock <= item.minStock;
-
-                let expiryStatus: 'ok' | 'soon' | 'expired' = 'ok';
-                if (['prescription', 'vaccine'].includes(item.category) && item.expiryDate) {
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const exp = new Date(item.expiryDate);
-                  const daysDiff = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-                  if (daysDiff < 0) expiryStatus = 'expired';
-                  else if (daysDiff <= 30) expiryStatus = 'soon';
-                }
-
-                return (
-                  <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="font-black text-slate-800 text-sm flex items-center gap-2">
-                        {item.name}
-                        {item.category === 'lab_service' && item.labParameters && item.labParameters.length > 0 && (
-                          <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[8px] px-1.5 py-0.5 rounded flex items-center gap-1"><TestTube className="w-2 h-2"/> {item.labParameters.length} Params</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">{item.sku}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border border-white/20 shadow-xs ${catInfo?.color || 'bg-slate-100 text-slate-600'}`}>
-                        {catInfo?.label || item.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="font-mono text-xs font-black text-slate-800">{item.price.toFixed(2)}</div>
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {item.cost.toFixed(2)}</div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {isService ? (
-                        <span className="text-lg font-black text-slate-300">∞</span>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1">
-                          <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border ${isLow ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                            {item.stock} <span className="text-[9px] opacity-70 ml-0.5 uppercase">{item.unit}</span>
-                          </span>
-                          {isLow && <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
-                          {expiryStatus === 'expired' && <span className="text-[8px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
-                          {expiryStatus === 'soon' && <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                        {!isService && (
-                          <button onClick={() => setAdjustItem(item)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer" title="Quick Adjust Stock">
-                            <RefreshCw className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button onClick={() => openEdit(item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer" title="Edit Master Data">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer" title="Delete from Registry">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {batches
+                  .filter(b => b.quantityRemaining > 0 && (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 60)
+                  .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())
+                  .map(b => {
+                    const daysDiff = Math.ceil((new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                    const isExp = daysDiff < 0;
+                    const item = items.find(i => i.id === b.inventoryItemId);
+                    return (
+                      <tr key={b.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-black text-slate-800">{item?.name || 'Unknown Item'}</td>
+                        <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800">{b.lotNumber}</td>
+                        <td className="px-6 py-4 text-xs font-mono font-bold flex items-center gap-2">
+                          <span className={isExp ? 'text-rose-600' : 'text-amber-600'}>{b.expiryDate}</span>
+                          {isExp && <span className="bg-rose-100 text-rose-600 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-black text-slate-800">{b.quantityRemaining}</td>
+                        <td className="px-6 py-4 text-xs font-black">
+                          {isExp ? <span className="text-rose-600">Expired {-daysDiff} days ago</span> : <span className="text-amber-600">{daysDiff} days</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          ) : (
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                <tr>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">SKU & Item Name</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost / Price</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Stock Level</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-16 text-center">
+                      <Package className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                      <div className="text-sm font-black text-slate-500">No items found in registry.</div>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ) : filteredItems.map(item => {
+                  const catInfo = CATEGORIES.find(c => c.id === item.category);
+                  const isService = ['service', 'lab_service'].includes(item.category);
+                  const isLow = !isService && item.stock <= item.minStock;
+  
+                  let expiryStatus: 'ok' | 'soon' | 'expired' = 'ok';
+                  if (['prescription', 'vaccine'].includes(item.category) && item.expiryDate) {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const exp = new Date(item.expiryDate);
+                    const daysDiff = (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+                    if (daysDiff < 0) expiryStatus = 'expired';
+                    else if (daysDiff <= 30) expiryStatus = 'soon';
+                  }
+  
+                  const itemBatches = batches.filter(b => b.inventoryItemId === item.id && b.quantityRemaining > 0);
+                  const isExpanded = expandedBatches.has(item.id);
+                  const expiringSoonCount = itemBatches.filter(b => {
+                    const days = (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
+                    return days >= 0 && days <= 30;
+                  }).reduce((sum, b) => sum + b.quantityRemaining, 0);
+  
+                  return (
+                    <React.Fragment key={item.id}>
+                    <tr className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="font-black text-slate-800 text-sm flex items-center gap-2">
+                          {item.name}
+                          {item.category === 'lab_service' && item.labParameters && item.labParameters.length > 0 && (
+                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[8px] px-1.5 py-0.5 rounded flex items-center gap-1"><TestTube className="w-2 h-2"/> {item.labParameters.length} Params</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">{item.sku}</div>
+                        {!isService && itemBatches.length > 0 && (
+                          <button onClick={() => toggleBatches(item.id)} className="mt-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                            {isExpanded ? 'Hide Batches' : `Batches (${itemBatches.length})`}
+                          </button>
+                        )}
+                        {expiringSoonCount > 0 && !isExpanded && (
+                          <div className="mt-1 text-[9px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3"/> {expiringSoonCount} units expiring within 30 days
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border border-white/20 shadow-xs ${catInfo?.color || 'bg-slate-100 text-slate-600'}`}>
+                          {catInfo?.label || item.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-mono text-xs font-black text-slate-800">{item.price.toFixed(2)}</div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {item.cost.toFixed(2)}</div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {isService ? (
+                          <span className="text-lg font-black text-slate-300">∞</span>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border ${isLow ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                              {item.stock} <span className="text-[9px] opacity-70 ml-0.5 uppercase">{item.unit}</span>
+                            </span>
+                            {isLow && <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
+                            {expiryStatus === 'expired' && <span className="text-[8px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
+                            {expiryStatus === 'soon' && <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!isService && (
+                            <>
+                              <button onClick={() => setReceiveStockItem(item)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-1 mr-2" title="Receive Stock">
+                                <Package className="w-3 h-3" /> Receive
+                              </button>
+                              <button onClick={() => setAdjustItem(item)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer" title="Quick Adjust Stock">
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => openEdit(item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer" title="Edit Master Data">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer" title="Delete from Registry">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-slate-50 border-b border-slate-200 shadow-inner">
+                        <td colSpan={5} className="px-6 py-4">
+                          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                            <table className="w-full text-left">
+                              <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Lot Number</th>
+                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Expiry Date</th>
+                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Qty Remaining</th>
+                                  <th className="px-4 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Supplier</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {itemBatches.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()).map(b => {
+                                  const daysDiff = (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
+                                  const isExp = daysDiff < 0;
+                                  const isSoon = daysDiff >= 0 && daysDiff <= 30;
+                                  return (
+                                    <tr key={b.id}>
+                                      <td className="px-4 py-2 text-xs font-mono font-bold text-slate-800">{b.lotNumber}</td>
+                                      <td className="px-4 py-2 text-xs font-mono font-bold flex items-center gap-2">
+                                        <span className={isExp ? 'text-rose-600' : isSoon ? 'text-amber-600' : 'text-slate-600'}>{b.expiryDate}</span>
+                                        {isExp && <span className="bg-rose-100 text-rose-600 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
+                                        {isSoon && <span className="bg-amber-100 text-amber-600 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Soon</span>}
+                                      </td>
+                                      <td className="px-4 py-2 text-xs font-black text-slate-800">{b.quantityRemaining}</td>
+                                      <td className="px-4 py-2 text-xs font-bold text-slate-500">{b.supplier || '-'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -380,6 +565,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                     <div>
                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Current Stock</label>
                       <input type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
+                      <p className="text-[8px] font-bold text-amber-600 mt-1 uppercase tracking-widest">⚠ Manual adjustment — does not create a batch. Use Receive Stock for deliveries.</p>
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1.5">Alert Minimum</label>
@@ -514,6 +700,69 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                   <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Apply Delta</button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL: Receive Stock */}
+      {receiveStockItem && createPortal(
+        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Package className="w-6 h-6"/></div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 leading-tight">Receive Stock</h3>
+                  <p className="text-xs font-bold text-slate-500 mt-0.5">{receiveStockItem.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setReceiveStockItem(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              <form id="receiveStockForm" onSubmit={handleReceiveStock} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot / Batch Number *</label>
+                    <input type="text" required value={receiveFormData.lotNumber || ''} onChange={e => setReceiveFormData({...receiveFormData, lotNumber: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-1.5">Expiry Date {['prescription', 'vaccine', 'food'].includes(receiveStockItem.category) ? '*' : ''}</label>
+                    <input type="date" required={['prescription', 'vaccine', 'food'].includes(receiveStockItem.category)} value={receiveFormData.expiryDate || ''} onChange={e => setReceiveFormData({...receiveFormData, expiryDate: e.target.value})} className="w-full px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-black font-mono text-amber-800 outline-none focus:border-amber-500" />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block mb-1.5">Qty Received *</label>
+                    <input type="number" required min="1" value={receiveFormData.quantityReceived || ''} onChange={e => setReceiveFormData({...receiveFormData, quantityReceived: parseInt(e.target.value) || 0})} className="w-full px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black font-mono text-emerald-800 outline-none focus:border-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Received Date</label>
+                    <input type="date" required value={receiveFormData.receivedDate || ''} onChange={e => setReceiveFormData({...receiveFormData, receivedDate: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Supplier</label>
+                    <input type="text" value={receiveFormData.supplier || ''} onChange={e => setReceiveFormData({...receiveFormData, supplier: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Cost per unit (Rs.)</label>
+                    <input type="number" step="0.01" min="0" value={receiveFormData.costPerUnit || ''} onChange={e => setReceiveFormData({...receiveFormData, costPerUnit: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
+                  </div>
+                </div>
+              </form>
+            </div>
+            
+            <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3 rounded-b-3xl">
+              <button type="button" onClick={() => setReceiveStockItem(null)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+              <button form="receiveStockForm" type="submit" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                <CheckCircle2 className="w-4 h-4"/> Confirm Receipt
+              </button>
             </div>
           </div>
         </div>,

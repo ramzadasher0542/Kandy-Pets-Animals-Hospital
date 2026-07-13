@@ -22,8 +22,27 @@ export interface InventoryItem {
   unit: string; 
   location?: string;
   labParameters?: Array<{ name: string; referenceRange: string; unit: string }>;
+  // expiryDate and lotNumber now represent the SOONEST-EXPIRING active batch for convenience.
+  // Do NOT rely on these as the single source of truth for items with multiple batches.
   expiryDate?: string;
   lotNumber?: string;
+  is_deleted?: boolean;
+}
+
+export interface InventoryBatch {
+  id: string;
+  inventoryItemId: string;
+  lotNumber: string;
+  expiryDate: string;        // ISO date
+  quantityReceived: number;
+  quantityRemaining: number;
+  receivedDate: string;      // ISO date
+  supplier?: string;
+  costPerUnit?: number;      // cents — actual cost for this batch
+  created_at: string; 
+  updated_at: string;
+  is_deleted: boolean; 
+  _dirty: boolean;
 }
 
 export type AppointmentStatus = 'booked' | 'in-progress' | 'completed' | 'cancelled';
@@ -43,6 +62,8 @@ export interface ClinicQueueItem {
   priority?: number;
   assignedVet?: string;
   prescribedMeds?: Array<{ itemId: string; name: string; quantity: number }>;
+  urgency?: 'routine' | 'non-emergency' | 'emergency';
+  emergencyBackfillRequired?: boolean;
 }
 
 // PHASE 1: Added weight and sex as native first-class citizens
@@ -101,7 +122,7 @@ export interface Pet {
 
 export interface Vaccination { id: string; petId: string; itemId: string; name: string; price: number; billed: boolean; dateAdministered: string; nextDueDate: string; status: 'active' | 'overdue' | 'due-soon'; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 export interface LabResult { id: string; petId: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
-export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: string; frequency?: string; remarks?: string; vetId: string; }
+export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: 'IV' | 'IM' | 'SC' | 'Oral' | 'Suppository'; frequency?: 'TDS' | 'BD' | 'Noct' | 'Mane' | 'SOS' | 'Stat' | 'custom'; frequencyCustom?: string; remarks?: string; vetId: string; }
 export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; groomingInstructions?: { bathe: boolean; fullShave: boolean; trimOnly: boolean; nailClip: boolean; earClean: boolean; deShed: boolean; customNotes?: string; }; consentSignature?: string; consentTimestamp?: string; consentOwnerName?: string; }
 export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; hospitalProvidesLitter?: boolean; billingItems?: any[]; billed?: boolean; feedingPlan?: { inventoryItemId: string; itemName: string; quantityPerMeal: number; mealsPerDay: number; }; estimatedStayDays?: number; depositAmountCents?: number; totalChargesCents?: number; cageFeePerDayCents?: number; cleaningFeePerDayCents?: number; doctorFeePerVisitCents?: number; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 
@@ -274,4 +295,22 @@ export interface Payslip {
   updated_at: string;
   is_deleted: boolean;
   _dirty: boolean;
+}
+
+// F-3: Audit trail for soft-deletions of clients and pets. Every deletion is
+// logged here for owner oversight; financial/clinical records are never touched.
+export interface DeletionAudit {
+  id: string;
+  entity_type: 'client' | 'pet';
+  entity_id: string;
+  entity_name?: string;
+  deleted_by: string;              // User.name of the operator
+  deleted_at: string;              // ISO datetime
+  had_history?: boolean;           // did it have linked records?
+  history_summary?: string;        // e.g. "3 invoices, 2 medical records"
+  override_confirmed?: boolean;    // did the operator confirm the history override?
+  created_at?: string;
+  updated_at?: string;
+  is_deleted?: boolean;
+  _dirty?: boolean;
 }

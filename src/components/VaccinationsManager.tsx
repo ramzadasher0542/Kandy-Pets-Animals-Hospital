@@ -8,6 +8,7 @@ import { Search, Syringe, ShieldCheck, Activity, User, ShieldAlert, PawPrint } f
 import { MedicalRecord, InventoryItem, Pet, Vaccination, ClinicQueueItem, Client } from '../types';
 import { showToast } from './Toast';
 import { fetchPets, fetchVaccinations, upsertVaccination } from '../lib/db';
+import { sortQueueByUrgency } from '../lib/queueUtils';
 
 interface VaccinationsProps {
   clients: Client[];
@@ -88,11 +89,11 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
   };
 
   const renderActiveQueue = () => {
-    const activeQueue = clinicQueue.filter(q => 
-      (q.serviceType === 'Vaccination' || q.serviceType === 'vaccination') && 
+    const activeQueue = sortQueueByUrgency(clinicQueue.filter(q =>
+      (q.serviceType === 'Vaccination' || q.serviceType === 'vaccination') &&
       q.status === 'active'
-    );
-    
+    ));
+
     if (activeQueue.length === 0) return null;
 
     return (
@@ -102,17 +103,24 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
         </h3>
         <div className="space-y-2">
           {activeQueue.map(q => (
-            <div 
+            <div
               key={q.id}
               onClick={() => setSelectedPatientId(q.petId)}
               className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-emerald-600 border-emerald-700 text-white shadow-md' : 'bg-white border-emerald-100 hover:border-emerald-300 shadow-sm'}`}
             >
               <div className="flex justify-between items-center mb-1">
-                <div className="font-bold text-sm truncate">{q.petName}</div>
+                <div className="font-bold text-sm truncate flex items-center gap-1.5">
+                  {q.petName}
+                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                </div>
                 <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
                   Waiting
                 </div>
               </div>
+              {q.emergencyBackfillRequired && (
+                <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+              )}
               <div className={`text-[10px] font-medium ${selectedPatientId === q.petId ? 'text-emerald-200' : 'text-slate-500'}`}>
                 {q.ownerName}
               </div>

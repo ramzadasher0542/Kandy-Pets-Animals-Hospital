@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, 
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
   PenTool, CheckCircle2 // FIXED: Added missing icons
 } from 'lucide-react';
-import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem } from '../types';
+import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem, User as UserType } from '../types';
 import { fetchInvoices, upsertInvoice, fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
+import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
@@ -25,7 +27,7 @@ interface POSProps {
   clinicQueue?: ClinicQueueItem[];
   onCheckout?: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
   activeShiftId?: string;
-  currentUser?: string;
+  currentUser?: UserType;
   invoices?: Invoice[];
   onUpdateStock?: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
   onAddInvoice?: (invoice: any) => Promise<void>;
@@ -89,6 +91,7 @@ export default function POSRegister({
   const [customClientName, setCustomClientName] = useState('');
   const [customClientPhone, setCustomClientPhone] = useState('');
   const [lastCompletedInvoice, setLastCompletedInvoice] = useState<Invoice | null>(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   const todayStr = formatDisplayDate(new Date());
 
@@ -96,16 +99,17 @@ export default function POSRegister({
   // INVENTORY & QUEUE LOGIC
   // ---------------------------------------------------------
   const filteredInventory = useMemo(() => {
-    if (!searchQuery) return inventory;
+    const allowed = inventory.filter(i => i.category === 'retail' || i.category === 'food');
+    if (!searchQuery) return allowed;
     const q = searchQuery.toLowerCase();
-    return inventory.filter(i => 
+    return allowed.filter(i => 
       i.name.toLowerCase().includes(q) || 
       i.sku.toLowerCase().includes(q)
     );
   }, [inventory, searchQuery]);
 
   const awaitingCheckoutQueue = useMemo(() => {
-    return clinicQueue.filter(q => q.status === 'active');
+    return sortQueueByUrgency(clinicQueue.filter(q => q.status === 'active'));
   }, [clinicQueue]);
 
   const unbilledAppointments = useMemo(() => {
@@ -274,6 +278,7 @@ export default function POSRegister({
   const total = Math.max(0, subtotal - discount);
 
   const handleCheckout = async () => {
+    console.log('[POS] handleCheckout initiated. Cart size:', cart.length, 'Total:', total);
     if (cart.length === 0) {
       showToast('Cart is empty.', 'error');
       return;
@@ -295,23 +300,30 @@ export default function POSRegister({
     }
 
     // FIXED: Stock validation — prevent over-selling
+    console.log('[POS] Checkout initiated. Cart size:', cart.length, 'Total:', subtotal);
+    console.log('[POS] Current inventory prop size:', inventory.length);
     const overSoldItems = cart.filter(c => {
       const invItem = inventory.find(i => i.id === c.id);
+      console.log('[POS] Checkout stock check:', c.name, 'cartQty:', c.cartQuantity, 'invStock:', invItem?.stock, 'invId:', invItem?.id);
       return invItem && !['service', 'lab_service'].includes(invItem.category) && c.cartQuantity > invItem.stock;
     });
     if (overSoldItems.length > 0) {
+      console.error('[POS] Insufficient stock for:', overSoldItems.map(i => i.name).join(', '));
       showToast(`Insufficient stock for: ${overSoldItems.map(i => i.name).join(', ')}`, 'error');
       return;
     }
 
+    console.log('[POS] Passed stock validation. Building invoice...');
+    
     const isWalkIn = !selectedAppointment;
     const clientName = isWalkIn ? (customClientName || 'Walk-in Client') : selectedAppointment.ownerName;
     const clientPhone = isWalkIn ? (customClientPhone || '0000000000') : selectedAppointment.ownerPhone;
     const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
-    // patientId format: lowercase_petName + last9_phone_digits
-    // Matches: medical records, clinic queue, patient portal
+    
+    console.log('[POS] Resolving patientId...');
     const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase().trim()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
 
+    console.log('[POS] Mapping cart items...');
     const invoiceItems: InvoiceItem[] = cart.map(c => {
       const numericPrice = Number(c.price) || 0;
       return {
@@ -347,30 +359,24 @@ export default function POSRegister({
         { method: 'bank_transfer' as const, amount: splitAmounts.bank_transfer }
       ].filter(p => p.amount > 0) : undefined,
       paymentStatus: 'paid',
-      createdBy: currentUser || 'Cashier',
+      createdBy: currentUser?.name || 'Cashier',
       shiftId: activeShiftId
     };
 
     try {
+      console.log('[POS] Calling onAtomicCheckout...');
       if (onAtomicCheckout) {
         await onAtomicCheckout(invoice, cart);
       }
+      console.log('[POS] onAtomicCheckout completed.');
 
       showToast(`Transaction completed — Invoice #${invoice.id.slice(0,8)}`, 'success');
 
-      // Thermal receipt print trigger
+      // Receipt preview trigger
+      console.log('[POS] Triggering receipt modal...');
       setLastCompletedInvoice(invoice);
-      setTimeout(() => {
-        window.print();
-        setTimeout(() => setLastCompletedInvoice(null), 1000);
-      }, 150);
-      
-      // Reset
-      setCart([]);
-      setDiscount(0);
-      setSelectedAppointment(null);
-      setCustomClientName('');
-      setCustomClientPhone('');
+      setShowReceiptModal(true);
+      console.log('[POS] Receipt modal triggered.');
     } catch (error: any) {
       console.error('Checkout failed:', error);
       showToast(error.message || 'Checkout failed', 'error');
@@ -550,6 +556,9 @@ export default function POSRegister({
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" 
               autoFocus
             />
+            <div className="text-[10px] text-slate-500 mt-2 font-medium">
+              Showing Retail &amp; Food only. Clinical services are added via Import from EHR.
+            </div>
           </div>
         </div>
 
@@ -608,13 +617,20 @@ export default function POSRegister({
                           className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
                         >
                           <div className="flex justify-between items-start mb-1">
-                            <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{q.petName}</div>
-                            <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                            <div className={`font-black text-sm truncate flex items-center gap-1.5 ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                              {q.petName}
+                              {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                              {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                            </div>
+                            <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'}`}>
                               In Clinic
                             </div>
                           </div>
+                          {q.emergencyBackfillRequired && (
+                            <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${isSelected ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                          )}
                           <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{q.ownerName} • {q.ownerPhone}</div>
-                          
+
                           <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
                             <div className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
                               <FileText className="w-3 h-3"/> Import E.H.R Charges
@@ -673,7 +689,59 @@ export default function POSRegister({
         </div>
       </main>
 
-      <POSReceipt invoice={lastCompletedInvoice} systemConfig={systemConfig || {}} />
+      {showReceiptModal && createPortal(
+        <div className="fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-indigo-600" /> Receipt Preview
+              </h2>
+              <button 
+                onClick={() => {
+                  setCart([]);
+                  setDiscount(0);
+                  setSelectedAppointment(null);
+                  setCustomClientName('');
+                  setCustomClientPhone('');
+                  setLastCompletedInvoice(null);
+                  setShowReceiptModal(false);
+                }}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto bg-slate-200 flex justify-center custom-scrollbar flex-1 relative">
+              <POSReceipt invoice={lastCompletedInvoice} systemConfig={systemConfig || {}} />
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0">
+              <button 
+                onClick={() => window.print()}
+                className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                🖨 Print Receipt
+              </button>
+              <button 
+                onClick={() => {
+                  setCart([]);
+                  setDiscount(0);
+                  setSelectedAppointment(null);
+                  setCustomClientName('');
+                  setCustomClientPhone('');
+                  setLastCompletedInvoice(null);
+                  setShowReceiptModal(false);
+                }}
+                className="flex-1 py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-black uppercase tracking-widest transition-colors cursor-pointer shadow-sm"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

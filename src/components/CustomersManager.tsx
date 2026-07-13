@@ -5,14 +5,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Search, UserPlus, Phone, Mail, MapPin, Calendar, 
-  ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity, 
-  Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe
+import {
+  Search, UserPlus, Phone, Mail, MapPin, Calendar,
+  ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity,
+  Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe, Trash2
 } from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification, Pet, Vaccination, LabResult } from '../types';
 import { fetchClients, fetchPets, fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
 import { db } from '../lib/localDb';
+import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
@@ -34,6 +35,9 @@ interface CustomersManagerProps {
   onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
   onUpdateClient?: (client: any) => Promise<void>;
   onUpdatePet?: (oldPatientId: string, newPetName: string, newDetails: any) => void;
+  onVerifyMasterPin?: (pin: string) => boolean;
+  onDeleteClient?: (client: Client, meta: { hadHistory: boolean; historySummary: string; overrideConfirmed: boolean }) => Promise<void>;
+  onDeletePet?: (pet: Pet, meta: { hadHistory: boolean; historySummary: string; overrideConfirmed: boolean }) => Promise<void>;
 }
 
 export default function CustomersManager({ 
@@ -52,7 +56,10 @@ export default function CustomersManager({
   onUpdateRecord,
   onUpdateRecordsBulk,
   onUpdateClient,
-  onUpdatePet
+  onUpdatePet,
+  onVerifyMasterPin,
+  onDeleteClient,
+  onDeletePet
 }: CustomersManagerProps) {
   
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
@@ -66,6 +73,16 @@ export default function CustomersManager({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditPetModal, setShowEditPetModal] = useState(false);
+
+  // F-3: Safe-deletion modal state
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { type: 'client'; client: Client; hadHistory: boolean; historySummary: string }
+    | { type: 'pet'; pet: Pet; hadHistory: boolean; historySummary: string }
+    | null
+  >(null);
+  const [deleteOverride, setDeleteOverride] = useState(false);
+  const [deletePin, setDeletePin] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // BUG #12 FIX: Full historical data loaded from DB, not today-only props
   const [allClientRecords, setAllClientRecords] = useState<MedicalRecord[]>([]);
@@ -114,6 +131,7 @@ export default function CustomersManager({
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
 
   const filteredClients = clients.filter(c => {
+    if (c.is_deleted) return false; // F-3: hide soft-deleted clients
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     if (c.full_name.toLowerCase().includes(q)) return true;
@@ -290,6 +308,90 @@ export default function CustomersManager({
   };
 
   // ---------------------------------------------------------
+  // F-3: SAFE DELETION — history check, PIN gate, audit trail
+  // ---------------------------------------------------------
+  type HistoryCounts = { invoices: number; records: number; appointments: number; boarding: number; grooming: number; labs: number; vaccinations: number };
+
+  const buildHistorySummary = (c: HistoryCounts): string => {
+    const parts: string[] = [];
+    const add = (n: number, singular: string) => { if (n > 0) parts.push(`${n} ${singular}${n === 1 ? '' : 's'}`); };
+    add(c.invoices, 'invoice');
+    add(c.records, 'medical record');
+    add(c.appointments, 'appointment');
+    add(c.boarding, 'boarding record');
+    add(c.grooming, 'grooming log');
+    add(c.labs, 'lab result');
+    add(c.vaccinations, 'vaccination');
+    return parts.join(', ');
+  };
+
+  // Query the DB directly (not today-only props) so the orphan warning is accurate.
+  const computeHistory = async (petIds: Set<string>, phone: string): Promise<HistoryCounts> => {
+    const counts: HistoryCounts = { invoices: 0, records: 0, appointments: 0, boarding: 0, grooming: 0, labs: 0, vaccinations: 0 };
+    await db.invoices.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && ((v.patientId && petIds.has(v.patientId)) || (phone && normalizePhone(v.ownerPhone || '') === phone))) counts.invoices++; });
+    await db.records.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.patientId)) counts.records++; });
+    await db.appointments.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && phone && normalizePhone(v.ownerPhone || '') === phone) counts.appointments++; });
+    await db.boardingRecords.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.boarding++; });
+    await db.groomingLogs.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.grooming++; });
+    await db.labResults.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.labs++; });
+    await db.vaccinations.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.vaccinations++; });
+    return counts;
+  };
+
+  const openDeleteClient = async (client: Client, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const petIds = new Set<string>();
+    await db.pets.iterate((p: any) => { if (p && !Array.isArray(p) && (p.clientId === client.client_id || client.petIds?.includes(p.id))) petIds.add(p.id); });
+    const counts = await computeHistory(petIds, normalizePhone(client.primary_phone || ''));
+    const summary = buildHistorySummary(counts);
+    setDeleteOverride(false);
+    setDeletePin('');
+    setDeleteTarget({ type: 'client', client, hadHistory: summary.length > 0, historySummary: summary });
+  };
+
+  const openDeletePet = async (pet: Pet, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const client = clients.find(c => c.client_id === pet.clientId);
+    const counts = await computeHistory(new Set<string>([pet.id]), client ? normalizePhone(client.primary_phone || '') : '');
+    // Appointments have no petId; for a single pet don't attribute the client's whole
+    // appointment history to it — reset that count to what actually names this pet.
+    let petAppointments = 0;
+    if (client) {
+      const phone = normalizePhone(client.primary_phone || '');
+      await db.appointments.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && phone && normalizePhone(v.ownerPhone || '') === phone && (v.petName || '').trim().toLowerCase() === pet.name.trim().toLowerCase()) petAppointments++; });
+    }
+    counts.appointments = petAppointments;
+    const summary = buildHistorySummary(counts);
+    setDeleteOverride(false);
+    setDeletePin('');
+    setDeleteTarget({ type: 'pet', pet, hadHistory: summary.length > 0, historySummary: summary });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.hadHistory && !deleteOverride) return; // guard: override required
+    if (!onVerifyMasterPin) { showToast('Master PIN verification unavailable.', 'error'); return; }
+    if (!deletePin || !onVerifyMasterPin(deletePin)) { showToast('Authorization failed. Incorrect Master PIN.', 'error'); return; }
+
+    setDeleteBusy(true);
+    try {
+      const meta = { hadHistory: deleteTarget.hadHistory, historySummary: deleteTarget.historySummary, overrideConfirmed: deleteTarget.hadHistory ? deleteOverride : false };
+      if (deleteTarget.type === 'client') {
+        if (onDeleteClient) await onDeleteClient(deleteTarget.client, meta);
+        if (selectedClientId === deleteTarget.client.client_id) { setSelectedClientId(null); setSelectedPetId(null); }
+      } else {
+        if (onDeletePet) await onDeletePet(deleteTarget.pet, meta);
+        if (selectedPetId === deleteTarget.pet.id) setSelectedPetId(null);
+      }
+      setDeleteTarget(null);
+      setDeletePin('');
+      setDeleteOverride(false);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  // ---------------------------------------------------------
   // AGGREGATORS FOR CLIENT DASHBOARD
   // ---------------------------------------------------------
   // BUG #12 FIX: Use full historical data from DB, not today-only props
@@ -309,8 +411,8 @@ export default function CustomersManager({
   // =========================================================
 
   const renderActiveQueue = () => {
-    const activeQueue = clinicQueue?.filter(q => q.status === 'active') || [];
-    
+    const activeQueue = sortQueueByUrgency(clinicQueue?.filter(q => q.status === 'active') || []);
+
     if (activeQueue.length === 0) return null;
 
     return (
@@ -323,7 +425,7 @@ export default function CustomersManager({
             const pet = pets.find(p => p.id === q.petId);
             const isSelected = pet && selectedClientId === pet.clientId;
             return (
-              <div 
+              <div
                 key={q.id}
                 onClick={() => {
                   if (pet) {
@@ -334,11 +436,18 @@ export default function CustomersManager({
                 className={`p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
               >
                 <div className="flex justify-between items-center mb-1">
-                  <div className="font-bold text-sm truncate">{q.petName}</div>
+                  <div className="font-bold text-sm truncate flex items-center gap-1.5">
+                    {q.petName}
+                    {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
+                    {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                  </div>
                   <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                     {q.serviceType}
                   </div>
                 </div>
+                {q.emergencyBackfillRequired && (
+                  <div className={`text-[8px] font-black uppercase tracking-wider mb-1 ${isSelected ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
+                )}
                 <div className={`text-[10px] font-medium ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>
                   {q.ownerName}
                 </div>
@@ -428,7 +537,17 @@ export default function CustomersManager({
                     <div className="relative z-10 flex flex-col h-full">
                       <div className="flex justify-between items-start mb-2">
                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-md">{pet.petType}</div>
-                        <PawPrint className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            data-testid={`btn-delete-pet-${pet.patientId}`}
+                            onClick={(e) => openDeletePet(pet, e)}
+                            title="Delete pet"
+                            className="p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <PawPrint className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
+                        </div>
                       </div>
                       <div className="font-bold text-slate-800 text-lg tracking-tight truncate">{pet.petName || pet.name}</div>
                       <div className="text-xs font-semibold text-slate-500 truncate mb-1">{pet.breed || 'Unknown Breed'}</div>
@@ -790,14 +909,26 @@ export default function CustomersManager({
             const isSelected = selectedClientId === c.client_id;
             
             return (
-              <div 
+              <div
                 key={c.client_id}
                 onClick={() => { setSelectedClientId(c.client_id); setSelectedPetId(null); }}
-                className={`p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
+                className={`group p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
               >
                 <div className="flex justify-between items-start mb-1">
                   <div className={`font-extrabold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{c.full_name}</div>
-                  {c.client_status === 'flagged_bad_debt' && <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {c.client_status === 'flagged_bad_debt' && <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                    {c.client_id !== 'walk_in_retail' && (
+                      <button
+                        data-testid={`btn-delete-client-${c.client_id}`}
+                        onClick={(e) => openDeleteClient(c, e)}
+                        title="Delete client"
+                        className="p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between items-center mt-2">
                   <div className={`text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`}>{c.primary_phone}</div>
@@ -1056,6 +1187,92 @@ export default function CustomersManager({
             </form>
           </div>
         </div>,
+        document.body
+      )}
+
+      {/* F-3: SAFE DELETION CONFIRMATION MODAL */}
+      {deleteTarget && createPortal(
+        (() => {
+          const label = deleteTarget.type === 'client' ? 'client' : 'pet';
+          const name = deleteTarget.type === 'client' ? deleteTarget.client.full_name : deleteTarget.pet.name;
+          const canDelete = !deleteBusy && deletePin.trim().length > 0 && (!deleteTarget.hadHistory || deleteOverride);
+          return (
+            <div className="fixed inset-0 z-[80] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !deleteBusy && setDeleteTarget(null)}>
+              <div className="bg-white rounded-3xl border border-rose-100 max-w-md w-full shadow-2xl animate-scale-up flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-start p-6 pb-4 border-b border-slate-100 bg-rose-50/60 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+                      <Trash2 className="w-5 h-5 text-rose-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800 leading-none">Delete {label}</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Requires Master PIN</p>
+                    </div>
+                  </div>
+                  <button onClick={() => !deleteBusy && setDeleteTarget(null)} className="p-1.5 hover:bg-white text-slate-400 rounded-lg cursor-pointer transition-colors"><X className="w-4 h-4" /></button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <p className="text-xs font-bold text-slate-700">
+                    You are about to delete <span className="text-slate-900 font-black">{name}</span>.
+                  </p>
+
+                  {deleteTarget.hadHistory ? (
+                    <div data-testid="delete-history-warning" className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-start gap-2">
+                        <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <p className="text-[11px] font-bold text-rose-700 leading-snug">
+                          This {label} has <span className="font-black">{deleteTarget.historySummary}</span>. Deleting will hide it from Customers, but the financial and clinical records remain intact for reports.
+                        </p>
+                      </div>
+                      <label className="flex items-start gap-2 cursor-pointer select-none">
+                        <input
+                          data-testid="delete-override-checkbox"
+                          type="checkbox"
+                          checked={deleteOverride}
+                          onChange={e => setDeleteOverride(e.target.checked)}
+                          className="w-4 h-4 mt-0.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                        />
+                        <span className="text-[11px] font-bold text-rose-800">I understand this {label} has history and want to delete anyway.</span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <p className="text-[11px] font-bold text-slate-600 leading-snug">
+                        No linked financial or clinical history was found. This {label} will be hidden from Customers. This can be reviewed later in the Deletion Audit Log.
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="font-bold text-slate-500 block text-[9px] uppercase tracking-widest mb-1.5">Master PIN *</label>
+                    <input
+                      data-testid="delete-pin-input"
+                      type="password"
+                      value={deletePin}
+                      onChange={e => setDeletePin(e.target.value)}
+                      autoFocus
+                      placeholder="Enter Master PIN to authorize"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm tracking-widest"
+                    />
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex gap-3 p-6 pt-0 justify-end">
+                  <button onClick={() => !deleteBusy && setDeleteTarget(null)} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
+                  <button
+                    data-testid="btn-confirm-delete"
+                    onClick={confirmDelete}
+                    disabled={!canDelete}
+                    className={`px-6 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-2 transition-colors ${canDelete ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                  >
+                    <Trash2 className="w-4 h-4" /> {deleteBusy ? 'Deleting…' : `Delete ${label}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
         document.body
       )}
 
