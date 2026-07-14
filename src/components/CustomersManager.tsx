@@ -134,7 +134,8 @@ export default function CustomersManager({
 
   const displayName = (c: Client) => {
     const name = (c.full_name || '').trim();
-    if (!name || name.replace(/[\d\s\-+()]/g, '').length === 0) return 'Unnamed Client';
+    if (!name) return 'Unnamed Client';
+    if (name.replace(/[\d\s\-+()]/g, '').length === 0) return 'Emergency — Details Pending';
     return name;
   };
 
@@ -889,6 +890,8 @@ export default function CustomersManager({
 
   return (
     <PageShell
+      title="Customers"
+      subtitle="Client profiles, pets, and account history"
       actions={
         <button
           data-testid="btn-add-client"
