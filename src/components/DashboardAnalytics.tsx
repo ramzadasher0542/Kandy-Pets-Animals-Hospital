@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { db } from '../lib/localDb';
 import { sortQueueByUrgency } from '../lib/queueUtils';
+import PageShell from './ui/PageShell';
 
 interface DashboardProps {
   invoices: Invoice[];
@@ -216,18 +217,9 @@ export default function DashboardAnalytics({
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR', maximumFractionDigits: 0 }).format(val || 0);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] bg-slate-50 w-full overflow-hidden font-sans relative">
-      <header className="flex-none px-8 py-6 bg-white border-b border-slate-200 shrink-0 z-10 shadow-sm">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900">Clinic Floor Ops</h1>
-            <p className="text-sm font-bold text-slate-500 mt-1">Real-time patient traffic & facility status</p>
-          </div>
-        </div>
-      </header>
-
+    <PageShell title="Clinic Floor Ops" subtitle="Real-time patient traffic & facility status">
+      <div className="flex flex-col h-[calc(100vh-140px)] w-full overflow-hidden font-sans relative">
       <main className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
-        
         {/* TOP ROW: TODAY AT A GLANCE */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
@@ -428,5 +420,6 @@ export default function DashboardAnalytics({
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
     </div>
+    </PageShell>
   );
 }

@@ -6,43 +6,74 @@
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
-interface Props { children: ReactNode; }
-interface State { hasError: boolean; error: Error | null; }
+interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
+interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
 
-export class ClinicErrorBoundary extends React.Component<Props, State> {
-  public state: State = { hasError: false, error: null };
+// @ts-ignore — React 19 class component type narrowing workaround
+export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, PanelErrorBoundaryState> {
+  public state: PanelErrorBoundaryState = { hasError: false, error: null, errorInfo: null, showDetails: false };
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  public static getDerivedStateFromError(error: Error): PanelErrorBoundaryState {
+    return { hasError: true, error, errorInfo: null, showDetails: false };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // SECURITY FIX: Only log detailed errors in development
+    (this as any).setState({ errorInfo });
     if (import.meta.env.DEV) {
-      console.error('[CeylonPets Core] Critical layout exception trapped by safety boundary:', error, errorInfo);
+      console.error('[CeylonPets] Panel error:', error, errorInfo);
     }
   }
 
   public render() {
-    if (this.state.hasError) {
+    const self = this as any;
+    if (self.state.hasError) {
+      const { error, errorInfo, showDetails } = self.state;
       return (
-        <div className="min-screen p-8 flex items-center justify-center bg-slate-50 text-xs">
-          <div className="max-w-md w-full bg-white border border-rose-200 p-6 rounded-2xl shadow-sm text-center space-y-4">
-            <div className="text-rose-600 text-lg font-black">🐾 Recovery Mode Intercepted</div>
-            <p className="text-slate-600 font-bold leading-relaxed">
-              A view formatting discrepancy occurred inside a panel. The data state wrapper has been kept isolated and preserved safely to prevent data loss.
-            </p>
-            <button
-              onClick={() => { window.location.reload(); }}
-              className="w-full py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-xs cursor-pointer"
-            >
-              Hot Re-sync Application View
-            </button>
+        <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
+          <div className="max-w-md w-full bg-white border border-slate-200 p-8 rounded-2xl shadow-sm text-center space-y-5">
+            <div className="mx-auto w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center">
+              <svg className="w-6 h-6 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800">This page couldn't load</h3>
+              <p className="text-xs font-bold text-slate-500 mt-2 leading-relaxed">
+                Something went wrong displaying this panel. Your data is safe — nothing was lost.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => self.setState({ hasError: false, error: null, errorInfo: null })}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-sm cursor-pointer transition-colors uppercase tracking-widest"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => self.props.onNavigate?.('dashboard')}
+                className="flex-1 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-black rounded-xl cursor-pointer transition-colors uppercase tracking-widest"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+            {import.meta.env.DEV && error && (
+              <div className="text-left border-t border-slate-100 pt-4 mt-4">
+                <button
+                  onClick={() => self.setState({ showDetails: !showDetails })}
+                  className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 cursor-pointer"
+                >
+                  {showDetails ? '▾ Hide' : '▸ Show'} Error Details (dev only)
+                </button>
+                {showDetails && (
+                  <pre className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-mono text-rose-700 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+                    {error.message}{'\n'}{error.stack}{errorInfo?.componentStack ? '\n\nComponent Stack:' + errorInfo.componentStack : ''}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
     }
-    return (this as any).props.children;
+    return self.props.children;
   }
 }
 
@@ -676,7 +707,14 @@ function App() {
   const handleUpdateRecord = useCallback(async (updated: MedicalRecord) => {
     try {
       await upsertMedicalRecord(updated);
-      setRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+      setRecords(prev => {
+        const exists = prev.some(r => r.id === updated.id);
+        if (exists) {
+          return prev.map(r => r.id === updated.id ? updated : r);
+        } else {
+          return [updated, ...prev];
+        }
+      });
       showToast(`Medical record updated successfully.`);
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
@@ -1491,7 +1529,9 @@ function App() {
                 </div>
               </div>
               <div className="flex-1 w-full h-full overflow-y-auto">
-                {renderCanvas()}
+                <ClinicErrorBoundary key={activeView} onNavigate={(view) => { setActiveView(view); setHistoryStack([view]); }}>
+                  {renderCanvas()}
+                </ClinicErrorBoundary>
               </div>
             </main>
           </div>
@@ -1526,9 +1566,5 @@ function App() {
 }
 
 export default function AppWrapper() {
-  return (
-    <ClinicErrorBoundary>
-      <App />
-    </ClinicErrorBoundary>
-  );
+  return <App />;
 }

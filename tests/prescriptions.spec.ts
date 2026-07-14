@@ -42,7 +42,7 @@ test('Verify Prescribed Meds Route and Frequency', async ({ page }) => {
   
   await expect(page.locator('text=Dashboard').first()).toBeVisible({ timeout: 10000 });
   await page.getByTestId('nav-examinations').click();
-  await expect(page.locator('h2:has-text("Charting Dashboard")')).toBeVisible();
+  await expect(page.locator('h1:has-text("Charting Dashboard")')).toBeVisible();
 
   // Switch to "All History" mode to make sure we can find a record to edit if no queue
   await page.click('button:has-text("All History")');
@@ -68,11 +68,10 @@ test('Verify Prescribed Meds Route and Frequency', async ({ page }) => {
   await page.click('button:has-text("Add to Prescription")');
   
   // Wait for it to appear in the active prescriptions list
-  const activeList = page.locator('.flex-1.bg-white:has-text("Active Prescriptions List")');
-  await expect(activeList.locator('text=Amoxicillin')).toBeVisible();
-  await expect(activeList.locator('text=IM')).toBeVisible();
-  await expect(activeList.locator('text=BD')).toBeVisible();
-  await expect(activeList.locator('text=0.5ml')).toBeVisible();
+  const activeList = page.locator('.flex-1:has-text("Active Prescriptions List")').first();
+  await expect(activeList.getByText('Amoxicillin').first()).toBeVisible();
+  await expect(activeList.getByText(/IM \u00B7 BD/).first()).toBeVisible();
+  await expect(activeList.getByText(/0\.5ml/).first()).toBeVisible();
 
   // Save the record
   await page.click('button:has-text("Lock Chart & Save")');
@@ -91,7 +90,7 @@ test('Verify Prescribed Meds Route and Frequency', async ({ page }) => {
   }
   await expect(page.locator('text=Dashboard').first()).toBeVisible({ timeout: 10000 });
   await page.getByTestId('nav-examinations').click();
-  await expect(page.locator('h2:has-text("Charting Dashboard")')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('h1:has-text("Charting Dashboard")')).toBeVisible({ timeout: 10000 });
   await page.click('button:has-text("All History")');
   const firstPatientRowAfter = page.locator('tbody tr', { hasText: 'Test Pet' }).first();
   await firstPatientRowAfter.waitFor({ state: 'visible' });
@@ -99,9 +98,8 @@ test('Verify Prescribed Meds Route and Frequency', async ({ page }) => {
   
   await page.click('button:has-text("Pharmacy")');
   // Check if it persisted
-  const activeListAfter = page.locator('.flex-1.bg-white:has-text("Active Prescriptions List")');
-  await expect(activeListAfter.locator('text=IM')).toBeVisible();
-  await expect(activeListAfter.locator('text=BD')).toBeVisible();
+  const activeListAfter = page.locator('.flex-1:has-text("Active Prescriptions List")').first();
+  await expect(activeListAfter.getByText(/IM \u00B7 BD/).first()).toBeVisible();
 
   // Add another med with frequency="Custom", frequencyCustom="Every 8hrs"
   await page.fill('input[placeholder="-- Select from Inventory --"]', 'a');
@@ -115,7 +113,7 @@ test('Verify Prescribed Meds Route and Frequency', async ({ page }) => {
 
   // Confirm "Every 8hrs" appears in the list for that med
   // Since we don't know the exact route, let's just check if "Every 8hrs" is there. The default route is 'Oral'
-  await expect(page.locator('.flex-1.bg-white:has-text("Active Prescriptions List")').locator('text=Oral · Every 8hrs')).toBeVisible();
+  await expect(page.locator('.flex-1:has-text("Active Prescriptions List")').locator('text=Oral · Every 8hrs').first()).toBeVisible();
 
   console.log("ALL PLAYWRIGHT TESTS PASSED EXACTLY AS EXPECTED.");
 });

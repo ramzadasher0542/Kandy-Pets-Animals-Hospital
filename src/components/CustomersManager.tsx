@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import {
   Search, UserPlus, Phone, Mail, MapPin, Calendar,
   ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity,
-  Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe, Trash2
+  Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe, Trash2, Users
 } from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification, Pet, Vaccination, LabResult } from '../types';
 import { fetchClients, fetchPets, fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
@@ -17,6 +17,8 @@ import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
+import PageShell from './ui/PageShell';
+import MasterDetailLayout from './ui/MasterDetailLayout';
 
 interface CustomersManagerProps {
   clients: Client[];
@@ -129,6 +131,12 @@ export default function CustomersManager({
   }, [selectedClientId, clients, pets, records, invoices]);
 
   const normalizePhone = (p: string) => p.replace(/\D/g, '');
+
+  const displayName = (c: Client) => {
+    const name = (c.full_name || '').trim();
+    if (!name || name.replace(/[\d\s\-+()]/g, '').length === 0) return 'Unnamed Client';
+    return name;
+  };
 
   const filteredClients = clients.filter(c => {
     if (c.is_deleted) return false; // F-3: hide soft-deleted clients
@@ -479,7 +487,7 @@ export default function CustomersManager({
             <div className="space-y-4">
               <div>
                 <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                  {selectedClient.full_name}
+                  {displayName(selectedClient)}
                   <button onClick={() => {
                     setFormData({
                       full_name: selectedClient.full_name, primary_phone: selectedClient.primary_phone,
@@ -653,7 +661,7 @@ export default function CustomersManager({
         <div className="bg-white border-b border-slate-200 shrink-0">
           <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
             <button onClick={() => setSelectedPetId(null)} className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1 cursor-pointer transition-colors uppercase tracking-widest">
-              <ChevronLeft className="w-4 h-4"/> Back to {selectedClient.full_name}'s Profile
+              <ChevronLeft className="w-4 h-4"/> Back to {displayName(selectedClient)}'s Profile
             </button>
             <div className="flex items-center gap-2">
                {onGenerateConsent && (
@@ -880,86 +888,86 @@ export default function CustomersManager({
   };
 
   return (
-    <div className="flex h-full w-full gap-4 overflow-hidden" id="customers-module-container">
-      
-      {/* LEFT PANE: Master Directory */}
-      <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
-        <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0 space-y-3">
-          <div className="flex justify-between items-center">
-            <h2 className="text-sm font-bold text-slate-800 tracking-tight">Client Directory</h2>
-            <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{clients.length} Total</span>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search name, phone, or pet..." 
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs" 
-            />
-          </div>
-        </div>
+    <PageShell
+      actions={
+        <button
+          data-testid="btn-add-client"
+          onClick={() => {
+            setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
+            setNewPetData({ petName: '', petType: 'Canine', breed: '', weight: 0, sex: 'Unknown', age: '' });
+            setShowAddModal(true);
+          }}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap"
+        >
+          <UserPlus className="w-4 h-4" /> Register New Client
+        </button>
+      }
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: 'Search name, phone, or pet...',
+      }}
+    >
+      <MasterDetailLayout
+        isEmpty={!selectedClient && !selectedPetId}
+        detailEmptyIcon={<Users className="h-16 w-16 text-slate-300" />}
+        detailEmptyTitle="Select a client to view profile"
+        listHeader={
+          <>
+            <div className="flex justify-between items-center">
+              <h2 className="text-sm font-bold text-slate-800 tracking-tight">Client Directory</h2>
+              <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{clients.length} Total</span>
+            </div>
+          </>
+        }
+        list={
+          <>
+            {renderActiveQueue()}
+            <div className="space-y-1">
+              {filteredClients.map(c => {
+                const petCount = c.petIds ? c.petIds.length : 0;
+                const isSelected = selectedClientId === c.client_id;
 
-        {renderActiveQueue()}
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-          {filteredClients.map(c => {
-            const petCount = c.petIds ? c.petIds.length : 0;
-            const isSelected = selectedClientId === c.client_id;
-            
-            return (
-              <div
-                key={c.client_id}
-                onClick={() => { setSelectedClientId(c.client_id); setSelectedPetId(null); }}
-                className={`group p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <div className={`font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{c.full_name}</div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {c.client_status === 'flagged_bad_debt' && <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
-                    {c.client_id !== 'walk_in_retail' && (
-                      <button
-                        data-testid={`btn-delete-client-${c.client_id}`}
-                        onClick={(e) => openDeleteClient(c, e)}
-                        title="Delete client"
-                        className="p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                return (
+                  <div
+                    key={c.client_id}
+                    onClick={() => { setSelectedClientId(c.client_id); setSelectedPetId(null); }}
+                    className={`group p-3 rounded-xl cursor-pointer transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className={`font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{displayName(c)}</div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {c.client_status === 'flagged_bad_debt' && <ShieldAlert className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                        {c.client_id !== 'walk_in_retail' && (
+                          <button
+                            data-testid={`btn-delete-client-${c.client_id}`}
+                            onClick={(e) => openDeleteClient(c, e)}
+                            title="Delete client"
+                            className="p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center mt-2">
+                      <div className={`text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`}>{c.primary_phone}</div>
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 px-1.5 py-0.5 rounded flex-shrink-0">
+                        <PawPrint className={`w-3 h-3 ${petCount > 0 ? 'text-indigo-500' : 'text-slate-300'}`} />
+                        <span className="text-[10px] font-bold text-slate-600 leading-none pt-px">{petCount}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex justify-between items-center mt-2">
-                  <div className={`text-[10px] font-mono font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`}>{c.primary_phone}</div>
-                  <div className="flex items-center gap-1 bg-white border border-slate-200 px-1.5 py-0.5 rounded flex-shrink-0">
-                    <PawPrint className={`w-3 h-3 ${petCount > 0 ? 'text-indigo-500' : 'text-slate-300'}`} />
-                    <span className="text-[10px] font-bold text-slate-600 leading-none pt-px">{petCount}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {filteredClients.length === 0 && <div className="text-center py-8 text-slate-400 font-bold text-xs">No clients match search.</div>}
-        </div>
-
-        <div className="p-4 border-t border-slate-100 bg-white shrink-0">
-          <button
-            data-testid="btn-add-client"
-            onClick={() => {
-              setFormData({ full_name: '', primary_phone: '', alternate_phone: '', email_address: '', physical_address: '', communication_preference: 'sms', administrative_notes: '' });
-              setNewPetData({ petName: '', petType: 'Canine', breed: '', weight: 0, sex: 'Unknown', age: '' });
-              setShowAddModal(true);
-            }}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
-          >
-            <UserPlus className="h-4 w-4" /> Register New Client
-          </button>
-        </div>
-      </aside>
-
-      {/* RIGHT PANE: Dynamic Morph (Client Dashboard OR Pet Passport) */}
-      {selectedPetId ? renderPetPassport() : renderClientDashboard()}
+                );
+              })}
+              {filteredClients.length === 0 && <div className="text-center py-8 text-slate-400 font-bold text-xs">No clients match search.</div>}
+            </div>
+          </>
+        }
+        detail={
+          selectedPetId ? renderPetPassport() : renderClientDashboard()
+        }
+      />
 
       {/* NEW: DUAL-CAPTURE ENTERPRISE ONBOARDING MODAL */}
       {showAddModal && createPortal(
@@ -1194,7 +1202,7 @@ export default function CustomersManager({
       {deleteTarget && createPortal(
         (() => {
           const label = deleteTarget.type === 'client' ? 'client' : 'pet';
-          const name = deleteTarget.type === 'client' ? deleteTarget.client.full_name : deleteTarget.pet.name;
+          const name = deleteTarget.type === 'client' ? displayName(deleteTarget.client) : deleteTarget.pet.name;
           const canDelete = !deleteBusy && deletePin.trim().length > 0 && (!deleteTarget.hadHistory || deleteOverride);
           return (
             <div className="fixed inset-0 z-[80] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !deleteBusy && setDeleteTarget(null)}>
@@ -1276,6 +1284,6 @@ export default function CustomersManager({
         document.body
       )}
 
-    </div>
+    </PageShell>
   );
 }

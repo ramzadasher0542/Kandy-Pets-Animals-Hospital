@@ -10,6 +10,7 @@ import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } f
 import { showToast } from './Toast';
 import { db, stampRecord } from '../lib/localDb';
 import { Badge } from './ui/Badge';
+import PageShell from './ui/PageShell';
 
 // --- Cash Adjustment Type ---
 interface CashAdjustment {
@@ -238,16 +239,13 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     setActualClosingInput('');
   };
 
+
   return (
     <>
-      <div className="flex-1 flex flex-col h-[calc(100vh-140px)] gap-4 print:hidden" id="shift-manager-module">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between shrink-0">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
-              <Lock className="w-5 h-5 text-indigo-600" /> Terminal Control Center
-            </h2>
-            <p className="text-xs text-slate-500 font-bold mt-0.5">Secure drawer management, cash adjustments & reconciliation</p>
-          </div>
+      <PageShell
+        title="Terminal Control Center"
+        subtitle="Secure drawer management, cash adjustments & reconciliation"
+        actions={
           <div className="flex items-center gap-3">
             {activeShift && (
               <button onClick={() => setShowAdjModal(true)} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl text-[10px] uppercase tracking-widest flex items-center gap-1.5 shadow-md transition-transform active:scale-95 cursor-pointer">
@@ -258,7 +256,9 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
               <User className="w-3.5 h-3.5" /> Clerk: <span className="bg-white px-2 py-0.5 rounded-xl border border-indigo-100">{currentUser.name}</span>
             </div>
           </div>
-        </div>
+        }
+      >
+        <div className="flex-1 flex flex-col h-[calc(100vh-140px)] gap-4 print:hidden" id="shift-manager-module">
 
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
           
@@ -477,6 +477,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
         </div>,
         document.body
       )}
+      </PageShell>
     </>
   );
 }

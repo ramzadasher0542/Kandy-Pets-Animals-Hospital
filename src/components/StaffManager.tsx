@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { stampRecord } from '../lib/localDb';
 import { createPortal } from 'react-dom';
+import PageShell from './ui/PageShell';
 
 interface StaffManagerProps {
   staffProfiles: StaffProfile[];
@@ -48,8 +49,8 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
   const [manualClockData, setManualClockData] = useState({ staffId: '', date: new Date().toISOString().split('T')[0], clockIn: '', clockOut: '', notes: '' });
 
   const todayISO = new Date().toISOString().split('T')[0];
-  const todaysEntries = timeEntries ? timeEntries.filter(t => t.date.startsWith(todayISO)).sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()) : [];
-  const selectedStaffOpenEntry = timeEntries ? timeEntries.find(t => t.staffId === clockSelectedStaff && t.date.startsWith(todayISO) && !t.clockOut) : undefined;
+  const todaysEntries = timeEntries ? timeEntries.filter(t => t.date && t.date.startsWith(todayISO)).sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime()) : [];
+  const selectedStaffOpenEntry = timeEntries ? timeEntries.find(t => t.staffId === clockSelectedStaff && t.date && t.date.startsWith(todayISO) && !t.clockOut) : undefined;
 
   // Schedule State
   const [scheduleWeekStart, setScheduleWeekStart] = useState<Date>(() => {
@@ -460,23 +461,22 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
     return d;
   });
 
+
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] bg-slate-50 w-full overflow-hidden font-sans relative">
-      <header className="flex-none px-8 py-6 bg-white border-b border-slate-200 shrink-0 z-10 shadow-sm">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 flex items-center gap-2"><UserCog className="w-7 h-7 text-indigo-600"/> Staff & Payroll</h1>
-            <p className="text-sm font-bold text-slate-500 mt-1">Manage team members and user access links</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setActiveTab('roster')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Roster</button>
-            <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'schedule' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Schedule</button>
-            <button onClick={() => setActiveTab('clock')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'clock' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Time Clock</button>
-            <button onClick={() => setActiveTab('link')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'link' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Link to Login</button>
-            <button onClick={() => setActiveTab('payslips')} data-testid="tab-payslips" className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'payslips' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Payslips</button>
-          </div>
+    <PageShell
+      title="Staff & Payroll"
+      subtitle="Manage team members and user access links"
+      actions={
+        <div className="flex gap-2">
+          <button onClick={() => setActiveTab('roster')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Roster</button>
+          <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'schedule' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Schedule</button>
+          <button onClick={() => setActiveTab('clock')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'clock' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Time Clock</button>
+          <button onClick={() => setActiveTab('link')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'link' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Link to Login</button>
+          <button onClick={() => setActiveTab('payslips')} data-testid="tab-payslips" className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'payslips' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Payslips</button>
         </div>
-      </header>
+      }
+    >
+      <div className="flex flex-col h-[calc(100vh-140px)] w-full overflow-hidden font-sans relative">
 
       <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
         {activeTab === 'roster' ? (
@@ -561,7 +561,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
             <div className="grid grid-cols-7 gap-4">
               {weekDays.map((date, i) => {
                 const dayISO = date.toISOString().split('T')[0];
-                const dayShifts = scheduleEntries ? scheduleEntries.filter(e => e.shiftStart.startsWith(dayISO)).sort((a,b) => new Date(a.shiftStart).getTime() - new Date(b.shiftStart).getTime()) : [];
+                const dayShifts = scheduleEntries ? scheduleEntries.filter(e => e.shiftStart && e.shiftStart.startsWith(dayISO)).sort((a,b) => new Date(a.shiftStart).getTime() - new Date(b.shiftStart).getTime()) : [];
                 return (
                   <div key={i} className="flex flex-col gap-3 min-h-[500px] bg-slate-100/50 rounded-2xl p-3 border border-slate-200">
                     <div className="text-center pb-2 border-b border-slate-200">
@@ -847,7 +847,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                       <div className="flex-1 min-w-0">
                         <div className="font-bold text-slate-800 truncate">{staff?.fullName || 'Unknown Staff'}</div>
                         <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">{p.periodStart} → {p.periodEnd}</div>
-                        <div className="text-xs font-mono font-bold text-slate-600 mt-1">Gross Rs. {(p.grossPayCents/100).toFixed(2)} · Net Rs. {(p.netPayCents/100).toFixed(2)}</div>
+                        <div className="text-xs font-mono font-bold text-slate-600 mt-1">Gross Rs. {((p.grossPayCents || 0)/100).toFixed(2)} · Net Rs. {((p.netPayCents || 0)/100).toFixed(2)}</div>
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <span data-testid={`payslip-status-${p.id}`} className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${badgeCls}`}>{p.status}</span>
@@ -1000,5 +1000,6 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
     </div>
+    </PageShell>
   );
 }

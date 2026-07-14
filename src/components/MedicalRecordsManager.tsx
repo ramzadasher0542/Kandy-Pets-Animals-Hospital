@@ -5,14 +5,15 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Search, Activity, Edit2, CheckCircle2, X, 
+import {
+  Activity, Edit2, CheckCircle2, X,
   HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock
 } from 'lucide-react';
+import PageShell from './ui/PageShell';
 import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment, Pet, Client } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { fetchPaginatedRecords, fetchPets } from '../lib/db';
+import { fetchPaginatedRecords, fetchPets, fetchBoardingRecords } from '../lib/db';
 
 interface RecordsProps {
   clients: Client[];
@@ -78,6 +79,20 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MedicalRecord | null>(null);
   const [activeTab, setActiveTab] = useState<'vitals' | 'exam' | 'assessment' | 'treatment' | 'pharmacy' | 'inpatient'>('vitals');
+
+  const [localBoardingRecords, setLocalBoardingRecords] = useState<any[]>(boardingRecords || []);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const b = await fetchBoardingRecords();
+        setLocalBoardingRecords(b);
+      } catch (err) {
+        console.error('Failed to load boarding records', err);
+      }
+    }
+    load();
+  }, [editingRecord]);
 
   // Form State
   const [vitals, setVitals] = useState<Vitals>({});
@@ -252,7 +267,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
   // ============================================================================
 
   const openRecord = (patientStub: any) => {
-    let targetRecord = records.find(r => r.patientId === patientStub.patientId && r.visitDate === todayStr);
+    let targetRecord = records.find(r => r.patientId === patientStub.patientId && r.visitDate === todayStr) || 
+                       historyRecords.find(r => r.patientId === patientStub.patientId && r.visitDate === todayStr);
 
     // If no record exists for today, AUTO-GENERATE phantom chart from the stub
     if (!targetRecord) {
@@ -879,25 +895,18 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
   };
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      {/* HEADER & CONTROLS */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between shrink-0">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-indigo-600"/> Charting Dashboard</h2>
-        <div className="flex items-center gap-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner">
-            <button onClick={() => setShowQueueOnly(true)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>In Clinic</button>
-            <button onClick={() => setShowQueueOnly(false)} className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${!showQueueOnly ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>All History</button>
-          </div>
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-            <input 
-              type="text" placeholder="Search pets, owners..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" 
-            />
-          </div>
-        </div>
-      </div>
-
+    <PageShell
+      title="Charting Dashboard"
+      filters={{
+        options: [
+          { id: 'clinic', label: 'In Clinic' },
+          { id: 'history', label: 'All History' },
+        ],
+        active: showQueueOnly ? 'clinic' : 'history',
+        onChange: (id) => setShowQueueOnly(id === 'clinic'),
+      }}
+      search={{ value: searchQuery, onChange: setSearchQuery, placeholder: 'Search pets, owners...' }}
+    >
       {/* PATIENT LISTING */}
       <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-y-auto custom-scrollbar flex-1">
@@ -917,7 +926,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
               ) : displayPatients.length === 0 ? (
                 <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold">No patients found in current view.</td></tr>
               ) : displayPatients.map((patient: any) => (
-                <tr key={patient.patientId} className="hover:bg-slate-50 transition-colors group">
+                <tr key={patient.patientId} onClick={() => openRecord(patient)} className="hover:bg-slate-50 transition-colors group cursor-pointer">
                   <td className="py-4 px-6">
                     <div className="font-bold text-slate-800">{formatDisplayDate(patient.visitDate)}</div>
                     {patient.visitDate === todayStr && (
@@ -1013,7 +1022,13 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
                   <Pill className={`w-4 h-4 ${activeTab === 'pharmacy' ? 'text-emerald-200' : 'text-slate-400'}`}/> Pharmacy & Rx
                 </button>
 
-                {editingRecord && (boardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) && (
+                <span data-testid="debug-br-len" className="hidden">{localBoardingRecords?.length || 0}</span>
+                <span data-testid="debug-er-pid" className="hidden">{editingRecord?.patientId}</span>
+                <span data-testid="debug-has-active-mb" className="hidden">
+                  {editingRecord && (localBoardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) ? 'true' : 'false'}
+                </span>
+                
+                {editingRecord && (localBoardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) && (
                   <button onClick={() => setActiveTab('inpatient')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'inpatient' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
                     <ClipboardList className={`w-4 h-4 ${activeTab === 'inpatient' ? 'text-rose-200' : 'text-slate-400'}`}/> Inpatient Log
                   </button>
@@ -1046,6 +1061,6 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
         </div>,
         document.body
       )}
-    </div>
+    </PageShell>
   );
 }

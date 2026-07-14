@@ -16,6 +16,7 @@ import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { EmptyState } from './ui/EmptyState';
+import PageShell from './ui/PageShell';
 
 interface InvoicesProps {
   invoices: any[];
@@ -107,77 +108,45 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 w-full overflow-hidden p-6 gap-6" id="invoices-manager-module">
-      
-      {/* Top Action & Stats Bar */}
-      <div className="flex flex-wrap lg:flex-nowrap gap-6 shrink-0">
-        
-        {/* KPI Cards */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600"><FileText className="w-6 h-6" /></div>
-            <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Transactions</div>
-              <div className="text-xl font-black text-slate-800">{stats.total} <span className="text-xs text-slate-500 font-bold ml-1">Records</span></div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="bg-emerald-50 p-3 rounded-xl text-emerald-600"><DollarSign className="w-6 h-6" /></div>
-            <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gross Revenue (Paid)</div>
-              <div className="text-xl font-black font-mono text-slate-800">
-                {currencySign}{(stats.revenue).toFixed(2)}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className={`${stats.voided > 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400'} p-3 rounded-xl`}>
-              {stats.voided > 0 ? <AlertTriangle className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
-            </div>
-            <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Voided Receipts</div>
-              <div className={`text-xl font-black ${stats.voided > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
-                {stats.voided} <span className="text-xs font-bold ml-1">Nullified</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Control Panel */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 custom-scrollbar">
-          {['All', 'paid', 'void'].map(status => (
-            <button 
-              key={status} 
-              onClick={() => setStatusFilter(status as any)}
-              className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                statusFilter === status 
-                  ? 'bg-slate-800 text-white shadow-md' 
-                  : `bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200`
-              }`}
-            >
-              {status === 'All' ? 'Complete Archive' : status}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <Input 
-            type="text" 
-            placeholder="Search Invoice #, Client, or Pet..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="!pl-9 !py-2.5"
-          />
-        </div>
-      </div>
-
-      {/* Main Data Grid */}
+    <PageShell
+      title="Invoices & Billing"
+      kpis={[
+        {
+          icon: <FileText className="w-6 h-6" />,
+          iconBg: 'bg-indigo-50 text-indigo-600',
+          label: 'Total Transactions',
+          value: <>{stats.total} <span className="text-xs text-slate-500 font-bold ml-1">Records</span></>
+        },
+        {
+          icon: <DollarSign className="w-6 h-6" />,
+          iconBg: 'bg-emerald-50 text-emerald-600',
+          label: 'Gross Revenue (Paid)',
+          value: <span className="font-mono">{currencySign}{(stats.revenue).toFixed(2)}</span>
+        },
+        {
+          icon: stats.voided > 0 ? <AlertTriangle className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />,
+          iconBg: stats.voided > 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400',
+          label: 'Voided Receipts',
+          value: <span className={stats.voided > 0 ? 'text-rose-600' : 'text-slate-500'}>{stats.voided} <span className="text-xs font-bold ml-1">Nullified</span></span>
+        }
+      ]}
+      filters={{
+        options: [
+          { id: 'All', label: 'Complete Archive' },
+          { id: 'paid', label: 'paid' },
+          { id: 'void', label: 'void' }
+        ],
+        active: statusFilter,
+        onChange: (id) => setStatusFilter(id as any)
+      }}
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: "Search Invoice #, Client, or Pet..."
+      }}
+    >
+      <div id="invoices-manager-module" className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Main Data Grid */}
       <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[900px]">
@@ -431,5 +400,6 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
         }
       `}</style>
     </div>
+    </PageShell>
   );
 }

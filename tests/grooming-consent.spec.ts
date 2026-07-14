@@ -41,7 +41,7 @@ test('Verify Grooming Consent and Instructions', async ({ page }) => {
   await page.click('button:has-text("Grooming Salon")');
   
   // Wait for directory and pick a patient
-  await expect(page.locator('text=Salon Intake Directory')).toBeVisible();
+  await expect(page.locator('text=Active Grooming Queue')).toBeVisible();
   
   // Create a patient for testing (or use one in the list)
   const patientRow = page.locator('.space-y-2 > div').first();
@@ -127,15 +127,18 @@ test('Verify Grooming Consent and Instructions', async ({ page }) => {
     await page.getByText('Verify').click();
   }
   await page.click('button:has-text("Grooming Salon")');
-  await expect(page.locator('text=Salon Intake Directory')).toBeVisible();
+  await expect(page.locator('text=Active Grooming Queue')).toBeVisible();
   
   // We need to click the same patient to see their history
   await patientRow.click();
   await page.click('button:has-text("Grooming History")');
   
   // Verify instructions and owner name persisted
-  await page.click('text=View Instructions');
-  await expect(page.locator('text=☑ Trim Only')).toBeVisible();
+  const viewBtns = page.locator('text=View Instructions');
+  for (let i = 0; i < await viewBtns.count(); i++) {
+    await viewBtns.nth(i).click();
+  }
+  await expect(page.locator('text=☑ Trim Only').first()).toBeVisible();
   
   // Base64 signature check via window._db
   const logsCount = await page.evaluate(async () => {

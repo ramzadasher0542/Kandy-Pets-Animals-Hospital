@@ -5,18 +5,19 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Calendar as CalendarIcon, Clock, Search, Plus, User, CheckCircle2, 
-  Activity, X, ChevronLeft, ChevronRight, List as ListIcon, 
+import {
+  Calendar as CalendarIcon, Clock, Plus, User, CheckCircle2,
+  Activity, X, ChevronLeft, ChevronRight, List as ListIcon,
   Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, PawPrint, History, SearchCode
 } from 'lucide-react';
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
-import PhoneInput from './PhoneInput'; 
-import { db } from '../lib/localDb'; 
+import PhoneInput from './PhoneInput';
+import { db } from '../lib/localDb';
 import { fetchPets, fetchClients, upsertPet } from '../lib/db';
 import { Badge } from './ui/Badge';
+import PageShell from './ui/PageShell';
 
 interface AppointmentsProps {
   appointments: Appointment[];
@@ -861,8 +862,8 @@ export default function AppointmentsManager({
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
               <span className="text-[10px] text-slate-500 font-black">{apt.petType} - {apt.breed || 'Mixed'}</span>
             </div>
-            {apt.emergencyBackfillRequired && (
-              <Badge tone="amber" className="mt-0.5 inline-flex items-center gap-1">⚠ Details Pending</Badge>
+            {(apt as any).emergencyBackfillRequired && (
+              <Badge data-testid="badge-details-pending" tone="amber" className="mt-0.5 inline-flex items-center gap-1">⚠ Details Pending</Badge>
             )}
           </div>
         </td>
@@ -1022,78 +1023,71 @@ export default function AppointmentsManager({
   }
 
   return (
-    <div className="h-full flex flex-col gap-4" id="appointments-tab-system">
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 shrink-0">
-        
-        <div className="flex flex-col sm:flex-row items-center gap-4 w-full xl:w-auto">
-          <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            Appointments
-          </h2>
-          <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-            <button onClick={() => setViewMode('list')} className={`p-1.5 px-3 rounded-xl flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
-              <ListIcon className="h-4 w-4" /> List
-            </button>
-            <button onClick={() => setViewMode('calendar')} className={`p-1.5 px-3 rounded-xl flex items-center gap-2 text-[10px] font-bold transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700 cursor-pointer'}`}>
-              <CalendarIcon className="h-4 w-4" /> Calendar
-            </button>
-          </div>
-        </div>
-
-        <div className="hidden lg:flex items-center gap-4 flex-1 justify-center px-4">
-          <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-            Today's Volume <span className="bg-white px-2 py-0.5 rounded-xl border border-slate-100 text-slate-800">{todayVolume}</span>
-          </div>
-          <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-            Awaiting Triage <span className="bg-white px-2 py-0.5 rounded-xl border border-amber-100 text-amber-900">{awaitingTriage}</span>
-          </div>
-          <div className="px-3 py-1.5 bg-sky-50 border border-sky-200 text-sky-700 rounded-xl text-[10px] font-black shadow-xs flex items-center gap-1.5 uppercase tracking-wider">
-            In-Treatment <span className="bg-white px-2 py-0.5 rounded-xl border border-sky-100 text-sky-900">{inTreatment}</span>
-          </div>
-        </div>
-
-        {viewMode === 'calendar' && (
-          <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100 w-full md:w-auto justify-center">
-            <button onClick={() => {
-              const d = new Date(currentDate);
-              if (timeframe === 'week') d.setDate(d.getDate() - 7);
-              else if (timeframe === 'day') d.setDate(d.getDate() - 1);
-              else d.setMonth(d.getMonth() - 1);
-              setCurrentDate(d);
-            }} className="p-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button onClick={() => { setCurrentDate(new Date()); setTimeframe('day'); }} className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black text-slate-700 shadow-xs transition-colors cursor-pointer">
-              Today
-            </button>
-            <button onClick={() => {
-              const d = new Date(currentDate);
-              if (timeframe === 'week') d.setDate(d.getDate() + 7);
-              else if (timeframe === 'day') d.setDate(d.getDate() + 1);
-              else d.setMonth(d.getMonth() + 1);
-              setCurrentDate(d);
-            }} className="p-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <div className="px-3 text-[10px] font-black text-slate-800 min-w-[140px] text-center">
-              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-4 w-full xl:w-auto justify-end flex-wrap">
-          <div className="relative flex-1 min-w-[180px] max-w-[220px]">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search ID, pet, phone..." 
-              value={searchQuery} 
-              onChange={e => setSearchQuery(e.target.value)} 
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" 
-            />
-          </div>
-
+    <PageShell
+      kpis={[
+        {
+          icon: <CalendarIcon className="w-6 h-6" />,
+          label: "Today's Volume",
+          value: todayVolume,
+        },
+        {
+          icon: <Clock className="w-6 h-6" />,
+          label: 'Awaiting Triage',
+          value: <span className={awaitingTriage > 0 ? 'text-amber-600' : ''}>{awaitingTriage}</span>,
+          iconBg: awaitingTriage > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400',
+        },
+        {
+          icon: <Activity className="w-6 h-6" />,
+          label: 'In-Treatment',
+          value: <span className={inTreatment > 0 ? 'text-sky-600' : ''}>{inTreatment}</span>,
+          iconBg: inTreatment > 0 ? 'bg-sky-50 text-sky-600' : 'bg-slate-50 text-slate-400',
+        },
+      ]}
+      filters={{
+        options: [
+          { id: 'list', label: 'List', icon: <ListIcon className="w-3.5 h-3.5 mr-1" /> },
+          { id: 'calendar', label: 'Calendar', icon: <CalendarIcon className="w-3.5 h-3.5 mr-1" /> },
+        ],
+        active: viewMode,
+        onChange: (id) => setViewMode(id as 'list' | 'calendar'),
+      }}
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: 'Search ID, pet, phone...',
+      }}
+      actions={
+        <>
           {viewMode === 'calendar' && (
-            <div className="flex bg-slate-100 p-1 rounded-xl hidden sm:flex gap-1">
+            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+              <button onClick={() => {
+                const d = new Date(currentDate);
+                if (timeframe === 'week') d.setDate(d.getDate() - 7);
+                else if (timeframe === 'day') d.setDate(d.getDate() - 1);
+                else d.setMonth(d.getMonth() - 1);
+                setCurrentDate(d);
+              }} className="p-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button onClick={() => { setCurrentDate(new Date()); setTimeframe('day'); }} className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-[10px] font-black text-slate-700 shadow-xs transition-colors cursor-pointer">
+                Today
+              </button>
+              <button onClick={() => {
+                const d = new Date(currentDate);
+                if (timeframe === 'week') d.setDate(d.getDate() + 7);
+                else if (timeframe === 'day') d.setDate(d.getDate() + 1);
+                else d.setMonth(d.getMonth() + 1);
+                setCurrentDate(d);
+              }} className="p-1.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-xs transition-colors cursor-pointer">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <div className="px-3 text-[10px] font-black text-slate-800 min-w-[140px] text-center">
+                {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </div>
+            </div>
+          )}
+          {viewMode === 'calendar' && (
+            <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
               {['day', 'week', 'month'].map(t => (
                 <button key={t} onClick={() => setTimeframe(t as any)} className={`px-3 py-1.5 rounded-xl text-[10px] font-bold capitalize transition-all cursor-pointer ${timeframe === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
                   {t}
@@ -1101,22 +1095,19 @@ export default function AppointmentsManager({
               ))}
             </div>
           )}
-          
           <select value={doctorFilter} onChange={e => setDoctorFilter(e.target.value)} className="hidden md:block px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
             <option value="All Doctors">All Doctors</option>
             {liveVets.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
           </select>
-
-          <button onClick={() => setShowEmergencyModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
+          <button onClick={() => setShowEmergencyModal(true)} className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-md whitespace-nowrap">
             ⚡ Emergency Intake
           </button>
-
-          <button data-testid="btn-new-appointment" onClick={() => { resetForm(); setShowAddModal(true); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs whitespace-nowrap">
+          <button data-testid="btn-new-appointment" onClick={() => { resetForm(); setShowAddModal(true); }} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl flex items-center gap-2 transition-colors cursor-pointer shadow-md whitespace-nowrap">
             <Plus className="h-4 w-4" /> New Appointment
           </button>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {viewMode === 'calendar' ? renderCalendarView() : renderListView()}
 
       {/* Overflow Appointments Mini-Popover */}
@@ -1168,7 +1159,7 @@ export default function AppointmentsManager({
             </div>
             <p className="text-[10px] text-slate-500 font-black mb-4">{selectedPopoverApt.date} at {selectedPopoverApt.time}</p>
             {selectedPopoverApt.emergencyBackfillRequired && (
-              <Badge tone="amber" className="mb-3 inline-flex items-center gap-1">⚠ Details Pending</Badge>
+              <Badge data-testid="badge-details-pending" tone="amber" className="mb-3 inline-flex items-center gap-1">⚠ Details Pending</Badge>
             )}
 
             <div className="space-y-2">
@@ -1506,6 +1497,6 @@ export default function AppointmentsManager({
         </div>,
         document.body
       )}
-    </div>
+    </PageShell>
   );
 }

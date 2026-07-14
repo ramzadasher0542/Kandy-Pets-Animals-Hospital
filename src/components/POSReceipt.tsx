@@ -114,7 +114,7 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
             <div key={idx} style={{ marginBottom: '4px' }}>
               <div style={{ textAlign: 'left', fontWeight: 'normal' }}>{item.name}</div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '11px' }}>
-                <span>{item.quantity} x {currency}{item.unitPrice.toFixed(2)} = {currency}{item.totalPrice.toFixed(2)}</span>
+                <span>{item.quantity} x {currency}{(item.unitPrice || 0).toFixed(2)} = {currency}{(item.totalPrice || 0).toFixed(2)}</span>
               </div>
             </div>
           ))}

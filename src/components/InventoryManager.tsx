@@ -5,14 +5,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Search, Plus, Edit2, Trash2, AlertTriangle, 
+import {
+  Plus, Edit2, Trash2, AlertTriangle,
   Package, Activity, X, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
 } from 'lucide-react';
 import { InventoryItem, ItemCategory, InventoryBatch } from '../types';
 import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch } from '../lib/db';
-import { db } from '../lib/localDb'; 
+import { db } from '../lib/localDb';
 import { showToast } from './Toast';
+import PageShell from './ui/PageShell';
 
 const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] = [
   { id: 'All', label: 'All Items', color: 'bg-slate-100 text-slate-700' },
@@ -244,83 +245,50 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   const physicalItems = items.filter(i => !['service', 'lab_service'].includes(i.category));
   const lowStockCount = physicalItems.filter(i => i.stock <= i.minStock).length;
-  const totalValue = physicalItems.reduce((sum, item) => sum + (item.cost * item.stock), 0);
+  const totalValue = physicalItems.reduce((sum, item) => sum + ((item.cost || 0) * (item.stock || 0)), 0);
   const isFormPhysical = !['service', 'lab_service'].includes(formData.category as string);
   const isFormLab = formData.category === 'lab_service';
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 w-full overflow-hidden p-6 gap-6">
-      
-      {/* Top Action & Stats Bar */}
-      <div className="flex flex-wrap lg:flex-nowrap gap-6 shrink-0">
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600"><Layers className="w-6 h-6" /></div>
-            <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Registry</div>
-              <div className="text-xl font-black text-slate-800">{items.length} <span className="text-xs text-slate-500 font-bold ml-1">Items</span></div>
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className={`${lowStockCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'} p-3 rounded-xl`}>
-              {lowStockCount > 0 ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
-            </div>
-            <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Alerts</div>
-              <div className={`text-xl font-black ${lowStockCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{lowStockCount} <span className="text-xs font-bold ml-1">Critical</span></div>
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="bg-emerald-50 p-3 rounded-xl text-emerald-600"><DollarSign className="w-6 h-6" /></div>
-            <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Physical Asset Value</div>
-              <div className="text-xl font-black font-mono text-slate-800">{(totalValue).toFixed(2)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Control Panel */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-2 overflow-x-auto w-full xl:w-auto pb-2 xl:pb-0 custom-scrollbar">
-          {CATEGORIES.map(cat => (
-            <button 
-              key={cat.id} 
-              onClick={() => setActiveCategory(cat.id as any)}
-              className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                activeCategory === cat.id ? 'bg-slate-800 text-white shadow-md' : `bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200`
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-          <button 
-            onClick={() => setActiveCategory('Expiring')}
-            className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
-              activeCategory === 'Expiring' ? 'bg-amber-500 text-white shadow-md' : `bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200`
-            }`}
-          >
-            <AlertTriangle className="w-3 h-3"/> Expiring Stock
-          </button>
-        </div>
-
-        <div className="flex items-center gap-3 w-full xl:w-auto justify-end flex-wrap">
-          <div className="relative flex-1 xl:w-64 min-w-[200px]">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search SKU or Name..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
-            />
-          </div>
-          <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
-            <Plus className="w-4 h-4" /> Add Item
-          </button>
-        </div>
-      </div>
-
+    <PageShell
+      kpis={[
+        {
+          icon: <Layers className="w-6 h-6" />,
+          label: 'Total Registry',
+          value: <>{items.length} <span className="text-xs text-slate-500 font-bold ml-1">Items</span></>,
+        },
+        {
+          icon: lowStockCount > 0 ? <AlertTriangle className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />,
+          label: 'Stock Alerts',
+          value: <span className={lowStockCount > 0 ? 'text-rose-600' : 'text-emerald-600'}>{lowStockCount} <span className="text-xs font-bold ml-1">Critical</span></span>,
+          iconBg: lowStockCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600',
+        },
+        {
+          icon: <DollarSign className="w-6 h-6" />,
+          label: 'Physical Asset Value',
+          value: <span className="font-mono">{(totalValue).toFixed(2)}</span>,
+          iconBg: 'bg-emerald-50 text-emerald-600',
+        },
+      ]}
+      filters={{
+        options: [
+          ...CATEGORIES.map(cat => ({ id: cat.id, label: cat.label })),
+          { id: 'Expiring', label: 'Expiring Stock', icon: <AlertTriangle className="w-3 h-3"/>, activeClass: 'bg-amber-500 text-white shadow-md' },
+        ],
+        active: activeCategory,
+        onChange: (id) => setActiveCategory(id as any),
+      }}
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: 'Search SKU or Name...',
+      }}
+      actions={
+        <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
+          <Plus className="w-4 h-4" /> Add Item
+        </button>
+      }
+    >
       {/* Main Data Grid */}
       <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
@@ -429,8 +397,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-mono text-xs font-black text-slate-800">{item.price.toFixed(2)}</div>
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {item.cost.toFixed(2)}</div>
+                        <div className="font-mono text-xs font-black text-slate-800">{(item.price || 0).toFixed(2)}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {(item.cost || 0).toFixed(2)}</div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         {isService ? (
@@ -775,6 +743,6 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
-    </div>
+    </PageShell>
   );
 }

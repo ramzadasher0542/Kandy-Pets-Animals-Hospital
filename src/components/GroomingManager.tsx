@@ -4,11 +4,13 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Search, Scissors, User, PawPrint, Activity, CheckSquare, FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { PawPrint, CheckSquare, FileText, CheckCircle2, AlertTriangle, Scissors, Search, Activity, User } from 'lucide-react';
 import { GroomingLog, MedicalRecord, Pet, InventoryItem, ClinicQueueItem, Client } from '../types';
 import { showToast } from './Toast';
 import { fetchPets, fetchGroomingLogs, upsertGroomingLog } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
+import PageShell from './ui/PageShell';
+import MasterDetailLayout from './ui/MasterDetailLayout';
 
 interface GroomingProps {
   clients: Client[];
@@ -318,277 +320,269 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   };
 
   return (
-    <div className="flex h-[calc(100vh-140px)] w-full gap-4 overflow-hidden" id="grooming-module-container">
-      
-      {/* LEFT PANE: Patient Directory */}
-      <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
-        <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
-          <h2 className="text-sm font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <Scissors className="w-5 h-5 text-indigo-600" /> Salon Intake Directory
-          </h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input 
-              type="text" placeholder="Search Patient or Owner..." value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-xs" 
-            />
-          </div>
-        </div>
-
-        {renderActiveQueue()}
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-          {filteredPatients.map(patient => (
-            <div 
-              key={patient.patientId} onClick={() => { setSelectedPatientId(patient.patientId); setSelectedServices([]); setActiveTab('new_session'); }}
-              className={`p-3 rounded-xl cursor-pointer transition-all border ${selectedPatientId === patient.patientId ? 'bg-indigo-50 border-indigo-200 shadow-xs' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
-            >
-              <div className="font-bold truncate text-sm text-slate-800 mb-1">{patient.pet?.name || 'Unknown'}</div>
-              <div className="text-[10px] font-bold text-slate-500 flex items-center justify-between">
-                <span>{patient.pet?.petType} • {patient.pet?.breed}</span>
-                <span className="flex items-center gap-1 text-slate-400"><User className="w-3 h-3"/> {patient.ownerName}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </aside>
-
-      {/* RIGHT PANE: Grooming Dashboard */}
-      <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
-        {!selectedPatient ? (
-          <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
-            <Scissors className="h-12 w-12 text-slate-300 mb-3" />
-            <h3 className="text-sm font-bold text-slate-500">Select a Patient</h3>
-            <p className="text-xs font-bold mt-1 text-slate-400">Choose a patient to begin a new grooming session.</p>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col relative overflow-hidden">
-            {/* Identity Header */}
-            <div className="bg-white p-6 border-b border-slate-200 flex justify-between items-start shrink-0 shadow-sm z-10">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center border border-indigo-200"><PawPrint className="w-6 h-6 text-indigo-600" /></div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800 tracking-tight">{selectedPet?.name || 'Unknown'}</h2>
-                  <div className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">{selectedPatient.ownerName} • {selectedPatient.ownerPhone}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tab Navigation */}
-            <div className="flex border-b border-slate-200 bg-white shrink-0 px-6 pt-2">
-              <button onClick={() => setActiveTab('new_session')} className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2 ${activeTab === 'new_session' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}><CheckSquare className="w-4 h-4"/> New Session</button>
-              <button onClick={() => setActiveTab('history')} className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2 ${activeTab === 'history' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}><FileText className="w-4 h-4"/> Grooming History</button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-              
-              {/* TAB: New Session */}
-              {activeTab === 'new_session' && (
-                <div className="flex flex-col h-full space-y-6">
-                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Grooming Instructions</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                      {(['bathe', 'fullShave', 'trimOnly', 'nailClip', 'earClean', 'deShed'] as const).map(key => {
-                        const labelMap = { bathe: 'Bathe', fullShave: 'Full Shave', trimOnly: 'Trim Only', nailClip: 'Nail Clip', earClean: 'Ear Clean', deShed: 'De-shed' };
-                        const isChecked = groomingInstructions[key];
-                        return (
-                          <label key={key} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer select-none ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
-                            <input type="checkbox" className="sr-only" checked={isChecked} onChange={() => {
-                              let newInst = { ...groomingInstructions, [key]: !isChecked };
-                              if (key === 'fullShave' && !isChecked) newInst.trimOnly = false;
-                              if (key === 'trimOnly' && !isChecked) newInst.fullShave = false;
-                              setGroomingInstructions(newInst);
-                            }} />
-                            <div className={`w-5 h-5 rounded-xl flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
-                              {isChecked && <CheckCircle2 className="w-4 h-4" />}
-                            </div>
-                            <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{labelMap[key]}</span>
-                          </label>
-                        );
-                      })}
+    <PageShell
+      title="Grooming & Salon"
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: "Search Patient or Owner..."
+      }}
+    >
+      <div className="h-[calc(100vh-140px)] w-full" id="grooming-module-container">
+        <MasterDetailLayout
+          listHeader={renderActiveQueue()}
+          list={
+            <>
+              {filteredPatients.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 font-bold text-xs">No patients found.</div>
+              ) : (
+                filteredPatients.map(patient => (
+                  <div 
+                    key={patient.patientId} onClick={() => { setSelectedPatientId(patient.patientId); setSelectedServices([]); setActiveTab('new_session'); }}
+                    className={`p-4 rounded-2xl cursor-pointer transition-all border ${selectedPatientId === patient.patientId ? 'bg-indigo-600 border-indigo-700 shadow-md text-white' : 'bg-white border-slate-200 hover:border-indigo-300 shadow-sm'}`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className={`font-black truncate text-sm ${selectedPatientId === patient.patientId ? 'text-white' : 'text-slate-800'}`}>{patient.pet?.name || 'Unknown'}</div>
                     </div>
-                    <div className="mb-6">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Special Instructions</label>
-                      <textarea value={groomingInstructions.customNotes} onChange={(e) => setGroomingInstructions({...groomingInstructions, customNotes: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none min-h-[60px]" placeholder="Any custom notes..."></textarea>
-                    </div>
-
-                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Customer Consent</h3>
-                    <div className="mb-4">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Owner Name</label>
-                      <input type="text" value={consentOwnerName} onChange={(e) => setConsentOwnerName(e.target.value)} className="w-full md:w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="Owner Name" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Digital Signature</label>
-                      <div className="border border-slate-300 bg-slate-50 rounded-xl overflow-hidden inline-block relative">
-                        <canvas 
-                          ref={canvasRef} 
-                          width={400} 
-                          height={150} 
-                          className="bg-transparent cursor-crosshair touch-none w-full md:w-[400px] h-[150px]"
-                          onMouseDown={startDrawing}
-                          onMouseMove={draw}
-                          onMouseUp={stopDrawing}
-                          onMouseLeave={stopDrawing}
-                          onTouchStart={(e) => { e.preventDefault(); startDrawing(e); }}
-                          onTouchMove={(e) => { e.preventDefault(); draw(e); }}
-                          onTouchEnd={stopDrawing}
-                        />
-                      </div>
-                      <div className="mt-2">
-                        <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">Clear Signature</button>
-                      </div>
+                    <div className={`text-[10px] font-bold ${selectedPatientId === patient.patientId ? 'text-indigo-200' : 'text-slate-500'}`}>{patient.pet?.petType} • {patient.pet?.breed}</div>
+                    <div className={`text-[10px] font-black mt-2 pt-2 border-t flex items-center gap-1.5 ${selectedPatientId === patient.patientId ? 'text-indigo-100 border-indigo-500' : 'text-slate-400 border-slate-100'}`}>
+                      <User className="w-3 h-3" /> {patient.ownerName}
                     </div>
                   </div>
+                ))
+              )}
+            </>
+          }
+          isEmpty={!selectedPatient}
+          detailEmptyIcon={<Scissors className="h-16 w-16 text-slate-300" />}
+          detailEmptyTitle="Select a Patient to begin a new grooming session."
+          detail={
+            <div className="flex-1 flex flex-col relative overflow-hidden">
+              {/* Identity Header */}
+              <div className="bg-white p-6 border-b border-slate-200 flex justify-between items-start shrink-0 shadow-sm z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center border border-indigo-200"><PawPrint className="w-6 h-6 text-indigo-600" /></div>
+                  <div>
+                    <h2 className="text-xl font-black text-slate-800 tracking-tight">{selectedPet?.name || 'Unknown'}</h2>
+                    <div className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">{selectedPatient?.ownerName} • {selectedPatient?.ownerPhone}</div>
+                  </div>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
-                    {GROOMING_SERVICES.map(group => (
-                      <div key={group.category} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit">
-                        <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">{group.category}</h3>
-                        <div className="space-y-3">
-                          {group.items.map(item => {
-                            const isChecked = selectedServices.includes(item);
-                            return (
-                              <label key={item} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer select-none ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
-                                <input 
-                                  type="checkbox" 
-                                  className="sr-only" 
-                                  checked={isChecked} 
-                                  onChange={() => toggleService(item)} 
-                                />
-                                <div className={`w-5 h-5 rounded-xl flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
-                                  {isChecked && <CheckCircle2 className="w-4 h-4" />}
-                                </div>
-                                <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{item}</span>
-                              </label>
-                            );
-                          })}
+              {/* Tab Navigation */}
+              <div className="flex border-b border-slate-200 bg-white shrink-0 px-6 pt-2">
+                <button onClick={() => setActiveTab('new_session')} className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2 ${activeTab === 'new_session' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}><CheckSquare className="w-4 h-4"/> New Session</button>
+                <button onClick={() => setActiveTab('history')} className={`px-6 py-3 text-xs font-black uppercase tracking-widest transition-colors flex items-center gap-2 ${activeTab === 'history' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}><FileText className="w-4 h-4"/> Grooming History</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                
+                {/* TAB: New Session */}
+                {activeTab === 'new_session' && (
+                  <div className="flex flex-col h-full space-y-6">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                      <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Grooming Instructions</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                        {(['bathe', 'fullShave', 'trimOnly', 'nailClip', 'earClean', 'deShed'] as const).map(key => {
+                          const labelMap = { bathe: 'Bathe', fullShave: 'Full Shave', trimOnly: 'Trim Only', nailClip: 'Nail Clip', earClean: 'Ear Clean', deShed: 'De-shed' };
+                          const isChecked = groomingInstructions[key];
+                          return (
+                            <label key={key} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer select-none ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
+                              <input type="checkbox" className="sr-only" checked={isChecked} onChange={() => {
+                                let newInst = { ...groomingInstructions, [key]: !isChecked };
+                                if (key === 'fullShave' && !isChecked) newInst.trimOnly = false;
+                                if (key === 'trimOnly' && !isChecked) newInst.fullShave = false;
+                                setGroomingInstructions(newInst);
+                              }} />
+                              <div className={`w-5 h-5 rounded-xl flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
+                                {isChecked && <CheckCircle2 className="w-4 h-4" />}
+                              </div>
+                              <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{labelMap[key]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="mb-6">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Special Instructions</label>
+                        <textarea value={groomingInstructions.customNotes} onChange={(e) => setGroomingInstructions({...groomingInstructions, customNotes: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none min-h-[60px]" placeholder="Any custom notes..."></textarea>
+                      </div>
+
+                      <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">Customer Consent</h3>
+                      <div className="mb-4">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Owner Name</label>
+                        <input type="text" value={consentOwnerName} onChange={(e) => setConsentOwnerName(e.target.value)} className="w-full md:w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none" placeholder="Owner Name" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Digital Signature</label>
+                        <div className="border border-slate-300 bg-slate-50 rounded-xl overflow-hidden inline-block relative">
+                          <canvas 
+                            ref={canvasRef} 
+                            width={400} 
+                            height={150} 
+                            className="bg-transparent cursor-crosshair touch-none w-full md:w-[400px] h-[150px]"
+                            onMouseDown={startDrawing}
+                            onMouseMove={draw}
+                            onMouseUp={stopDrawing}
+                            onMouseLeave={stopDrawing}
+                            onTouchStart={(e) => { e.preventDefault(); startDrawing(e); }}
+                            onTouchMove={(e) => { e.preventDefault(); draw(e); }}
+                            onTouchEnd={stopDrawing}
+                          />
+                        </div>
+                        <div className="mt-2">
+                          <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">Clear Signature</button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Checkout Footer */}
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6 flex items-center justify-between shrink-0">
-                    <div>
-                      <h4 className="text-sm font-black text-indigo-900 flex items-center gap-2"><Activity className="w-4 h-4" /> Ready for POS Billing</h4>
-                      <p className="text-xs text-indigo-700 font-bold mt-1">Selected services will be mapped to inventory prices and pushed to the patient's checkout queue.</p>
-                      <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-2">
-                        {selectedServices.length} Services Selected
-                      </div>
                     </div>
-                    <button 
-                      onClick={handleFinalizeAndBill} 
-                      disabled={selectedServices.length === 0}
-                      className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-colors shadow-md cursor-pointer"
-                    >
-                      Finalize & Send to Billing
-                    </button>
+
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
+                      {GROOMING_SERVICES.map(group => (
+                        <div key={group.category} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm h-fit">
+                          <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-3 mb-4">{group.category}</h3>
+                          <div className="space-y-3">
+                            {group.items.map(item => {
+                              const isChecked = selectedServices.includes(item);
+                              return (
+                                <label key={item} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer select-none ${isChecked ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`}>
+                                  <input 
+                                    type="checkbox" 
+                                    className="sr-only" 
+                                    checked={isChecked} 
+                                    onChange={() => toggleService(item)} 
+                                  />
+                                  <div className={`w-5 h-5 rounded-xl flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-300'}`}>
+                                    {isChecked && <CheckCircle2 className="w-4 h-4" />}
+                                  </div>
+                                  <span className={`text-xs font-bold transition-colors ${isChecked ? 'text-indigo-900' : 'text-slate-600'}`}>{item}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Checkout Footer */}
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6 flex items-center justify-between shrink-0">
+                      <div>
+                        <h4 className="text-sm font-black text-indigo-900 flex items-center gap-2"><Activity className="w-4 h-4" /> Ready for POS Billing</h4>
+                        <p className="text-xs text-indigo-700 font-bold mt-1">Selected services will be mapped to inventory prices and pushed to the patient's checkout queue.</p>
+                        <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-2">
+                          {selectedServices.length} Services Selected
+                        </div>
+                      </div>
+                      <button 
+                        onClick={handleFinalizeAndBill} 
+                        disabled={selectedServices.length === 0}
+                        className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-colors shadow-md cursor-pointer"
+                      >
+                        Finalize & Send to Billing
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* TAB: Grooming History */}
-              {activeTab === 'history' && (
-                <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[10px]">
-                        <th className="py-3 px-4 w-40">Date</th>
-                        <th className="py-3 px-4">Services Rendered</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {historicalGroomingLogs.length === 0 ? (
-                        <tr><td colSpan={3} className="py-8 text-center text-slate-400 font-bold">No historical grooming sessions found.</td></tr>
-                      ) : (
-                        historicalGroomingLogs.map((log) => (
-                          <tr key={log.id} className="hover:bg-slate-50">
-                            <td className="py-4 px-4 font-bold text-slate-600">{log.date}</td>
-                            <td className="py-4 px-4">
-                              <div className="flex flex-wrap gap-1.5">
-                                {log.services.map((svc, i) => (
-                                  <span key={i} className="bg-slate-100 border border-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-bold">
-                                    {svc}
-                                  </span>
-                                ))}
-                              </div>
-                              <details className="mt-3 border-t border-slate-100 pt-3 text-xs group">
-                                <summary className="cursor-pointer font-bold text-indigo-600 hover:text-indigo-800 outline-none select-none list-none flex items-center gap-1">
-                                  <span className="group-open:rotate-90 transition-transform">▶</span> View Instructions
-                                </summary>
-                                <div className="mt-2 grid grid-cols-2 gap-2 text-slate-600 pl-4">
-                                  <div>{log.groomingInstructions?.bathe ? '☑' : '☐'} Bathe</div>
-                                  <div>{log.groomingInstructions?.fullShave ? '☑' : '☐'} Full Shave</div>
-                                  <div>{log.groomingInstructions?.trimOnly ? '☑' : '☐'} Trim Only</div>
-                                  <div>{log.groomingInstructions?.nailClip ? '☑' : '☐'} Nail Clip</div>
-                                  <div>{log.groomingInstructions?.earClean ? '☑' : '☐'} Ear Clean</div>
-                                  <div>{log.groomingInstructions?.deShed ? '☑' : '☐'} De-shed</div>
+                {/* TAB: Grooming History */}
+                {activeTab === 'history' && (
+                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-widest font-bold text-[10px]">
+                          <th className="py-3 px-4 w-40">Date</th>
+                          <th className="py-3 px-4">Services Rendered</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {historicalGroomingLogs.length === 0 ? (
+                          <tr><td colSpan={3} className="py-8 text-center text-slate-400 font-bold">No historical grooming sessions found.</td></tr>
+                        ) : (
+                          historicalGroomingLogs.map((log) => (
+                            <tr key={log.id} className="hover:bg-slate-50">
+                              <td className="py-4 px-4 font-bold text-slate-600">{log.date}</td>
+                              <td className="py-4 px-4">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {log.services.map((svc, i) => (
+                                    <span key={i} className="bg-slate-100 border border-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-bold">
+                                      {svc}
+                                    </span>
+                                  ))}
                                 </div>
-                                {log.groomingInstructions?.customNotes && (
-                                  <div className="mt-2 pl-4 text-slate-500 italic">Notes: {log.groomingInstructions.customNotes}</div>
-                                )}
-                              </details>
-                            </td>
-                            <td className="py-4 px-4 text-right flex flex-col items-end gap-2">
-                              <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
-                                {log.status}
-                              </span>
-                              {log.consentSignature ? (
-                                <>
-                                  <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3" /> CONSENT SIGNED
-                                  </span>
-                                  <button onClick={() => setSignatureModal(log.consentSignature!)} className="text-[10px] font-bold text-indigo-600 hover:underline">View Signature</button>
-                                </>
-                              ) : (
-                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500 text-white flex items-center gap-1">
-                                  <AlertTriangle className="w-3 h-3" /> NO CONSENT
+                                <details className="mt-3 border-t border-slate-100 pt-3 text-xs group">
+                                  <summary className="cursor-pointer font-bold text-indigo-600 hover:text-indigo-800 outline-none select-none list-none flex items-center gap-1">
+                                    <span className="group-open:rotate-90 transition-transform">▶</span> View Instructions
+                                  </summary>
+                                  <div className="mt-2 grid grid-cols-2 gap-2 text-slate-600 pl-4">
+                                    <div>{log.groomingInstructions?.bathe ? '☑' : '☐'} Bathe</div>
+                                    <div>{log.groomingInstructions?.fullShave ? '☑' : '☐'} Full Shave</div>
+                                    <div>{log.groomingInstructions?.trimOnly ? '☑' : '☐'} Trim Only</div>
+                                    <div>{log.groomingInstructions?.nailClip ? '☑' : '☐'} Nail Clip</div>
+                                    <div>{log.groomingInstructions?.earClean ? '☑' : '☐'} Ear Clean</div>
+                                    <div>{log.groomingInstructions?.deShed ? '☑' : '☐'} De-shed</div>
+                                  </div>
+                                  {log.groomingInstructions?.customNotes && (
+                                    <div className="mt-2 pl-4 text-slate-500 italic">Notes: {log.groomingInstructions.customNotes}</div>
+                                  )}
+                                </details>
+                              </td>
+                              <td className="py-4 px-4 text-right flex flex-col items-end gap-2">
+                                <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">
+                                  {log.status}
                                 </span>
-                              )}
-                              <button onClick={() => handlePrintConsent(log)} className="mt-1 flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-xl transition-colors border border-slate-300">
-                                🖨 Print Consent Form
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                                {log.consentSignature ? (
+                                  <>
+                                    <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" /> CONSENT SIGNED
+                                    </span>
+                                    <button onClick={() => setSignatureModal(log.consentSignature!)} className="text-[10px] font-bold text-indigo-600 hover:underline">View Signature</button>
+                                  </>
+                                ) : (
+                                  <span className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500 text-white flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" /> NO CONSENT
+                                  </span>
+                                )}
+                                <button onClick={() => handlePrintConsent(log)} className="mt-1 flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-xl transition-colors border border-slate-300">
+                                  🖨 Print Consent Form
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          }
+        />
 
+        {showWarningModal && (
+          <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-amber-200">
+              <div className="p-6 bg-amber-50">
+                <h3 className="text-lg font-black text-amber-900 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" /> Missing Signature
+                </h3>
+                <p className="text-sm font-bold text-amber-800 mt-2">No signature captured. Save anyway?</p>
+              </div>
+              <div className="p-4 flex gap-3 justify-end bg-slate-50 border-t border-slate-100">
+                <button onClick={() => setShowWarningModal(false)} className="px-6 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+                <button onClick={processFinalization} className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md">Confirm Save</button>
+              </div>
             </div>
           </div>
         )}
-      </main>
-      
-      {showWarningModal && (
-        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-amber-200">
-            <div className="p-6 bg-amber-50">
-              <h3 className="text-lg font-black text-amber-900 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600" /> Missing Signature
-              </h3>
-              <p className="text-sm font-bold text-amber-800 mt-2">No signature captured. Save anyway?</p>
-            </div>
-            <div className="p-4 flex gap-3 justify-end bg-slate-50 border-t border-slate-100">
-              <button onClick={() => setShowWarningModal(false)} className="px-6 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-              <button onClick={processFinalization} className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md">Confirm Save</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {signatureModal && (
-        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSignatureModal(null)}>
-          <div className="bg-white rounded-2xl p-4 shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Customer Signature</h3>
-            <img src={signatureModal} alt="Signature" className="border border-slate-200 rounded-2xl w-full md:w-[400px]" />
-            <button onClick={() => setSignatureModal(null)} className="w-full mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">Close</button>
+        {signatureModal && (
+          <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSignatureModal(null)}>
+            <div className="bg-white rounded-2xl p-4 shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+              <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">Customer Signature</h3>
+              <img src={signatureModal} alt="Signature" className="border border-slate-200 rounded-2xl w-full md:w-[400px]" />
+              <button onClick={() => setSignatureModal(null)} className="w-full mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors">Close</button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </PageShell>
   );
 }

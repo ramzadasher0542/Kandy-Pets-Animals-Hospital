@@ -28,6 +28,14 @@ test.describe('F-7 — Inpatient Log', () => {
       });
       await db.pets.setItem('f7_admitted', { id: 'f7_admitted', clientId: 'client_f7', name: 'F7Admit', petType: 'Canine', breed: 'Labrador', age: '2y', weight: 20 });
       await db.pets.setItem('f7_outpatient', { id: 'f7_outpatient', clientId: 'client_f7', name: 'F7Out', petType: 'Feline', breed: 'Persian', age: '1y', weight: 4 });
+      
+      const today = new Date().toISOString().split('T')[0];
+      await db.records.setItem('rec_f7_admit', {
+        id: 'rec_f7_admit', patientId: 'f7_admitted', ownerName: 'F7 Owner', visitDate: today, petName: 'F7Admit'
+      });
+      await db.records.setItem('rec_f7_out', {
+        id: 'rec_f7_out', patientId: 'f7_outpatient', ownerName: 'F7 Owner', visitDate: today, petName: 'F7Out'
+      });
     });
 
     await page.reload();
@@ -39,8 +47,8 @@ test.describe('F-7 — Inpatient Log', () => {
     // Find an empty kennel (e.g. Kennel 10)
     await page.getByText('Kennel 10', { exact: true }).click();
     await page.getByPlaceholder('Search by Patient Name...').fill('F7Admit');
-    // Select pet
-    await page.getByText('F7Admit').first().click();
+    // Note: The fill operation triggers the datalist onChange selection automatically.
+    await page.keyboard.press('Enter');
     
     // Pick checkout date = tomorrow
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
@@ -72,6 +80,22 @@ test.describe('F-7 — Inpatient Log', () => {
     await page.getByText('F7Admit').first().click();
     
     // The "Inpatient Log" tab button should be visible
+    const brState = await page.evaluate(async () => {
+      const db = (window as any)._db;
+      let state: any[] = [];
+      await db.boardingRecords.iterate((r: any) => { state.push(r); });
+      let pets: any[] = [];
+      await db.pets.iterate((r: any) => { pets.push(r); });
+      return { boarding: state, pets: pets };
+    });
+    console.log('F7 DB STATE:', JSON.stringify(brState, null, 2));
+
+    await page.waitForTimeout(500); // Give React time to update
+    const debugBrLen = await page.getByTestId('debug-br-len').innerText();
+    const debugErPid = await page.getByTestId('debug-er-pid').innerText();
+    const debugHasActiveMb = await page.getByTestId('debug-has-active-mb').innerText();
+    console.log(`DEBUG SPANS -> len: ${debugBrLen}, pid: ${debugErPid}, hasMb: ${debugHasActiveMb}`);
+
     const inpatientTab = page.locator('button', { hasText: 'Inpatient Log' });
     await expect(inpatientTab).toBeVisible({ timeout: 5000 });
     
@@ -82,7 +106,7 @@ test.describe('F-7 — Inpatient Log', () => {
     
     // Assert log entry is added
     await expect(page.getByText('F7 Test Treatment')).toBeVisible();
-    await expect(page.getByText('IV')).toBeVisible(); // default route
+    await expect(page.getByText('IV', { exact: true }).first()).toBeVisible(); // default route
     
     // Close Workspace
     await page.locator('button', { hasText: 'Close Workspace' }).click();

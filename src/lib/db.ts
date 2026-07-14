@@ -912,7 +912,8 @@ export async function fetchPaginatedRecords(
     const q = search.trim().toLowerCase();
     filtered = filtered.filter(r =>
       (r.ownerName || '').toLowerCase().includes(q) ||
-      (r.ownerPhone || '').includes(q)
+      (r.ownerPhone || '').includes(q) ||
+      (r.petName || '').toLowerCase().includes(q)
     );
   }
 

@@ -5,11 +5,12 @@
 
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Search, ShoppingCart, Plus, Minus, Trash2, CreditCard, 
+import {
+  Search, ShoppingCart, Plus, Minus, Trash2, CreditCard,
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
-  PenTool, CheckCircle2 // FIXED: Added missing icons
+  PenTool, CheckCircle2
 } from 'lucide-react';
+import PageShell from './ui/PageShell';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
@@ -387,6 +388,7 @@ export default function POSRegister({
   };
 
   return (
+    <PageShell title="POS Register">
     <div className="flex h-full w-full gap-4 overflow-hidden" id="pos-register-container">
       
       {/* LEFT PANE: CHECKOUT CART */}
@@ -577,7 +579,7 @@ export default function POSRegister({
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{item.category.replace('_', ' ')}</div>
                   </div>
                   <div className="flex justify-between items-end border-t border-slate-50 pt-2">
-                    <div className="font-mono text-xs font-black text-indigo-600">{item.price.toFixed(2)}</div>
+                    <div className="font-mono text-xs font-black text-indigo-600">{(item.price || 0).toFixed(2)}</div>
                     {!['service', 'lab_service'].includes(item.category) && (
                       <div className={`text-[10px] font-bold ${item.stock <= item.minStock ? 'text-rose-500' : 'text-slate-400'}`}>
                         Stk: {item.stock}
@@ -751,5 +753,6 @@ export default function POSRegister({
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
     </div>
+    </PageShell>
   );
 }

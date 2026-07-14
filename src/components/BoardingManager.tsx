@@ -11,6 +11,8 @@ import {
 import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem } from '../types';
 import { showToast } from './Toast';
 import { fetchBoardingRecords, upsertBoardingRecord, fetchPets } from '../lib/db';
+import { Badge } from './ui/Badge';
+import PageShell from './ui/PageShell';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 
 interface BoardingProps {
@@ -412,9 +414,10 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     );
   };
 
+
   return (
-    <div className="flex h-[calc(100vh-140px)] w-full gap-4 overflow-hidden" id="boarding-module-container">
-      
+    <PageShell title="Boarding & Admission" subtitle="Manage inpatient kennels, condos, and feeding schedules">
+      <div className="flex h-full w-full gap-4 overflow-hidden relative" id="boarding-module-container">
       {/* LEFT PANE: Visual Kennel Board (40%) */}
       <aside className="w-2/5 min-w-[350px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
         <div className="p-4 border-b border-slate-100 bg-slate-50 shrink-0">
@@ -855,5 +858,6 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       )}
 
     </div>
+    </PageShell>
   );
 }

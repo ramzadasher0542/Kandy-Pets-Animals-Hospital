@@ -13,6 +13,8 @@ import { MedicalRecord, Appointment, Pet, Vaccination, LabResult, Client, PetCla
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 import { fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
+import PageShell from './ui/PageShell';
+import MasterDetailLayout from './ui/MasterDetailLayout';
 
 interface PatientPortalProps {
   clients: Client[];
@@ -167,35 +169,38 @@ export default function PatientPortal({
   };
 
   return (
-    <div className="flex h-full w-full gap-4 overflow-hidden" id="patient-portal-container">
-      
-      <aside className="w-1/3 min-w-[320px] max-w-[400px] bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden shrink-0">
-        <div className="p-6 border-b border-slate-100 bg-slate-50 shrink-0 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
-              <PawPrint className="w-4 h-4 text-indigo-600" /> Patient Portal
-            </h2>
-            <div className="flex bg-white border border-slate-200 rounded-xl p-0.5 shadow-xs">
-              <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
-              <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All Pets</button>
+    <PageShell>
+      <MasterDetailLayout
+        isEmpty={!activePet}
+        detailEmptyIcon={<Database className="h-16 w-16 text-slate-300" />}
+        detailEmptyTitle="Select a Patient to view Passport"
+        listHeader={
+          <>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
+                <PawPrint className="w-4 h-4 text-indigo-600" /> Patient Portal
+              </h2>
+              <div className="flex bg-white border border-slate-200 rounded-xl p-0.5 shadow-xs">
+                <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
+                <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All Pets</button>
+              </div>
             </div>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input 
-              type="text" placeholder="Search Pet or Owner..." value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs" 
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-slate-50/30">
-          {displayPets.length === 0 ? (
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text" placeholder="Search Pet or Owner..." value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
+              />
+            </div>
+          </>
+        }
+        list={
+          displayPets.length === 0 ? (
             <div className="text-center py-10 text-slate-400 font-bold text-xs">No patients found.</div>
           ) : (
             displayPets.map(pet => (
-              <div 
+              <div
                 key={pet.patientId} onClick={() => setSelectedPatientId(pet.patientId)}
                 className={`p-4 rounded-2xl cursor-pointer transition-all border ${selectedPatientId === pet.patientId ? 'bg-indigo-600 border-indigo-700 shadow-md text-white' : 'bg-white border-slate-200 hover:border-indigo-300 shadow-sm'}`}
               >
@@ -209,18 +214,11 @@ export default function PatientPortal({
                 </div>
               </div>
             ))
-          )}
-        </div>
-      </aside>
-
-      <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
-        {!activePet ? (
-          <div className="flex-1 flex flex-col items-center justify-center relative opacity-50">
-            <Database className="h-16 w-16 text-slate-300 mb-4" />
-            <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest">Select a Patient to view Passport</h3>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col relative overflow-hidden animate-fade-in">
+          )
+        }
+        detail={
+          activePet ? (
+            <>
             
             <div className="bg-white border-b border-slate-200 shrink-0 shadow-sm z-10">
               <div className="px-6 py-4 flex items-center justify-end border-b border-slate-100 bg-slate-50/50">
@@ -459,9 +457,10 @@ export default function PatientPortal({
               )}
 
             </div>
-          </div>
-        )}
-      </main>
+          </>
+          ) : null
+        }
+      />
 
       {/* PHASE 3 & 4: EDIT PET MASTER IDENTITY MODAL WITH BULK SYNC */}
       {showEditPetModal && createPortal(
@@ -536,6 +535,6 @@ export default function PatientPortal({
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
-    </div>
+    </PageShell>
   );
 }
