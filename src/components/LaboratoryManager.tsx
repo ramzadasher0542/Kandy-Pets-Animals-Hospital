@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
-import { Search, TestTube, Activity, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
+import { Search, TestTube, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
 import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet, Client, ClinicQueueItem } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
@@ -13,6 +14,8 @@ import { fetchPets, fetchLabResults, upsertLabResult } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';
+import EmptyState from './ui/EmptyState';
+import ClinicQueue from './ui/ClinicQueue';
 
 interface LabProps {
   clients: Client[];
@@ -213,40 +216,14 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
       labResults.some(l => l.petId === q.petId && l.status === 'pending')
     ));
 
-    if (activeQueue.length === 0) return null;
-
     return (
-      <div className="p-4 border-b border-slate-100 bg-indigo-50/50 shrink-0">
-        <h3 className="text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5"/> Active Lab Queue
-        </h3>
-        <div className="space-y-2">
-          {activeQueue.map(q => (
-            <div
-              key={q.id}
-              onClick={() => setSelectedPatientId(q.petId)}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
-            >
-              <div className="flex justify-between items-center mb-1">
-                <div className="font-bold text-sm truncate flex items-center gap-1.5">
-                  {q.petName}
-                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
-                </div>
-                <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
-                  Pending Labs
-                </div>
-              </div>
-              {q.emergencyBackfillRequired && (
-                <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
-              )}
-              <div className={`text-[10px] font-black ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
-                {q.ownerName}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ClinicQueue
+        title="Active Lab Queue"
+        items={activeQueue}
+        isSelected={q => selectedPatientId === q.petId}
+        onSelect={q => setSelectedPatientId(q.petId)}
+        statusLabel={() => 'Pending Labs'}
+      />
     );
   };
 
@@ -273,7 +250,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
           list={
             <>
               {displayPatients.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 font-bold text-xs">No patients found in this view.</div>
+                <div className="py-8"><EmptyState icon={<TestTube className="w-8 h-8" />} title="No Patients" description="No patients found in this view." /></div>
               ) : (
                 displayPatients.map(patient => (
                   <div 
@@ -334,7 +311,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                         {availableLabTests.map(test => (
                           <div key={test.id} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow flex flex-col h-full">
                             <div className="font-black text-slate-800 text-sm mb-1">{test.name}</div>
-                            <div className="text-[10px] font-bold text-slate-400 font-mono mb-4">LKR {test.price.toFixed(2)}</div>
+                            <div className="text-[10px] font-bold text-slate-400 font-mono mb-4">Rs. {test.price.toFixed(2)}</div>
                             
                             {test.labParameters && test.labParameters.length > 0 && (
                               <div className="mb-4 flex flex-wrap gap-1">
@@ -402,19 +379,27 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
           }
         />
 
-        {showResultModal && activeLabResult && createPortal(
-          <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 max-w-2xl w-full flex flex-col shadow-2xl animate-scale-up max-h-[90vh]">
-              
-              <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-5 shrink-0">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800 tracking-tight">Diagnostic Report</h3>
-                  <p className="text-[10px] text-indigo-600 font-black mt-1 uppercase tracking-widest">{activeLabResult.result.testName}</p>
-                </div>
-                <button onClick={() => setShowResultModal(false)} className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 transition-colors"><X className="w-5 h-5"/></button>
+        {activeLabResult && (
+          <Modal
+            open={showResultModal}
+            onClose={() => setShowResultModal(false)}
+            size="lg"
+            title={
+              <div>
+                <div className="text-lg font-black text-slate-800 tracking-tight">Diagnostic Report</div>
+                <div className="text-[10px] text-indigo-600 font-black mt-1 uppercase tracking-widest">{activeLabResult.result.testName}</div>
               </div>
-              
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
+            }
+            footer={activeLabResult.result.status === 'pending' ? (
+              <>
+                <button onClick={() => setShowResultModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 cursor-pointer text-[10px] transition-colors">Cancel</button>
+                <button onClick={handleSaveResult} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest rounded-xl shadow-md cursor-pointer flex items-center gap-2 text-[10px] transition-colors">
+                  <CheckCircle2 className="w-4 h-4"/> Sign & Finalize Report
+                </button>
+              </>
+            ) : null}
+          >
+            <div className="space-y-6">
                 {activeTestSchema && activeTestSchema.length > 0 && (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Measured Parameters</h4>
@@ -454,18 +439,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                 </div>
 
               </div>
-
-              {activeLabResult.result.status === 'pending' && (
-                <div className="flex justify-end gap-3 border-t border-slate-100 pt-5 mt-4 shrink-0">
-                  <button onClick={() => setShowResultModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-black uppercase tracking-widest rounded-xl hover:bg-slate-50 cursor-pointer text-[10px] transition-colors">Cancel</button>
-                  <button onClick={handleSaveResult} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest rounded-xl cursor-pointer shadow-md text-[10px] transition-colors flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4"/> Lock Results & Finalize
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>,
-          document.body
+        </Modal>
         )}
       </div>
     </PageShell>

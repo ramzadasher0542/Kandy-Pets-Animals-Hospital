@@ -169,7 +169,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
   // Vault metrics (all-time cash position — intentionally NOT range-scoped)
   const [metrics, setMetrics] = useState({ cashSales: 0, cashIn: 0, cashOut: 0, vaultBalance: 0 });
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR' }).format(val || 0);
+  const formatCurrency = (val: number) => 'Rs. ' + new Intl.NumberFormat('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const formatPct = (n: number) => `${n >= 0 ? '' : ''}${n.toFixed(1)}%`;
   const normPhone = (p: string) => (p || '').replace(/\D/g, '').slice(-9);
@@ -513,7 +513,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
         {/* PROFIT ANALYSIS */}
         <section>
           <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><TrendingUp className="w-4 h-4 text-indigo-500" /> Profit Analysis — {range.label}</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Gross Revenue</span>
               <span data-testid="metric-total-revenue" data-value={report.grossRevenue} className="text-xl font-black text-slate-900 font-mono tracking-tight">{formatCurrency(report.grossRevenue)}</span>

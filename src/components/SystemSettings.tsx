@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import { Building2, Printer, Users, ShieldAlert, Save, Plus, 
-  Trash2, Database, Power, X, Lock, CheckCircle2, User,
+  Trash2, Database, X, Lock, CheckCircle2, User,
   FileText, Download, Upload, Layers, AlertTriangle, Smartphone, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
@@ -75,13 +76,48 @@ interface SettingsProps {
   onDeleteInventory?: (id: string) => Promise<void>;
   onRestoreSnapshot?: () => Promise<boolean>;
   onPurgeDatabases: () => void;
-  onHardReboot: () => void;
+  onWipeCloudAndPurge?: () => Promise<void>;
+  cloudSyncEnabled?: boolean;
   onVerifyMasterPin?: (pin: string) => boolean;
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onHardReboot, onUpdateInventory, onDeleteInventory, onVerifyMasterPin
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin
 }: SettingsProps) {
+
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgePin, setPurgePin] = useState('');
+  const [showCloudWipeModal, setShowCloudWipeModal] = useState(false);
+  const [cloudWipePin, setCloudWipePin] = useState('');
+  const [cloudWipeConfirmText, setCloudWipeConfirmText] = useState('');
+  const [cloudWipeBusy, setCloudWipeBusy] = useState(false);
+
+  const handleConfirmCloudWipe = async () => {
+    if (cloudWipeConfirmText !== 'DELETE') {
+      showToast('Type DELETE exactly to confirm. Nothing was erased.', 'error');
+      return;
+    }
+    if (!onVerifyMasterPin || !onVerifyMasterPin(cloudWipePin)) {
+      showToast('Incorrect admin password. Nothing was erased.', 'error');
+      return;
+    }
+    setCloudWipeBusy(true);
+    try {
+      if (onWipeCloudAndPurge) await onWipeCloudAndPurge();
+    } finally {
+      setCloudWipeBusy(false);
+    }
+  };
+
+  const handleConfirmPurge = () => {
+    if (!onVerifyMasterPin || !onVerifyMasterPin(purgePin)) {
+      showToast('Incorrect admin password. Database was NOT erased.', 'error');
+      return;
+    }
+    setShowPurgeModal(false);
+    setPurgePin('');
+    onPurgeDatabases();
+  };
   
   const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'database' | 'rates'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
@@ -574,26 +610,118 @@ export default function SystemSettings({
                   <div className="space-y-4">
                     <div className="bg-white border border-rose-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
-                        <h4 className="text-sm font-black text-slate-800 flex items-center gap-2"><Database className="w-4 h-4 text-rose-500" /> Purge Local Database</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Wipes all tables, inventory, and charts. Reboots app.</p>
+                        <h4 className="text-sm font-black text-slate-800 flex items-center gap-2"><Database className="w-4 h-4 text-rose-500" /> Erase Entire Database</h4>
+                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Permanently deletes every record and all configuration. Requires your admin password.</p>
                       </div>
-                      <button onClick={onPurgeDatabases} className="px-6 py-3 bg-rose-100 hover:bg-rose-600 hover:text-white text-rose-700 font-black rounded-xl text-[10px] uppercase tracking-widest transition-colors cursor-pointer whitespace-nowrap">
-                        Execute Local Purge
+                      <button onClick={() => { setPurgePin(''); setShowPurgeModal(true); }} className="px-6 py-3 bg-rose-600 hover:bg-rose-800 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
+                        Erase Everything
                       </button>
                     </div>
 
-                    <div className="bg-white border border-rose-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-800 flex items-center gap-2"><Power className="w-4 h-4 text-rose-500" /> Factory System Reset</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Destroys database, configs, users, and localStorage.</p>
+                    {cloudSyncEnabled && (
+                      <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                        <div>
+                          <h4 className="text-sm font-black text-rose-900 flex items-center gap-2"><Database className="w-4 h-4 text-rose-600" /> Erase Cloud Database Too</h4>
+                          <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Also deletes every record from the Supabase cloud backup — affects every device synced to this project. Cannot be undone.</p>
+                        </div>
+                        <button onClick={() => { setCloudWipePin(''); setCloudWipeConfirmText(''); setShowCloudWipeModal(true); }} className="px-6 py-3 bg-rose-800 hover:bg-rose-950 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
+                          Erase Cloud + Local
+                        </button>
                       </div>
-                      <button onClick={onHardReboot} className="px-6 py-3 bg-rose-600 hover:bg-rose-800 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
-                        Force Hard Reboot
-                      </button>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
+
+              {/* Password-gated total wipe */}
+              <Modal
+                open={showPurgeModal}
+                onClose={() => { setShowPurgeModal(false); setPurgePin(''); }}
+                title="Erase Entire Database"
+                icon={<ShieldAlert className="w-5 h-5 text-rose-600" />}
+                size="sm"
+                footer={
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={() => { setShowPurgeModal(false); setPurgePin(''); }} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors">Cancel</button>
+                    <button
+                      onClick={handleConfirmPurge}
+                      disabled={!purgePin}
+                      className={`px-5 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors ${purgePin ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                    >
+                      Permanently Delete Everything
+                    </button>
+                  </div>
+                }
+              >
+                <div className="p-6 space-y-4">
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    <p className="text-xs font-bold text-rose-700 leading-relaxed">This permanently deletes <span className="font-black">all data</span> — clients, pets, appointments, invoices, inventory, staff, charts, and system configuration. This cannot be undone.</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Enter Admin Password (Login PIN)</label>
+                    <input
+                      type="password"
+                      value={purgePin}
+                      onChange={e => setPurgePin(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && purgePin) handleConfirmPurge(); }}
+                      placeholder="••••"
+                      autoFocus
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
+                    />
+                  </div>
+                </div>
+              </Modal>
+
+              {/* Cloud + local wipe — requires typing DELETE plus admin password */}
+              <Modal
+                open={showCloudWipeModal}
+                onClose={() => { if (!cloudWipeBusy) { setShowCloudWipeModal(false); setCloudWipePin(''); setCloudWipeConfirmText(''); } }}
+                title="Erase Cloud Database Too"
+                icon={<ShieldAlert className="w-5 h-5 text-rose-700" />}
+                size="sm"
+                footer={
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={() => { setShowCloudWipeModal(false); setCloudWipePin(''); setCloudWipeConfirmText(''); }} disabled={cloudWipeBusy} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors disabled:opacity-50">Cancel</button>
+                    <button
+                      onClick={handleConfirmCloudWipe}
+                      disabled={cloudWipeConfirmText !== 'DELETE' || !cloudWipePin || cloudWipeBusy}
+                      className={`px-5 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors ${cloudWipeConfirmText === 'DELETE' && cloudWipePin && !cloudWipeBusy ? 'bg-rose-800 hover:bg-rose-950 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                    >
+                      {cloudWipeBusy ? 'Erasing…' : 'Permanently Erase Cloud + Local'}
+                    </button>
+                  </div>
+                }
+              >
+                <div className="p-6 space-y-4">
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3">
+                    <AlertTriangle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
+                    <p className="text-xs font-bold text-rose-800 leading-relaxed">This deletes <span className="font-black">every row in the Supabase cloud database</span> — not just this browser. Any other device or staff member synced to this project loses their data too. There is no undo.</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Type <span className="font-mono text-rose-700">DELETE</span> to confirm</label>
+                    <input
+                      type="text"
+                      value={cloudWipeConfirmText}
+                      onChange={e => setCloudWipeConfirmText(e.target.value)}
+                      placeholder="DELETE"
+                      autoFocus
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Enter Admin Password (Login PIN)</label>
+                    <input
+                      type="password"
+                      value={cloudWipePin}
+                      onChange={e => setCloudWipePin(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && cloudWipeConfirmText === 'DELETE' && cloudWipePin) handleConfirmCloudWipe(); }}
+                      placeholder="••••"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
+                    />
+                  </div>
+                </div>
+              </Modal>
 
             </div>
           )}
@@ -777,19 +905,32 @@ export default function SystemSettings({
       </main>
 
       {/* MODAL: CSV Import Staging Area */}
-      {showStagingModal && createPortal(
-        <div className="fixed inset-0 z-[90] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[90vh]">
-            
-            <div className="p-6 border-b border-slate-100 shrink-0 flex justify-between items-start bg-slate-50/50">
-              <div>
-                <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-600" /> Pre-Sync Staging Area</h2>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Verify parsed data before overwriting the master registry</p>
-              </div>
-              <button onClick={() => { setShowStagingModal(false); setStagedImports([]); }} className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
+      <Modal
+        open={showStagingModal}
+        onClose={() => { setShowStagingModal(false); setStagedImports([]); }}
+        size="lg"
+        title={
+          <div>
+            <div className="text-lg font-black text-slate-800 flex items-center gap-2">Pre-Sync Staging Area</div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Verify parsed data before overwriting the master registry</div>
+          </div>
+        }
+        icon={<div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Layers className="w-5 h-5" /></div>}
+        footer={
+          <>
+            <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest flex items-center">
+              {stagedImports.filter(i => !i._isValid).length} Errors detected. Invalid rows will be ignored during sync.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => { setShowStagingModal(false); setStagedImports([]); }} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel Import</button>
+              <button onClick={approveAndCommitImports} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                <Database className="w-4 h-4"/> Overwrite Master Registry
+              </button>
             </div>
-
-            <div className="flex-1 overflow-hidden flex flex-col p-6 bg-slate-100/50">
+          </>
+        }
+      >
+        <div className="h-full flex flex-col bg-slate-100/50 -mx-6 -my-4 p-6">
               <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden flex flex-col h-full">
                 <div className="bg-slate-800 p-3 flex justify-between items-center shrink-0">
                   <h4 className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2"><Database className="w-4 h-4 text-sky-400" /> Parsed CSV Data</h4>
@@ -825,35 +966,26 @@ export default function SystemSettings({
                 </div>
               </div>
             </div>
-
-            <div className="p-6 bg-white border-t border-slate-200 shrink-0 flex justify-between items-center z-10">
-              <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">
-                {stagedImports.filter(i => !i._isValid).length} Errors detected. Invalid rows will be ignored during sync.
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => { setShowStagingModal(false); setStagedImports([]); }} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel Import</button>
-                <button onClick={approveAndCommitImports} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <Database className="w-4 h-4"/> Overwrite Master Registry
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      </Modal>
 
       {/* MODAL: Issue ID Card (Add Staff) */}
-      {showAddStaff && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full animate-scale-up overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50">
-              <div>
-                <h3 className="text-base font-black text-slate-800">Issue Access Card</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Register new terminal user</p>
-              </div>
-              <button onClick={() => setShowAddStaff(false)} className="p-1.5 hover:bg-slate-200 text-slate-400 rounded-xl transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
-            </div>
-            <form onSubmit={handleCreateStaff} className="p-6 space-y-4">
+      <Modal
+        open={showAddStaff}
+        onClose={() => setShowAddStaff(false)}
+        size="sm"
+        title={
+          <div>
+            <div className="text-base font-black text-slate-800">Issue Access Card</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Register new terminal user</div>
+          </div>
+        }
+        footer={
+          <button type="submit" form="addStaffForm" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-4 h-4"/> Authorize Staff
+          </button>
+        }
+      >
+        <form id="addStaffForm" onSubmit={handleCreateStaff} className="space-y-4">
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Staff Full Name *</label>
                 <input type="text" required value={newStaff.name} onChange={e => setNewStaff({...newStaff, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
@@ -874,16 +1006,8 @@ export default function SystemSettings({
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1"><Lock className="w-3 h-3"/> 4-Digit Passcode *</label>
                 <input type="text" required maxLength={4} pattern="\d{4}" placeholder="e.g. 1234" value={newStaff.pin} onChange={e => setNewStaff({...newStaff, pin: e.target.value.replace(/\D/g, '')})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black font-mono tracking-widest text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
               </div>
-              <div className="pt-2">
-                <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center justify-center gap-2">
-                  <CheckCircle2 className="w-4 h-4"/> Authorize Staff
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
 
     </div>
   );

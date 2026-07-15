@@ -17,8 +17,8 @@ test.describe('Emergency Intake Flow', () => {
 
     // Reset DB for clean state
     await page.evaluate(async () => {
-      await window._db.appointments.clear();
-      await window._db.clinicQueue.clear();
+      await (window as any)._db.appointments.clear();
+      await (window as any)._db.clinicQueue.clear();
     });
     await page.reload();
 
@@ -97,7 +97,7 @@ test.describe('Emergency Intake Flow', () => {
     // 5. Confirm emergencyBackfillRequired flag on record
     const hasFlag = await page.evaluate(async () => {
       let found = false;
-      await window._db.appointments.iterate((apt: any) => {
+      await (window as any)._db.appointments.iterate((apt: any) => {
         if (apt.petName === 'Buddy' && apt.emergencyBackfillRequired === true) {
           found = true;
         }

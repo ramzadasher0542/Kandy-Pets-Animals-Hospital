@@ -1,4 +1,5 @@
 import React from 'react';
+import EmptyState from './EmptyState';
 
 export interface MasterDetailLayoutProps {
   listHeader: React.ReactNode;
@@ -33,15 +34,12 @@ export default function MasterDetailLayout({
 
       <main className="flex-1 bg-slate-50 rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
         {isEmpty ? (
-          <div className="flex-1 flex flex-col items-center justify-center relative opacity-50">
-            {detailEmptyIcon && <div className="mb-4">{detailEmptyIcon}</div>}
-            {detailEmptyTitle && (
-              <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest">{detailEmptyTitle}</h3>
-            )}
-            {detailEmptyMessage && (
-              <p className="text-xs font-bold text-slate-400 mt-2">{detailEmptyMessage}</p>
-            )}
-          </div>
+          <EmptyState 
+            icon={detailEmptyIcon} 
+            title={detailEmptyTitle || ''} 
+            description={detailEmptyMessage} 
+            className="opacity-50" 
+          />
         ) : (
           <div className="flex-1 flex flex-col relative overflow-hidden animate-fade-in">
             {detail}

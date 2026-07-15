@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import EmptyState from './ui/EmptyState';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import { 
   Search, PawPrint, Activity, HeartPulse, TestTube, Syringe, 
@@ -169,35 +171,33 @@ export default function PatientPortal({
   };
 
   return (
-    <PageShell>
+    <PageShell
+      title="Patient Portal"
+      subtitle="View pet passports and medical history"
+      filters={{
+        options: [
+          { id: 'clinic', label: 'In Clinic' },
+          { id: 'all', label: 'All Pets' }
+        ],
+        active: showQueueOnly ? 'clinic' : 'all',
+        onChange: (id) => setShowQueueOnly(id === 'clinic')
+      }}
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: 'Search Pet or Owner...'
+      }}
+    >
       <MasterDetailLayout
         isEmpty={!activePet}
         detailEmptyIcon={<Database className="h-16 w-16 text-slate-300" />}
         detailEmptyTitle="Select a Patient to view Passport"
         listHeader={
-          <>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2">
-                <PawPrint className="w-4 h-4 text-indigo-600" /> Patient Portal
-              </h2>
-              <div className="flex bg-white border border-slate-200 rounded-xl p-0.5 shadow-xs">
-                <button onClick={() => setShowQueueOnly(true)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${showQueueOnly ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>In Clinic</button>
-                <button onClick={() => setShowQueueOnly(false)} className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors ${!showQueueOnly ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>All Pets</button>
-              </div>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text" placeholder="Search Pet or Owner..." value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
-              />
-            </div>
-          </>
+          <h2 className="text-sm font-bold text-slate-800 tracking-tight">Patient Directory</h2>
         }
         list={
           displayPets.length === 0 ? (
-            <div className="text-center py-10 text-slate-400 font-bold text-xs">No patients found.</div>
+            <EmptyState icon={<PawPrint className="w-8 h-8" />} title="No Patients Found" description="No patients match your search criteria." className="py-10" />
           ) : (
             displayPets.map(pet => (
               <div
@@ -463,19 +463,26 @@ export default function PatientPortal({
       />
 
       {/* PHASE 3 & 4: EDIT PET MASTER IDENTITY MODAL WITH BULK SYNC */}
-      {showEditPetModal && createPortal(
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden">
-            <div className="flex justify-between items-start p-6 pb-4 border-b border-slate-100 shrink-0 bg-slate-50/50">
-              <div>
-                <h4 className="text-sm font-black text-slate-800 leading-none">Edit Master Identity</h4>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Updates propagate to all historical E.H.R</p>
-              </div>
-              <button onClick={() => setShowEditPetModal(false)} className="p-1 hover:bg-slate-200 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
-            </div>
-            
-            <form onSubmit={handleSavePetEdits} className="flex flex-col min-h-0">
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <Modal
+        open={showEditPetModal}
+        onClose={() => setShowEditPetModal(false)}
+        size="md"
+        title={
+          <div>
+            <div className="text-sm font-black text-slate-800 leading-none">Edit Master Identity</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Updates propagate to all historical E.H.R</div>
+          </div>
+        }
+        footer={
+          <>
+            <button type="button" onClick={() => setShowEditPetModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-[10px] uppercase tracking-widest cursor-pointer transition-colors">Cancel</button>
+            <button type="submit" form="editPetForm" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest cursor-pointer shadow-md flex items-center gap-2 transition-colors">
+              <CheckCircle2 className="w-4 h-4"/> Sync Updates
+            </button>
+          </>
+        }
+      >
+        <form id="editPetForm" onSubmit={handleSavePetEdits} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 col-span-2">
                     <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest">Patient Name *</label>
@@ -515,19 +522,8 @@ export default function PatientPortal({
                     <input type="number" step="0.1" min="0" value={editPetData.weight} onChange={e => setEditPetData({...editPetData, weight: parseFloat(e.target.value)})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold font-mono" />
                   </div>
                 </div>
-              </div>
-              
-              <div className="shrink-0 flex gap-2 p-6 pt-4 justify-end border-t border-slate-100 bg-white">
-                <button type="button" onClick={() => setShowEditPetModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 text-[10px] uppercase tracking-widest cursor-pointer transition-colors">Cancel</button>
-                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest cursor-pointer shadow-md flex items-center gap-2 transition-colors">
-                  <CheckCircle2 className="w-4 h-4"/> Sync Updates
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

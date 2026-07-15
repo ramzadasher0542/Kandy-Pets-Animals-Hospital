@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import {
   Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
@@ -685,42 +686,48 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       </main>
 
       {/* MODAL: Mandatory Deposit Guard */}
-      {showDepositGuard && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDepositGuard(false)}>
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-6 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><AlertTriangle className="w-10 h-10 animate-pulse" /></div>
-            
-            <div>
-              <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Mandatory Admission Deposit</h3>
-              <p className="text-slate-500 text-xs font-bold mt-2 px-2">System protocol requires a deposit to secure {selectedCage} and lock the patient into the ward flowsheet.</p>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount Required</div>
-              <div className="text-3xl font-mono font-black text-slate-800 mt-1">Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setShowDepositGuard(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-              <button onClick={handleConfirmBooking} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors">Collect & Lock Cage</button>
-            </div>
+      <Modal
+        open={showDepositGuard}
+        onClose={() => setShowDepositGuard(false)}
+        size="sm"
+        title="Mandatory Admission Deposit"
+        icon={<div className="bg-rose-100 text-rose-600 p-2 rounded-xl"><AlertTriangle className="w-5 h-5 animate-pulse" /></div>}
+        footer={
+          <>
+            <button onClick={() => setShowDepositGuard(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+            <button onClick={handleConfirmBooking} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors">Collect & Lock Cage</button>
+          </>
+        }
+      >
+        <div className="text-center space-y-6">
+          <p className="text-slate-500 text-xs font-bold px-2">System protocol requires a deposit to secure {selectedCage} and lock the patient into the ward flowsheet.</p>
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount Required</div>
+            <div className="text-3xl font-mono font-black text-slate-800 mt-1">Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
-        </div>,
-        document.body
-      )}
+        </div>
+      </Modal>
 
       {/* MODAL: Feeding Plan */}
-      {feedingModalCage && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setFeedingModalCage(null)}>
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shadow-inner"><Utensils className="w-6 h-6" /></div>
-              <div>
-                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Feeding Plan</h3>
-                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{feedingModalCage} • {activeBoardingMap.get(feedingModalCage)?.pet?.name || 'Unknown'}</p>
-              </div>
-            </div>
-
+      <Modal
+        open={!!feedingModalCage}
+        onClose={() => setFeedingModalCage(null)}
+        size="md"
+        title={
+          <div>
+            <div className="text-base font-black text-slate-800 uppercase tracking-tight">Feeding Plan</div>
+            <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{feedingModalCage} • {feedingModalCage ? (activeBoardingMap.get(feedingModalCage)?.pet?.name || 'Unknown') : 'Unknown'}</div>
+          </div>
+        }
+        icon={<div className="bg-amber-100 text-amber-600 p-2 rounded-xl"><Utensils className="w-5 h-5" /></div>}
+        footer={
+          <>
+            <button onClick={() => setFeedingModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+            <button data-testid="feeding-save-btn" onClick={handleSaveFeedingPlan} className="flex-[2] py-3 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Set Feeding Plan</button>
+          </>
+        }
+      >
+        <div className="space-y-5">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Food Item</label>
               <select
@@ -762,32 +769,34 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setFeedingModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-              <button data-testid="feeding-save-btn" onClick={handleSaveFeedingPlan} className="flex-[2] py-3 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Set Feeding Plan</button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+        </div>
+      </Modal>
 
       {/* MODAL: Discharge & Settle */}
-      {dischargeModalCage && createPortal((() => {
+      {(() => {
+        if (!dischargeModalCage) return null;
         const occ = activeBoardingMap.get(dischargeModalCage);
         const b = occ?.boarding;
         const deposit = b?.depositAmountCents ?? 0;
         const charges = b ? computeCharges(b) : 0;
         const balance = deposit - charges;
         return (
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDischargeModalCage(null)}>
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner"><Receipt className="w-10 h-10" /></div>
-
-            <div>
-              <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight leading-tight">Discharge &amp; Settle</h3>
-              <p className="text-slate-500 text-xs font-bold mt-2 px-2">Settle the account for {occ?.pet?.name || 'this patient'} in {dischargeModalCage} and free the cage.</p>
-            </div>
-
+        <Modal
+          open={!!dischargeModalCage}
+          onClose={() => setDischargeModalCage(null)}
+          size="sm"
+          title="Discharge &amp; Settle"
+          icon={<div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Receipt className="w-5 h-5" /></div>}
+          footer={
+            <>
+              <button onClick={() => setDischargeModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+              <button data-testid="confirm-settle-btn" onClick={() => handleDischargeSettle(dischargeModalCage)} className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Confirm Discharge</button>
+            </>
+          }
+        >
+          <div className="text-center space-y-5">
+            <p className="text-slate-500 text-xs font-bold px-2">Settle the account for {occ?.pet?.name || 'this patient'} in {dischargeModalCage} and free the cage.</p>
+            
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="font-bold text-slate-500">Deposit held</span><span data-testid="settle-deposit" className="font-mono font-black text-slate-800">Rs. {(deposit / 100).toFixed(2)}</span></div>
               <div className="flex justify-between"><span className="font-bold text-slate-500">Charges to date</span><span data-testid="settle-charges" className="font-mono font-black text-slate-800">Rs. {(charges / 100).toFixed(2)}</span></div>
@@ -798,30 +807,31 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                 <div className="flex justify-between"><span className="font-black text-rose-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-rose-600">Rs. {(Math.abs(balance) / 100).toFixed(2)}</span></div>
               )}
             </div>
-
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setDischargeModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-              <button data-testid="confirm-settle-btn" onClick={() => handleDischargeSettle(dischargeModalCage)} className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Confirm Discharge</button>
-            </div>
           </div>
-        </div>
+        </Modal>
         );
-      })(),
-        document.body
-      )}
+      })()}
 
       {/* MODAL: Log Medication (Admission) */}
-      {medModalCage && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setMedModalCage(null)}>
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center shadow-inner"><Pill className="w-6 h-6" /></div>
-              <div>
-                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Log Medication</h3>
-                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{medModalCage} • {activeBoardingMap.get(medModalCage)?.pet?.name || 'Unknown'}</p>
-              </div>
-            </div>
-
+      <Modal
+        open={!!medModalCage}
+        onClose={() => setMedModalCage(null)}
+        size="md"
+        title={
+          <div>
+            <div className="text-base font-black text-slate-800 uppercase tracking-tight">Log Medication</div>
+            <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{medModalCage} • {medModalCage ? (activeBoardingMap.get(medModalCage)?.pet?.name || 'Unknown') : 'Unknown'}</div>
+          </div>
+        }
+        icon={<div className="bg-rose-100 text-rose-600 p-2 rounded-xl"><Pill className="w-5 h-5" /></div>}
+        footer={
+          <>
+            <button onClick={() => setMedModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+            <button data-testid="med-save-btn" onClick={handleLogMedication} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Log &amp; Deduct Stock</button>
+          </>
+        }
+      >
+        <div className="space-y-5">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Inventory Item</label>
               <select
@@ -848,14 +858,8 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               />
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setMedModalCage(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-              <button data-testid="med-save-btn" onClick={handleLogMedication} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer">Log &amp; Deduct Stock</button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+        </div>
+      </Modal>
 
     </div>
     </PageShell>

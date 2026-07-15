@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import EmptyState from './ui/EmptyState';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import {
   Plus, Edit2, Trash2, AlertTriangle,
@@ -251,6 +253,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   return (
     <PageShell
+      title="Inventory"
+      subtitle="Manage stock, supply, and services"
       kpis={[
         {
           icon: <Layers className="w-6 h-6" />,
@@ -341,12 +345,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-16 text-center">
-                      <Package className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-                      <div className="text-sm font-black text-slate-500">No items found in registry.</div>
-                    </td>
-                  </tr>
+                  <tr><td colSpan={5} className="py-16"><EmptyState icon={<Package className="w-8 h-8 opacity-50" />} title="No items found in registry" /></td></tr>
                 ) : filteredItems.map(item => {
                   const catInfo = CATEGORIES.find(c => c.id === item.category);
                   const isService = ['service', 'lab_service'].includes(item.category);
@@ -482,19 +481,26 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       </div>
 
       {/* MODAL: Full Add/Edit Form */}
-      {showAddModal && createPortal(
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh]">
-            <div className="p-6 border-b border-slate-100 shrink-0 flex justify-between items-start bg-slate-50/50">
-              <div>
-                <h2 className="text-lg font-black text-slate-800">{editingItem ? 'Edit Registry Item' : 'New Inventory Record'}</h2>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Master Database Entry</p>
-              </div>
-              <button onClick={() => setShowAddModal(false)} className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
-            </div>
-
-            <form onSubmit={handleSaveItem} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 bg-white">
+      <Modal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        size="lg"
+        title={
+          <div>
+            <div className="text-lg font-black text-slate-800">{editingItem ? 'Edit Registry Item' : 'New Inventory Record'}</div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Master Database Entry</div>
+          </div>
+        }
+        footer={
+          <>
+            <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+            <button type="submit" form="inventoryForm" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+              <CheckCircle2 className="w-4 h-4"/> Save Record
+            </button>
+          </>
+        }
+      >
+        <form id="inventoryForm" onSubmit={handleSaveItem} className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item / Test Name *</label>
@@ -624,118 +630,96 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                   </div>
                 )}
 
-              </div>
-              <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3 z-10">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
-                <button type="submit" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <CheckCircle2 className="w-4 h-4"/> Save Record
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
 
       {/* MODAL: Quick Adjust Stock */}
-      {adjustItem && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full animate-scale-up overflow-hidden">
-            <div className="p-6 text-center space-y-4">
-              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2"><Package className="w-8 h-8"/></div>
-              <h3 className="text-lg font-black text-slate-800 leading-tight">Quick Adjust Stock</h3>
-              <p className="text-xs font-bold text-slate-500">{adjustItem.name}</p>
-              
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 mt-4">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Current Stock</div>
-                <div className="text-3xl font-black font-mono text-slate-800">{adjustItem.stock}</div>
-              </div>
-
-              <form onSubmit={handleQuickAdjust} className="space-y-4 pt-2">
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 text-left">Adjustment (+ or -)</label>
-                  <input 
-                    type="number" 
-                    placeholder="e.g. 10 or -5" 
-                    value={adjustAmount} 
-                    onChange={e => setAdjustAmount(e.target.value)} 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" 
-                    autoFocus
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <button type="button" onClick={() => setAdjustItem(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-black rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
-                  <button type="submit" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Apply Delta</button>
-                </div>
-              </form>
-            </div>
+      <Modal
+        open={!!adjustItem}
+        onClose={() => setAdjustItem(null)}
+        size="sm"
+        title={
+          <div>
+            <div className="text-lg font-black text-slate-800 leading-tight">Quick Adjust Stock</div>
+            <div className="text-xs font-bold text-slate-500">{adjustItem?.name}</div>
           </div>
-        </div>,
-        document.body
-      )}
+        }
+        icon={<div className="bg-emerald-100 text-emerald-600 p-2 rounded-xl"><Package className="w-5 h-5"/></div>}
+        footer={
+          <>
+            <button type="button" onClick={() => setAdjustItem(null)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-black rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+            <button type="submit" form="quickAdjustForm" className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Apply Delta</button>
+          </>
+        }
+      >
+        <div className="text-center space-y-4">
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 mt-4">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Current Stock</div>
+            <div className="text-3xl font-black font-mono text-slate-800">{adjustItem?.stock}</div>
+          </div>
+
+          <form id="quickAdjustForm" onSubmit={handleQuickAdjust} className="space-y-4 pt-2">
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 text-left">Adjustment (+ or -)</label>
+              <input 
+                type="number" 
+                placeholder="e.g. 10 or -5" 
+                value={adjustAmount} 
+                onChange={e => setAdjustAmount(e.target.value)} 
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" 
+                autoFocus
+              />
+            </div>
+          </form>
+        </div>
+      </Modal>
 
       {/* MODAL: Receive Stock */}
-      {receiveStockItem && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Package className="w-6 h-6"/></div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-800 leading-tight">Receive Stock</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-0.5">{receiveStockItem.name}</p>
-                </div>
-              </div>
-              <button onClick={() => setReceiveStockItem(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
+            <Modal
+        open={!!receiveStockItem}
+        onClose={() => setReceiveStockItem(null)}
+        size="md"
+        title={
+          <div>
+            <div className="text-lg font-black text-slate-800 leading-tight">Receive Stock</div>
+            <div className="text-xs font-bold text-slate-500 mt-0.5">{receiveStockItem?.name}</div>
+          </div>
+        }
+        icon={<div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Package className="w-5 h-5"/></div>}
+        footer={
+          <>
+            <button type="button" onClick={() => setReceiveStockItem(null)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+            <button type="submit" form="receiveStockForm" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4"/> Confirm Receipt
+            </button>
+          </>
+        }
+      >
+        <form id="receiveStockForm" onSubmit={handleReceiveStock} className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Quantity Received</label>
+              <input type="number" required min={1} value={receiveFormData.quantityReceived || ""} onChange={e => setReceiveFormData({...receiveFormData, quantityReceived: Number(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             </div>
-            
-            <div className="p-6 overflow-y-auto custom-scrollbar">
-              <form id="receiveStockForm" onSubmit={handleReceiveStock} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot / Batch Number *</label>
-                    <input type="text" required value={receiveFormData.lotNumber || ''} onChange={e => setReceiveFormData({...receiveFormData, lotNumber: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-1.5">Expiry Date {['prescription', 'vaccine', 'food'].includes(receiveStockItem.category) ? '*' : ''}</label>
-                    <input type="date" required={['prescription', 'vaccine', 'food'].includes(receiveStockItem.category)} value={receiveFormData.expiryDate || ''} onChange={e => setReceiveFormData({...receiveFormData, expiryDate: e.target.value})} className="w-full px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-black font-mono text-amber-800 outline-none focus:border-amber-500" />
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block mb-1.5">Qty Received *</label>
-                    <input type="number" required min="1" value={receiveFormData.quantityReceived || ''} onChange={e => setReceiveFormData({...receiveFormData, quantityReceived: parseInt(e.target.value) || 0})} className="w-full px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black font-mono text-emerald-800 outline-none focus:border-emerald-500" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Received Date</label>
-                    <input type="date" required value={receiveFormData.receivedDate || ''} onChange={e => setReceiveFormData({...receiveFormData, receivedDate: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Supplier</label>
-                    <input type="text" value={receiveFormData.supplier || ''} onChange={e => setReceiveFormData({...receiveFormData, supplier: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Cost per unit (Rs.)</label>
-                    <input type="number" step="0.01" min="0" value={receiveFormData.costPerUnit || ''} onChange={e => setReceiveFormData({...receiveFormData, costPerUnit: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
-                  </div>
-                </div>
-              </form>
+            <div className="col-span-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Cost Price per Unit</label>
+              <input type="number" step="0.01" min="0" required value={receiveFormData.costPerUnit || ""} onChange={e => setReceiveFormData({...receiveFormData, costPerUnit: Number(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             </div>
-            
-            <div className="p-6 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-end gap-3 rounded-b-3xl">
-              <button type="button" onClick={() => setReceiveStockItem(null)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
-              <button form="receiveStockForm" type="submit" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                <CheckCircle2 className="w-4 h-4"/> Confirm Receipt
-              </button>
+            <div className="col-span-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Supplier / Vendor</label>
+              <input type="text" required value={receiveFormData.supplier || ""} onChange={e => setReceiveFormData({...receiveFormData, supplier: e.target.value})} placeholder="e.g. Medisupply Co." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            </div>
+            <div className="col-span-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot / Batch Number</label>
+              <input type="text" value={receiveFormData.lotNumber || ""} onChange={e => setReceiveFormData({...receiveFormData, lotNumber: e.target.value})} placeholder="Optional" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            </div>
+            <div className="col-span-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Expiry Date</label>
+              <input type="date" value={receiveFormData.expiryDate || ""} onChange={e => setReceiveFormData({...receiveFormData, expiryDate: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             </div>
           </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
       
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

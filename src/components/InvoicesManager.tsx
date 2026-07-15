@@ -4,10 +4,13 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import EmptyState from './ui/EmptyState';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import { 
   Search, FileText, Printer, ShieldAlert, X, DollarSign, 
-  Calendar, CheckCircle2, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight
+  Calendar, CheckCircle2, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight,
+  Receipt,
 } from 'lucide-react';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
@@ -15,7 +18,6 @@ import { fetchPaginatedInvoices, fetchInvoiceStats } from '../lib/db';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { EmptyState } from './ui/EmptyState';
 import PageShell from './ui/PageShell';
 
 interface InvoicesProps {
@@ -253,128 +255,92 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
       </div>
 
       {/* RECEIPT INSPECTOR MODAL */}
-      {selectedInvoice && createPortal(
-        <div className="fixed inset-0 z-[80] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 print:bg-white print:p-0">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh] print:shadow-none print:border-none print:w-full print:max-w-none print:h-auto">
-            
-            {/* Modal Header */}
-            <div className="p-4 border-b border-slate-100 shrink-0 flex justify-between items-center bg-slate-50/50 print:hidden">
-              <div>
-                <h2 className="text-sm font-black text-slate-800">Receipt Inspector</h2>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Financial Archive Record</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={handlePrint} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl cursor-pointer transition-colors"><Printer className="w-4 h-4"/></button>
-                <button onClick={() => setSelectedInvoice(null)} className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-4 h-4"/></button>
-              </div>
-            </div>
-
-            {/* Printable Receipt Body */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-white print:p-4 print:overflow-visible relative">
-              
-              {selectedInvoice.paymentStatus === 'void' && (
-                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-12 border-4 border-rose-500 text-rose-500 text-5xl font-black uppercase tracking-widest px-8 py-4 opacity-20 pointer-events-none select-none z-50">
-                  VOIDED
-                </div>
-              )}
-
-              <div className="text-center border-b border-slate-200 pb-6 mb-6">
-                <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">{systemConfig?.hospitalName || 'CeylonPets Hospital'}</h1>
-                <p className="text-xs font-bold text-slate-500 mt-1">{systemConfig?.hospitalAddress || 'Kandy, Sri Lanka'}</p>
-                <p className="text-xs font-bold text-slate-500">{systemConfig?.hospitalPhone || '+94 81 234 5678'}</p>
-              </div>
-
-              <div className="flex justify-between items-end mb-6 text-sm">
-                <div>
-                  <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Billed To</p>
-                  <p className="font-black text-slate-800">{selectedInvoice.ownerName || 'Walk-in Client'}</p>
-                  {selectedInvoice.petName && <p className="font-bold text-slate-600 text-xs mt-0.5">Patient: {selectedInvoice.petName}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Invoice No.</p>
-                  <p className="font-mono font-black text-slate-800">{selectedInvoice.invoiceNumber || selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8)}</p>
-                  <p className="font-mono font-bold text-slate-500 text-xs mt-0.5">{new Date(selectedInvoice.date).toLocaleDateString()} {new Date(selectedInvoice.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                </div>
-              </div>
-
-              <table className="w-full text-sm mb-6">
-                <thead className="border-b-2 border-slate-800">
-                  <tr>
-                    <th className="py-2 text-left text-[10px] font-black text-slate-800 uppercase tracking-widest">Description</th>
-                    <th className="py-2 text-center text-[10px] font-black text-slate-800 uppercase tracking-widest">Qty</th>
-                    <th className="py-2 text-right text-[10px] font-black text-slate-800 uppercase tracking-widest">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {/* ARMOR: Handle missing arrays and variant property names safely */}
-                  {(selectedInvoice.items || selectedInvoice.purchases || selectedInvoice.cart || []).map((item: any, idx: number) => {
-                    const price = item.price || item.unitPrice || 0;
-                    const qty = item.quantity || item.qty || 1;
-                    const total = item.total || item.lineTotal || (price * qty) || 0;
-                    
-                    return (
-                    <tr key={idx}>
-                      <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-black text-slate-400">@ {currencySign}{price.toFixed(2)}</div></td>
-                      <td className="py-3 px-2 text-center font-mono font-bold text-slate-600">{qty}</td>
-                      <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{total.toFixed(2)}</td>
-                    </tr>
-                  )})}
-                </tbody>
-              </table>
-
-              <div className="border-t-2 border-slate-800 pt-4 flex flex-col items-end gap-1">
-                <div className="flex justify-between w-48 text-sm">
-                  <span className="font-bold text-slate-500">Subtotal:</span>
-                  <span className="font-mono font-black text-slate-700">{currencySign}{(selectedInvoice.sales_total || 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between w-48 text-lg mt-2 pt-2 border-t border-slate-200">
-                  <span className="font-black text-slate-900 uppercase">Total Paid:</span>
-                  <span className="font-mono font-black text-slate-900">{currencySign}{(selectedInvoice.sales_total || 0).toFixed(2)}</span>
-                </div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">
-                  {selectedInvoice.paymentMethod === 'split' ? (
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-slate-500 mb-1">SPLIT TENDER BREAKDOWN</span>
-                      {(selectedInvoice.splitPayments || []).map((sp: any, idx: number) => (
-                        <div key={idx} className="flex justify-between w-32">
-                          <span>{sp.method.replace('_', ' ')}:</span>
-                          <span className="font-mono">{currencySign}{sp.amount.toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <span>Method: {selectedInvoice.paymentMethod || 'CASH'}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-8 text-center border-t border-slate-200 pt-6">
-                <p className="text-xs font-bold text-slate-500 italic">{systemConfig?.invoiceFooterMessage || 'Thank you for trusting CeylonPets!'}</p>
-              </div>
-
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex justify-between items-center print:hidden">
-              {selectedInvoice.paymentStatus !== 'void' ? (
-                <button data-testid="btn-void-invoice" onClick={handleVoid} className="px-4 py-2.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4"/> Execute Void Protocol
-                </button>
-              ) : (
-                <Button disabled variant="secondary">
-                  <X className="w-4 h-4"/> Already Voided
-                </Button>
-              )}
-              
-              <Button onClick={handlePrint} className="px-8">
-                <Printer className="w-4 h-4"/> Print Receipt
-              </Button>
-            </div>
-            
+            <Modal
+        open={!!selectedInvoice}
+        onClose={() => setSelectedInvoice(null)}
+        size="md"
+        title={
+          <div>
+            <div className="text-sm font-black text-slate-800">Receipt Inspector</div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Financial Archive Record</div>
           </div>
-        </div>,
-        document.body
-      )}
+        }
+        icon={<div className="bg-indigo-50 text-indigo-600 p-2 rounded-xl"><Receipt className="w-5 h-5"/></div>}
+        headerActions={
+          <button onClick={handlePrint} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl cursor-pointer transition-colors"><Printer className="w-4 h-4"/></button>
+        }
+      >
+        <div className="print:p-4 print:overflow-visible relative">
+          
+          {selectedInvoice?.paymentStatus === 'void' && (
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-12 border-4 border-rose-500 text-rose-500 text-5xl font-black uppercase tracking-widest px-8 py-4 opacity-20 pointer-events-none select-none z-50">
+              VOIDED
+            </div>
+          )}
+
+          <div className="text-center border-b border-slate-200 pb-6 mb-6">
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">{systemConfig?.hospitalName || 'CeylonPets Hospital'}</h1>
+            <p className="text-xs font-bold text-slate-500 mt-1">{systemConfig?.hospitalAddress || 'Kandy, Sri Lanka'}</p>
+            <p className="text-xs font-bold text-slate-500">{systemConfig?.hospitalPhone || '+94 81 234 5678'}</p>
+          </div>
+
+          <div className="flex justify-between items-end mb-6 text-sm">
+            <div>
+              <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Billed To</p>
+              <p className="font-black text-slate-800">{selectedInvoice?.ownerName || 'Walk-in Client'}</p>
+              {selectedInvoice?.petName && <p className="font-bold text-slate-600 text-xs mt-0.5">Patient: {selectedInvoice?.petName}</p>}
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Invoice No.</p>
+              <p className="font-mono font-black text-slate-800">{selectedInvoice?.invoiceNumber || selectedInvoice?.invoice_number || selectedInvoice?.id.slice(0,8)}</p>
+              <p className="font-mono font-bold text-slate-500 text-xs mt-0.5">{selectedInvoice?.date ? new Date(selectedInvoice.date).toLocaleDateString() : ''} {selectedInvoice?.date ? new Date(selectedInvoice.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</p>
+            </div>
+          </div>
+
+          <table className="w-full text-sm mb-6">
+            <thead className="border-b-2 border-slate-800">
+              <tr>
+                <th className="py-2 text-left text-[10px] font-black text-slate-800 uppercase tracking-widest">Description</th>
+                <th className="py-2 text-center text-[10px] font-black text-slate-800 uppercase tracking-widest">Qty</th>
+                <th className="py-2 text-right text-[10px] font-black text-slate-800 uppercase tracking-widest">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {/* ARMOR: Handle missing arrays and variant property names safely */}
+              {(selectedInvoice?.items || selectedInvoice?.purchases || selectedInvoice?.cart || []).map((item: any, idx: number) => {
+                const price = item.price || item.unitPrice || 0;
+                const qty = item.quantity || item.qty || 1;
+                const total = item.total || item.lineTotal || (price * qty) || 0;
+                
+                return (
+                <tr key={idx}>
+                  <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-black text-slate-400">@ {currencySign}{price.toFixed(2)}</div></td>
+                  <td className="py-3 px-2 text-center font-mono font-bold text-slate-600">{qty}</td>
+                  <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{total.toFixed(2)}</td>
+                </tr>
+                )
+              })}
+            </tbody>
+          </table>
+
+          <div className="border-t border-slate-200 pt-4 mb-8">
+            <div className="flex justify-between items-center">
+              <span className="font-black text-slate-800 uppercase tracking-widest">Total Paid</span>
+              <span className="text-xl font-mono font-black text-indigo-600">{currencySign}{((selectedInvoice?.total || selectedInvoice?.grandTotal || 0)).toFixed(2)}</span>
+            </div>
+            {selectedInvoice?.paymentMethod && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="font-bold text-slate-500 text-[10px] uppercase tracking-widest">Payment Method</span>
+                <span className="font-bold text-slate-700 uppercase">{selectedInvoice.paymentMethod}</span>
+              </div>
+            )}
+          </div>
+          
+          <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            Thank you for trusting {systemConfig?.hospitalName || 'us'} with your pet's care.
+          </div>
+        </div>
+      </Modal>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

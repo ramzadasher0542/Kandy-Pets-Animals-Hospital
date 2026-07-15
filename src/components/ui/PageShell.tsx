@@ -36,17 +36,17 @@ export interface PageShellProps {
 
 export default function PageShell({ title, subtitle, kpis, search, filters, actions, children }: PageShellProps) {
   return (
-    <div className="flex flex-col h-full bg-slate-50 w-full overflow-hidden p-6 gap-6">
+    <div className="flex flex-col h-full bg-slate-50 w-full max-w-[1720px] mx-auto overflow-hidden px-6 py-4 gap-4">
       {(title || kpis) && (
-        <div className="flex flex-wrap lg:flex-nowrap gap-6 shrink-0">
+        <div className="flex flex-col gap-6 shrink-0">
           {(title || subtitle) && (
-            <div className="flex-1 min-w-[240px]">
+            <div className="min-w-[240px]">
               {title && <h1 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h1>}
               {subtitle && <p className="text-sm font-bold text-slate-500 mt-1">{subtitle}</p>}
             </div>
           )}
           {kpis && kpis.length > 0 && (
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {kpis.map((kpi, i) => (
                 <div key={i} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
                   <div className={`${kpi.iconBg || 'bg-indigo-50 text-indigo-600'} p-3 rounded-xl`}>

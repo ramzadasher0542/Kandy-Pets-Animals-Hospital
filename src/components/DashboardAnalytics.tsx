@@ -214,16 +214,16 @@ export default function DashboardAnalytics({
     return { days, maxVal };
   }, [invoices]);
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR', maximumFractionDigits: 0 }).format(val || 0);
+  const formatCurrency = (val: number) => 'Rs. ' + new Intl.NumberFormat('en-LK', { maximumFractionDigits: 0 }).format(val || 0);
 
   return (
     <PageShell title="Clinic Floor Ops" subtitle="Real-time patient traffic & facility status">
-      <div className="flex flex-col h-[calc(100vh-140px)] w-full overflow-hidden font-sans relative">
+      <div className="flex flex-col h-full w-full overflow-hidden font-sans relative">
       <main className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
         {/* TOP ROW: TODAY AT A GLANCE */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
-            <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
               <Users className="w-7 h-7 text-indigo-600" />
             </div>
             <div>
@@ -234,20 +234,19 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
-            <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-sky-100 flex items-center justify-center shrink-0">
               <Calendar className="w-7 h-7 text-sky-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Today's Appointments</h3>
-              <div className="text-xl font-black text-slate-800 font-mono">
-                {todaysAppointments.length} <span className="text-xs text-slate-400 font-sans tracking-normal font-bold">({completedAppointments.length} done / {remainingAppointments.length} left)</span>
-              </div>
+              <div className="text-xl font-black text-slate-800 font-mono">{todaysAppointments.length}</div>
+              <div className="text-[10px] text-slate-400 font-bold mt-0.5">{completedAppointments.length} done · {remainingAppointments.length} left</div>
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
               <TrendingUp className="w-7 h-7 text-emerald-600" />
             </div>
             <div>
@@ -258,8 +257,8 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-6">
-            <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
               <CreditCard className="w-7 h-7 text-slate-600" />
             </div>
             <div>

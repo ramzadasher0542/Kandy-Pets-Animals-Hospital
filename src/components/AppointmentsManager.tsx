@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Modal, ModalSection } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import {
   Calendar as CalendarIcon, Clock, Plus, User, CheckCircle2,
@@ -1024,6 +1025,8 @@ export default function AppointmentsManager({
 
   return (
     <PageShell
+      title="Appointments"
+      subtitle="Manage daily schedule and bookings"
       kpis={[
         {
           icon: <CalendarIcon className="w-6 h-6" />,
@@ -1199,20 +1202,26 @@ export default function AppointmentsManager({
       )}
 
       {/* Main Appointment Form Modal - NEW UI OVERHAUL */}
-      {showAddModal && createPortal(
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-sky-100 max-w-3xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]">
-            
-            <div className="flex justify-between items-start shrink-0 p-6 pb-4 border-b border-slate-100 bg-white z-10">
-              <div>
-                <h4 className="text-base font-black text-slate-800 leading-none">{editingAptId ? 'Edit Appointment Details' : 'Schedule Veterinary Check-up'}</h4>
-                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Central CRM & Schedule Link</p>
-              </div>
-              <button onClick={() => setShowAddModal(false)} className="p-1.5 hover:bg-slate-100 text-slate-400 rounded-xl cursor-pointer transition-colors"><X className="w-5 h-5"/></button>
-            </div>
-            
-            <form onSubmit={handleCreateAppointment} className="flex flex-col min-h-0 overflow-hidden bg-slate-50/50">
-              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-5">
+      <Modal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        size="lg"
+        title={
+          <div>
+            <div className="text-base font-black text-slate-800 leading-none">{editingAptId ? 'Edit Appointment Details' : 'Schedule Veterinary Check-up'}</div>
+            <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Central CRM & Schedule Link</div>
+          </div>
+        }
+        footer={
+          <>
+            <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
+            <button type="submit" form="appointmentForm" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl cursor-pointer shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4"/> {editingAptId ? 'Save Changes' : 'Confirm Appointment'}
+            </button>
+          </>
+        }
+      >
+        <form id="appointmentForm" onSubmit={handleCreateAppointment} className="space-y-5">
                 
                 {formError && <div className="text-rose-600 bg-rose-50 p-3 rounded-xl border border-rose-200 font-black shadow-sm">{formError}</div>}
 
@@ -1246,7 +1255,7 @@ export default function AppointmentsManager({
                 )}
 
                 {/* TIER 1: Administration */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <ModalSection title="Administration" tone="slate">
                   <div className="flex flex-col md:flex-row gap-6 mb-6">
                     <div className="flex-1 w-full max-w-[150px]">
                       <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">System Appointment ID</label>
@@ -1273,14 +1282,13 @@ export default function AppointmentsManager({
                       <button type="button" onClick={() => setUrgency('emergency')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-colors ${urgency === 'emergency' ? 'bg-rose-600 text-white border-rose-700 shadow-sm' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>🔴 Emergency</button>
                     </div>
                   </div>
-                </div>
+                </ModalSection>
 
                 {/* TIER 2: Patient & Owner Split */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                   {/* Patient Block */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><PawPrint className="w-3.5 h-3.5"/> Patient Details</h3>
+                  <ModalSection title="Patient Details" tone="indigo" className="h-full">
                     <div className="space-y-3">
                       <div>
                         <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Patient Name *</label>
@@ -1322,11 +1330,10 @@ export default function AppointmentsManager({
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </ModalSection>
 
                   {/* Client Block */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col">
-                    <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2 shrink-0"><User className="w-3.5 h-3.5"/> Client Details</h3>
+                  <ModalSection title="Client Details" tone="emerald" className="h-full">
 
                     {preFilledClient && !editingAptId ? (
                       <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between shadow-xs mt-auto mb-auto">
@@ -1362,13 +1369,12 @@ export default function AppointmentsManager({
                         </div>
                       </div>
                     )}
-                  </div>
+                  </ModalSection>
 
                 </div>
 
                 {/* TIER 3: Visit Logistics */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                  <h3 className="text-[10px] font-black text-amber-600 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-2"><Clock className="w-3.5 h-3.5"/> Schedule & Logistics</h3>
+                <ModalSection title="Schedule & Logistics" tone="amber">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Visit Date</label>
@@ -1430,38 +1436,33 @@ export default function AppointmentsManager({
                       </div>
                     </div>
                   )}
-                </div>
+                </ModalSection>
 
-              </div>
-              
-              <div className="shrink-0 flex gap-3 p-6 justify-end border-t border-slate-200 bg-white shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-10">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors text-[10px] uppercase tracking-widest">Cancel</button>
-                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl cursor-pointer shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4"/> {editingAptId ? 'Save Changes' : 'Confirm Appointment'}
-                </button>
-              </div>
-            </form>
-
+        </form>
+      </Modal>
+      <Modal
+        open={showEmergencyModal}
+        onClose={() => setShowEmergencyModal(false)}
+        size="md"
+        title={
+          <div>
+            <div className="text-lg font-black text-slate-800 tracking-tight">Emergency Intake</div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Bypass triage and push directly to active queue.</div>
           </div>
-        </div>,
-        document.body
-      )}
-      {showEmergencyModal && createPortal(
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowEmergencyModal(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-rose-200" onClick={e => e.stopPropagation()}>
-            <div className="bg-rose-50 p-6 border-b border-rose-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black text-rose-700 flex items-center gap-2 tracking-tight">
-                  <span className="text-xl">⚡</span> Emergency Intake
-                </h2>
-                <p className="text-rose-600/80 text-xs font-bold mt-1">Bypass triage and push directly to active queue.</p>
-              </div>
-              <button onClick={() => setShowEmergencyModal(false)} className="text-rose-400 hover:text-rose-700 hover:bg-rose-100 p-2 rounded-xl transition-colors cursor-pointer">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-5">
+        }
+        icon={<div className="bg-rose-100 text-rose-600 p-2 rounded-xl">⚡</div>}
+        footer={
+          <>
+            <button onClick={() => setShowEmergencyModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors text-[10px] uppercase tracking-widest cursor-pointer shadow-sm">
+              Cancel
+            </button>
+            <button onClick={handleEmergencyIntake} className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl transition-colors text-[10px] uppercase tracking-widest cursor-pointer shadow-md flex items-center gap-2">
+              <span className="text-sm">⚡</span> Create Emergency Intake
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-5">
               <div>
                 <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Patient Name *</label>
                 <input type="text" autoFocus value={emergencyPetName} onChange={e => setEmergencyPetName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm" placeholder="e.g. Buddy" />
@@ -1483,20 +1484,8 @@ export default function AppointmentsManager({
                   {liveVets.map(v => <option key={v.id} value={v.name}>Dr. {v.name}</option>)}
                 </select>
               </div>
-            </div>
-            
-            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-              <button onClick={() => setShowEmergencyModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer shadow-sm">
-                Cancel
-              </button>
-              <button onClick={handleEmergencyIntake} className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-sm shadow-rose-200 flex items-center gap-2">
-                <span className="text-sm">⚡</span> Create Emergency Intake
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+        </div>
+      </Modal>
     </PageShell>
   );
 }

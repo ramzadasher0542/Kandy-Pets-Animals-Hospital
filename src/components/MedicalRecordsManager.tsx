@@ -4,11 +4,13 @@
  */
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import EmptyState from './ui/EmptyState';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import {
   Activity, Edit2, CheckCircle2, X,
-  HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock
-} from 'lucide-react';
+  HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock,
+  Stethoscope, PawPrint} from 'lucide-react';
 import PageShell from './ui/PageShell';
 import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment, Pet, Client } from '../types';
 import { formatDisplayDate } from '../utils/time';
@@ -722,7 +724,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
         <div className="flex-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm overflow-y-auto custom-scrollbar">
           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Active Prescriptions List</h4>
           {prescribedMeds.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 font-bold text-xs border-2 border-dashed border-slate-100 rounded-xl">No medications prescribed yet.</div>
+            <EmptyState icon={<Pill className="w-8 h-8" />} title="No Medications" description="No medications prescribed yet." className="py-8 border-2 border-dashed border-slate-100 rounded-xl" />
           ) : (
             <div className="space-y-2">
               {prescribedMeds.map((med, idx) => (
@@ -863,7 +865,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           </div>
           
           {logs.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 font-bold text-xs border-2 border-dashed border-slate-100 rounded-xl">No logs recorded yet.</div>
+            <EmptyState icon={<History className="w-8 h-8" />} title="No Logs" description="No logs recorded yet." className="py-8 border-2 border-dashed border-slate-100 rounded-xl" />
           ) : (
             <div className="space-y-3">
               {logs.map((log) => (
@@ -924,7 +926,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
               {(!showQueueOnly && historyLoading) ? (
                 <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold animate-pulse">Loading history...</td></tr>
               ) : displayPatients.length === 0 ? (
-                <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold">No patients found in current view.</td></tr>
+                <tr><td colSpan={5} className="py-12"><EmptyState icon={<PawPrint className="w-8 h-8" />} title="No Patients" description="No patients found in current view." /></td></tr>
               ) : displayPatients.map((patient: any) => (
                 <tr key={patient.patientId} onClick={() => openRecord(patient)} className="hover:bg-slate-50 transition-colors group cursor-pointer">
                   <td className="py-4 px-6">
@@ -990,76 +992,65 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
       </div>
 
       {/* EHR COMMAND CENTER MODAL */}
-      {showModal && editingRecord && createPortal(
-        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-100 rounded-3xl border border-indigo-100/50 max-w-6xl w-full h-[85vh] shadow-2xl animate-scale-up flex overflow-hidden">
-            
-            {/* SIDEBAR NAVIGATION */}
-            <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
-              <div className="p-6 border-b border-slate-100">
-                <h2 className="text-xl font-black text-slate-800">{editingRecord.petName}</h2>
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{editingRecord.petType} • {editingRecord.breed}</div>
-              </div>
-              <div className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
-                
-                <button onClick={() => setActiveTab('vitals')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'vitals' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                  <Activity className={`w-4 h-4 ${activeTab === 'vitals' ? 'text-indigo-200' : 'text-slate-400'}`}/> Intake & Vitals
-                </button>
-
-                <button onClick={() => setActiveTab('exam')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'exam' ? 'bg-rose-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                  <HeartPulse className={`w-4 h-4 ${activeTab === 'exam' ? 'text-rose-200' : 'text-slate-400'}`}/> Systemic Exam
-                </button>
-
-                <button onClick={() => setActiveTab('assessment')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'assessment' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                  <AlertCircle className={`w-4 h-4 ${activeTab === 'assessment' ? 'text-amber-200' : 'text-slate-400'}`}/> Assessment
-                </button>
-
-                <button onClick={() => setActiveTab('treatment')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'treatment' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                  <Activity className={`w-4 h-4 ${activeTab === 'treatment' ? 'text-indigo-200' : 'text-slate-400'}`}/> Treatment Plan
-                </button>
-
-                <button onClick={() => setActiveTab('pharmacy')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'pharmacy' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                  <Pill className={`w-4 h-4 ${activeTab === 'pharmacy' ? 'text-emerald-200' : 'text-slate-400'}`}/> Pharmacy & Rx
-                </button>
-
-                <span data-testid="debug-br-len" className="hidden">{localBoardingRecords?.length || 0}</span>
-                <span data-testid="debug-er-pid" className="hidden">{editingRecord?.patientId}</span>
-                <span data-testid="debug-has-active-mb" className="hidden">
-                  {editingRecord && (localBoardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) ? 'true' : 'false'}
-                </span>
-                
-                {editingRecord && (localBoardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) && (
-                  <button onClick={() => setActiveTab('inpatient')} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-black transition-all flex items-center gap-3 cursor-pointer ${activeTab === 'inpatient' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                    <ClipboardList className={`w-4 h-4 ${activeTab === 'inpatient' ? 'text-rose-200' : 'text-slate-400'}`}/> Inpatient Log
-                  </button>
-                )}
-
-              </div>
-              <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-                 <button onClick={saveRecord} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer">
-                    <Save className="w-4 h-4"/> Lock Chart & Save
-                 </button>
-                 <button onClick={() => setShowModal(false)} className="w-full mt-2 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer border border-slate-200">
-                    Close Workspace
-                 </button>
-              </div>
+      {editingRecord && (
+        <Modal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          size="lg"
+          title={
+            <div>
+              <div className="text-xl font-black text-slate-800">{editingRecord.petName}</div>
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">{editingRecord.petType} • {editingRecord.breed}</div>
             </div>
+          }
+          icon={<div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Stethoscope className="w-6 h-6"/></div>}
+          footer={
+            <>
+              <button onClick={() => setShowModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Close Workspace</button>
+              <button onClick={saveRecord} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
+                <Save className="w-4 h-4"/> Lock Chart & Save
+              </button>
+            </>
+          }
+        >
+          <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100 mb-6">
+            <button onClick={() => setActiveTab('vitals')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'vitals' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <Activity className="w-3 h-3"/> Intake & Vitals
+            </button>
+            <button onClick={() => setActiveTab('exam')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'exam' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <HeartPulse className="w-3 h-3"/> Systemic Exam
+            </button>
+            <button onClick={() => setActiveTab('assessment')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'assessment' ? 'bg-amber-500 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <AlertCircle className="w-3 h-3"/> Assessment
+            </button>
+            <button onClick={() => setActiveTab('treatment')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'treatment' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <Activity className="w-3 h-3"/> Treatment Plan
+            </button>
+            <button onClick={() => setActiveTab('pharmacy')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'pharmacy' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <Pill className="w-3 h-3"/> Pharmacy & Rx
+            </button>
+            {editingRecord && (localBoardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) && (
+              <button onClick={() => setActiveTab('inpatient')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'inpatient' ? 'bg-rose-500 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                <ClipboardList className="w-3 h-3"/> Inpatient Log
+              </button>
+            )}
+            
+            <span data-testid="debug-br-len" className="hidden">{localBoardingRecords?.length || 0}</span>
+            <span data-testid="debug-er-pid" className="hidden">{editingRecord?.patientId}</span>
+            <span data-testid="debug-has-active-mb" className="hidden">
+              {editingRecord && (localBoardingRecords || []).some(br => br.petId === editingRecord.patientId && br.status === 'active' && br.medicalBoarding) ? 'true' : 'false'}
+            </span>
+          </div>
 
-            {/* MAIN CONTENT AREA */}
-            <div className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+          <div className="min-w-0">
                 {activeTab === 'vitals' && renderVitalsTab()}
                 {activeTab === 'exam' && renderExamTab()}
                 {activeTab === 'assessment' && renderAssessmentTab()}
                 {activeTab === 'treatment' && renderTreatmentTab()}
                 {activeTab === 'pharmacy' && renderPharmacyTab()}
                 {activeTab === 'inpatient' && renderInpatientTab()}
-              </div>
-            </div>
-
           </div>
-        </div>,
-        document.body
+        </Modal>
       )}
     </PageShell>
   );

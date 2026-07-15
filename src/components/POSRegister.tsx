@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import EmptyState from './ui/EmptyState';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard,
@@ -13,7 +15,6 @@ import {
 import PageShell from './ui/PageShell';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
-import { EmptyState } from './ui/EmptyState';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem, User as UserType } from '../types';
 import { fetchInvoices, upsertInvoice, fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
@@ -103,7 +104,11 @@ export default function POSRegister({
   // INVENTORY & QUEUE LOGIC
   // ---------------------------------------------------------
   const filteredInventory = useMemo(() => {
-    const allowed = inventory.filter(i => i.category === 'retail' || i.category === 'food');
+    // Directly-sellable stock: retail, food, pharmacy (prescription) and vaccines.
+    // Clinical services (consultation/surgery/lab) are NOT walk-in sellable — they
+    // come in via "Import from EHR" so a medical chart backs every service charge.
+    const SELLABLE = ['retail', 'food', 'prescription', 'vaccine'];
+    const allowed = inventory.filter(i => SELLABLE.includes(i.category));
     if (!searchQuery) return allowed;
     const q = searchQuery.toLowerCase();
     return allowed.filter(i => 
@@ -559,19 +564,19 @@ export default function POSRegister({
               autoFocus
             />
             <div className="text-[10px] text-slate-500 mt-2 font-black">
-              Showing Retail &amp; Food only. Clinical services are added via Import from EHR.
+              Showing sellable stock — retail, food, pharmacy &amp; vaccines. Clinical services are added via Import from EHR.
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col xl:flex-row gap-6 p-6 bg-slate-50/50">
-          
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col 2xl:flex-row gap-4 p-4 bg-slate-50/50">
+
           {/* Inventory Grid */}
           <div className="flex-1">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-4 flex items-center gap-2">
               <Package className="w-3.5 h-3.5"/> Inventory & Services
             </h3>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {filteredInventory.slice(0, 30).map(item => (
                 <div key={item.id} onClick={() => addToCart(item, 1)} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between">
                   <div>
@@ -588,12 +593,12 @@ export default function POSRegister({
                   </div>
                 </div>
               ))}
-              {filteredInventory.length === 0 && <div className="col-span-full py-8 text-center text-[10px] font-bold text-slate-400">No items match search.</div>}
+              {filteredInventory.length === 0 && <div className="col-span-full py-8"><EmptyState icon={<Package className="w-8 h-8 opacity-50" />} title="No Items Match Search" /></div>}
             </div>
           </div>
 
           {/* Active Queue / E.H.R Importer */}
-          <div className="w-full xl:w-80 shrink-0">
+          <div className="w-full 2xl:w-80 shrink-0">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-4 flex items-center gap-2">
               <Activity className="w-3.5 h-3.5"/> Today's Clinical Queue
             </h3>
@@ -691,60 +696,50 @@ export default function POSRegister({
         </div>
       </main>
 
-      {showReceiptModal && createPortal(
-        <div className="fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
-              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-indigo-600" /> Receipt Preview
-              </h2>
-              <button 
-                onClick={() => {
-                  setCart([]);
-                  setDiscount(0);
-                  setSelectedAppointment(null);
-                  setCustomClientName('');
-                  setCustomClientPhone('');
-                  setLastCompletedInvoice(null);
-                  setShowReceiptModal(false);
-                }}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto bg-slate-200 flex justify-center custom-scrollbar flex-1 relative">
-              <POSReceipt invoice={lastCompletedInvoice} systemConfig={systemConfig || {}} />
-            </div>
-
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0">
-              <Button 
-                onClick={() => window.print()}
-                className="flex-1"
-              >
-                🖨 Print Receipt
-              </Button>
-              <Button 
-                variant="secondary"
-                onClick={() => {
-                  setCart([]);
-                  setDiscount(0);
-                  setSelectedAppointment(null);
-                  setCustomClientName('');
-                  setCustomClientPhone('');
-                  setLastCompletedInvoice(null);
-                  setShowReceiptModal(false);
-                }}
-                className="flex-1 bg-white border border-slate-200"
-              >
-                Done
-              </Button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <Modal
+        open={showReceiptModal}
+        onClose={() => {
+          setCart([]);
+          setDiscount(0);
+          setSelectedAppointment(null);
+          setCustomClientName('');
+          setCustomClientPhone('');
+          setLastCompletedInvoice(null);
+          setShowReceiptModal(false);
+        }}
+        size="md"
+        title="Receipt Preview"
+        icon={<div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><Receipt className="w-5 h-5" /></div>}
+        footer={
+          <>
+            <Button 
+              variant="secondary"
+              onClick={() => {
+                setCart([]);
+                setDiscount(0);
+                setSelectedAppointment(null);
+                setCustomClientName('');
+                setCustomClientPhone('');
+                setLastCompletedInvoice(null);
+                setShowReceiptModal(false);
+              }}
+              className="flex-1 bg-white border border-slate-200"
+            >
+              Done
+            </Button>
+            <Button 
+              onClick={() => window.print()}
+              className="flex-1"
+            >
+              🖨 Print Receipt
+            </Button>
+          </>
+        }
+      >
+        <div className="bg-slate-200 -mx-6 -my-4 p-6 flex justify-center">
+          <POSReceipt invoice={lastCompletedInvoice} systemConfig={systemConfig || {}} />
+        </div>
+      </Modal>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

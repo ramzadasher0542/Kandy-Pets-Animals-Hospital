@@ -78,9 +78,12 @@ export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, Pane
 }
 
 import { db, initializeDatabaseVault, stampRecord } from './lib/localDb';
+import { seedDemoData } from './lib/demoSeed';
 
 // @ts-ignore
 window._db = db;
+// @ts-ignore
+window.seedDemoData = seedDemoData;
 
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
@@ -101,6 +104,7 @@ import ReportsManager from './components/ReportsManager';
 import POSRegister from './components/POSRegister';
 import AppointmentsManager from './components/AppointmentsManager';
 import NotificationsModal from './components/NotificationsModal';
+import { Modal } from './components/ui/Modal';
 import MedicalRecordsManager from './components/MedicalRecordsManager';
 import InventoryManager from './components/InventoryManager';
 import PatientPortal from './components/PatientPortal';
@@ -149,7 +153,8 @@ import {
   fetchTodaysInvoices
 } from './lib/db';
 import { globalMutex } from './lib/mutex';
-import { SyncEngine } from './lib/syncEngine';
+import { SyncEngine, wipeAllCloudTables } from './lib/syncEngine';
+import { SYNC_ENABLED } from './lib/supabase';
 
 function hashPin(pin: string): string {
   if (!pin) return '';
@@ -333,6 +338,18 @@ function App() {
           }
         }
 
+        // Phase 1.9: Populate an empty vault with realistic demo data so every
+        // screen looks alive on a fresh install. No-op if data exists; skipped
+        // under automation (Playwright seeds its own fixtures).
+        try {
+          if (!(navigator as any).webdriver && !localStorage.getItem('kp_purged')) {
+            const seeded = await seedDemoData();
+            if (seeded && import.meta.env.DEV) console.log('[Bootloader] Demo data seeded into empty vault.');
+          }
+        } catch (e) {
+          if (import.meta.env.DEV) console.warn('[Bootloader] Demo seed skipped:', e);
+        }
+
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
         // MISSION 2: Only load today's operational data — not the full history
         try {
@@ -496,6 +513,13 @@ function App() {
   // MISSION 1: Background Sync Engine lifecycle
   const syncEngineRef = useRef<SyncEngine | null>(null);
   useEffect(() => {
+    // After a deliberate "Erase Entire Database", do NOT start cloud sync —
+    // otherwise the engine pulls the old rows straight back from Supabase and
+    // the vault is never actually empty. Keeps a purged app blank ("factory" state).
+    if (localStorage.getItem('kp_purged')) {
+      console.info('[CeylonPets] Vault was purged — cloud sync stays offline so the app remains blank.');
+      return;
+    }
     const engine = new SyncEngine({ onStatusChange: (online) => setIsOnline(online) });
     engine.start();
     syncEngineRef.current = engine;
@@ -1094,38 +1118,49 @@ function App() {
 
   const handlePurgeDatabases = useCallback(async () => {
     try {
-      await db.inventory.clear();
-      await db.appointments.clear();
-      await db.records.clear();
-      await db.invoices.clear();
-      await db.shifts.clear();
-      await db.notifications.clear();
-      await db.alerts.clear();
-      await db.users.clear();
-      await db.clients.clear();
-      await db.clinicQueue.clear();
-      // FIX 5: Clear all new relational stores that were missed
-      await db.pets.clear();
-      await db.vaccinations.clear();
-      await db.labResults.clear();
-      await db.groomingLogs.clear();
-      await db.boardingRecords.clear();
+      // 1. Empty every IndexedDB store generically (clients, pets, appointments,
+      //    invoices, inventory, staff, charts, system config — everything).
+      await Promise.all(
+        Object.values(db).map((store: any) =>
+          store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
+        )
+      );
+      // 2. Wipe web storage, then re-mark the deliberate purge so boot does NOT
+      //    auto-repopulate the empty vault with demo data.
       localStorage.clear(); sessionStorage.clear();
+      localStorage.setItem('kp_purged', '1');
+      // 3. Hard-delete the whole IndexedDB database so nothing can resurrect on
+      //    reload. Never hang if a live connection blocks the delete.
+      await new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        try {
+          const req = indexedDB.deleteDatabase('CeylonPets_Enterprise_OS');
+          req.onsuccess = finish; req.onerror = finish; req.onblocked = finish;
+        } catch { finish(); }
+        setTimeout(finish, 2000);
+      });
       window.location.reload();
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
 
-  const handleHardReboot = useCallback(async () => {
+  // Deletes the cloud copy on Supabase FIRST (irreversible, affects every device
+  // sharing this project), then runs the same local purge. If the cloud delete
+  // partially fails, we still purge locally but report exactly which tables
+  // failed — never silently claim a clean wipe.
+  const handleWipeCloudAndPurge = useCallback(async () => {
     try {
-      await db.system.clear();
-      localStorage.clear(); sessionStorage.clear();
-      window.location.reload();
+      const failures = await wipeAllCloudTables();
+      if (failures.length > 0) {
+        showToast(`Cloud wipe partially failed on: ${failures.map(f => f.table).join(', ')}. Local data will still be purged.`, 'error');
+      }
+      await handlePurgeDatabases();
     } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
+      showToast(`Cloud wipe failed: ${error.message}`, 'error');
     }
-  }, []);
+  }, [handlePurgeDatabases]);
 
   const handleVerifyMasterPin = (pin: string): boolean => hashPin(pin) === (systemConfig.masterPin || hashPin('0000'));
 
@@ -1332,7 +1367,8 @@ function App() {
             onDeleteInventory={handleDeleteInventoryItem}
             onRestoreSnapshot={async () => true}
             onPurgeDatabases={handlePurgeDatabases}
-            onHardReboot={handleHardReboot}
+            onWipeCloudAndPurge={handleWipeCloudAndPurge}
+            cloudSyncEnabled={SYNC_ENABLED}
             onVerifyMasterPin={handleVerifyMasterPin}
           />
         );
@@ -1518,7 +1554,12 @@ function App() {
                   <span className="text-xs font-bold text-slate-500 capitalize">{activeView}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <button onClick={() => setShowNotifications(true)} className="relative p-2 rounded-full hover:bg-slate-100 transition-colors">
+                  <div className="hidden md:flex items-center gap-2 text-slate-500">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span className="text-xs font-bold">{new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  </div>
+                  <div className="hidden md:block w-px h-5 bg-slate-200" />
+                  <button onClick={() => setShowNotifications(true)} className="relative p-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer">
                     <Bell className="w-5 h-5 text-slate-600" />
                     {alerts.filter(a => !a.read).length > 0 && (
                       <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[10px] font-black text-white border-2 border-white">
@@ -1528,7 +1569,7 @@ function App() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 w-full h-full overflow-y-auto">
+              <div className="flex-1 w-full min-h-0 overflow-y-auto">
                 <ClinicErrorBoundary key={activeView} onNavigate={(view) => { setActiveView(view); setHistoryStack([view]); }}>
                   {renderCanvas()}
                 </ClinicErrorBoundary>
@@ -1537,29 +1578,23 @@ function App() {
           </div>
         )}
         <ToastContainer />
-        {showNotifications && createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-slate-50 shrink-0">
-                <h3 className="font-black text-slate-800">Notifications & Alerts</h3>
-                <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-800 p-1 rounded transition-colors">✕</button>
-              </div>
-              <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-                <NotificationsModal
-                  notifications={notifications}
-                  alerts={alerts}
-                  onDismissAlert={handleDismissAlert}
-                  onSendNotification={(id) => {
-                    // TODO: wire to real SMS/email provider.
-                    console.log(`Simulated sending notification ${id}`);
-                    showToast('Notification dispatched to queue.', 'success');
-                  }}
-                />
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+        <Modal
+          open={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          title="Notifications & Alerts"
+          size="lg"
+        >
+          <NotificationsModal
+            notifications={notifications}
+            alerts={alerts}
+            onDismissAlert={handleDismissAlert}
+            onSendNotification={(id) => {
+              // TODO: wire to real SMS/email provider.
+              console.log(`Simulated sending notification ${id}`);
+              showToast('Notification dispatched to queue.', 'success');
+            }}
+          />
+        </Modal>
       </div>
     </>
   );

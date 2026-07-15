@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import EmptyState from './ui/EmptyState';
+import { Modal } from './ui/Modal';
 import { User, StaffProfile, TimeEntry, ScheduleEntry, Payslip, PayslipDeduction } from '../types';
-import { UserCog, Plus, X, Edit, Trash2, Link, Unlink, ChevronDown, ChevronUp, CheckCircle2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Wallet, FileText } from 'lucide-react';
+import { UserCog, Plus, X, Edit, Trash2, Link, Unlink, ChevronDown, ChevronUp, CheckCircle2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Wallet, FileText, Users} from 'lucide-react';
 import { showToast } from './Toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -466,26 +468,32 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
     <PageShell
       title="Staff & Payroll"
       subtitle="Manage team members and user access links"
+      filters={{
+        options: [
+          { id: 'roster', label: 'Roster' },
+          { id: 'schedule', label: 'Schedule' },
+          { id: 'clock', label: 'Time Clock' },
+          { id: 'link', label: 'Link to Login' },
+          { id: 'payslips', label: 'Payslips', testId: 'tab-payslips' }
+        ],
+        active: activeTab,
+        onChange: (id) => setActiveTab(id as any)
+      }}
       actions={
-        <div className="flex gap-2">
-          <button onClick={() => setActiveTab('roster')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Roster</button>
-          <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'schedule' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Schedule</button>
-          <button onClick={() => setActiveTab('clock')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'clock' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Time Clock</button>
-          <button onClick={() => setActiveTab('link')} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'link' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Link to Login</button>
-          <button onClick={() => setActiveTab('payslips')} data-testid="tab-payslips" className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'payslips' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Payslips</button>
-        </div>
+        activeTab === 'roster' ? (
+          <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
+            <Plus className="w-4 h-4"/> Add Staff Member
+          </button>
+        ) : null
       }
     >
-      <div className="flex flex-col h-[calc(100vh-140px)] w-full overflow-hidden font-sans relative">
+      <div className="flex flex-col h-full w-full overflow-hidden font-sans relative">
 
       <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
         {activeTab === 'roster' ? (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-slate-800 tracking-tight">Active Roster</h2>
-              <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
-                <Plus className="w-4 h-4"/> Add Staff Member
-              </button>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -515,7 +523,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 </div>
               ))}
               {activeProfiles.length === 0 && (
-                 <div className="col-span-full py-12 text-center text-slate-400 font-bold text-sm">No active staff profiles.</div>
+                 <div className="col-span-full py-12"><EmptyState icon={<Users className="w-8 h-8 opacity-50" />} title="No active staff profiles" /></div>
               )}
             </div>
 
@@ -616,7 +624,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                       </td>
                     </tr>
                   ))}
-                  {unlinkedProfiles.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-slate-400 font-bold text-sm">All active staff profiles are linked to user accounts.</td></tr>}
+                  {unlinkedProfiles.length === 0 && <tr><td colSpan={3} className="p-8"><EmptyState icon={<CheckCircle2 className="w-8 h-8 opacity-50" />} title="All Linked" description="All active staff profiles are linked to user accounts." /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -642,7 +650,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                       </tr>
                     );
                   })}
-                  {linkedProfiles.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-slate-400 font-bold text-sm">No linked profiles found.</td></tr>}
+                  {linkedProfiles.length === 0 && <tr><td colSpan={3} className="p-8"><EmptyState icon={<Users className="w-8 h-8 opacity-50" />} title="No linked profiles found" /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -738,7 +746,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                       </tr>
                     );
                   })}
-                  {todaysEntries.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-400 font-bold text-sm">No time entries recorded today.</td></tr>}
+                  {todaysEntries.length === 0 && <tr><td colSpan={4} className="p-8"><EmptyState icon={<Clock className="w-8 h-8 opacity-50" />} title="No Time Entries" description="No time entries recorded today." /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -776,7 +784,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   {payslipCalculated.isHourly ? (
                     <>
                       <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1">
-                        {payslipCalculated.entries.length === 0 && <div className="text-xs text-slate-400 font-bold">No completed time entries in this period.</div>}
+                        {payslipCalculated.entries.length === 0 && <EmptyState icon={<Clock className="w-6 h-6 opacity-50" />} title="No Time Entries" description="No completed time entries in this period." />}
                         {payslipCalculated.entries.map(t => {
                           const hours = (t.durationMinutes || 0) / 60;
                           const rowCents = Math.round(hours * (selectedPayslipStaff.hourlyRate || 0));
@@ -838,7 +846,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500"/> Payslip History</h3>
               </div>
               <div className="divide-y divide-slate-100">
-                {payslipHistorySorted.length === 0 && <div className="p-8 text-center text-slate-400 font-bold text-sm">No payslips generated yet.</div>}
+                {payslipHistorySorted.length === 0 && <EmptyState icon={<FileText className="w-8 h-8 opacity-50" />} title="No Payslips" description="No payslips generated yet." className="p-8" />}
                 {payslipHistorySorted.map(p => {
                   const staff = staffProfiles.find(s => s.id === p.staffId);
                   const badgeCls = p.status === 'draft' ? 'bg-slate-200 text-slate-700' : p.status === 'finalized' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700';
@@ -872,14 +880,19 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         ) : null}
       </main>
 
-      {showModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-              <h3 className="font-bold text-slate-800">{isEditing ? 'Edit Staff Profile' : 'New Staff Profile'}</h3>
-              <button onClick={() => setShowModal(false)} className="p-1 text-slate-400 hover:bg-slate-200 rounded transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
-            </div>
-            <form onSubmit={handleSave} className="p-6 overflow-y-auto max-h-[80vh] custom-scrollbar space-y-4">
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        size="md"
+        title={isEditing ? 'Edit Staff Profile' : 'New Staff Profile'}
+        footer={
+          <>
+            <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+            <button type="submit" form="staffProfileForm" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Profile</button>
+          </>
+        }
+      >
+        <form id="staffProfileForm" onSubmit={handleSave} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Full Name *</label>
                 <input required type="text" value={formData.fullName || ''} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
@@ -926,24 +939,22 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 <label htmlFor="profile-active" className="text-xs font-bold text-slate-700 select-none cursor-pointer">Active Employee</label>
               </div>
 
-              <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 mt-6">
-                <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
-                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Profile</button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
 
-      {showScheduleModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col">
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-              <h3 className="font-bold text-slate-800">Add Shift</h3>
-              <button onClick={() => setShowScheduleModal(false)} className="p-1 text-slate-400 hover:bg-slate-200 rounded transition-colors cursor-pointer"><X className="w-5 h-5"/></button>
-            </div>
-            <form onSubmit={handleSaveSchedule} className="p-6 overflow-y-auto max-h-[80vh] custom-scrollbar space-y-4">
+      <Modal
+        open={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        size="md"
+        title="Add Shift"
+        footer={
+          <>
+            <button type="button" onClick={() => setShowScheduleModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
+            <button type="submit" form="staffScheduleForm" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Shift</button>
+          </>
+        }
+      >
+        <form id="staffScheduleForm" onSubmit={handleSaveSchedule} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Staff Profile *</label>
                 <select required value={scheduleData.staffId} onChange={e => setScheduleData({...scheduleData, staffId: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
@@ -983,15 +994,8 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 <input type="text" value={scheduleData.notes} onChange={e => setScheduleData({...scheduleData, notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
 
-              <div className="pt-6 flex justify-end gap-3 border-t border-slate-100 mt-6">
-                <button type="button" onClick={() => setShowScheduleModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
-                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Save Shift</button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }

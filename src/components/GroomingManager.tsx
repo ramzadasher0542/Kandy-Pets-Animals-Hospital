@@ -11,6 +11,7 @@ import { fetchPets, fetchGroomingLogs, upsertGroomingLog } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';
+import ClinicQueue from './ui/ClinicQueue';
 
 interface GroomingProps {
   clients: Client[];
@@ -282,40 +283,14 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
       q.status === 'active'
     ));
 
-    if (activeQueue.length === 0) return null;
-
     return (
-      <div className="p-4 border-b border-slate-100 bg-indigo-50/50 shrink-0">
-        <h3 className="text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5"/> Active Grooming Queue
-        </h3>
-        <div className="space-y-2">
-          {activeQueue.map(q => (
-            <div
-              key={q.id}
-              onClick={() => { setSelectedPatientId(q.petId); setSelectedServices([]); setActiveTab('new_session'); }}
-              className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedPatientId === q.petId ? 'bg-indigo-600 border-indigo-700 text-white shadow-md' : 'bg-white border-indigo-100 hover:border-indigo-300 shadow-sm'}`}
-            >
-              <div className="flex justify-between items-center mb-1">
-                <div className="font-bold text-sm truncate flex items-center gap-1.5">
-                  {q.petName}
-                  {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
-                </div>
-                <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
-                  Waiting
-                </div>
-              </div>
-              {q.emergencyBackfillRequired && (
-                <div className={`text-[10px] font-black uppercase tracking-wider mb-1 ${selectedPatientId === q.petId ? 'text-amber-200' : 'text-amber-700'}`}>⚠ DETAILS PENDING</div>
-              )}
-              <div className={`text-[10px] font-black ${selectedPatientId === q.petId ? 'text-indigo-200' : 'text-slate-500'}`}>
-                {q.ownerName}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ClinicQueue
+        title="Active Grooming Queue"
+        items={activeQueue}
+        isSelected={q => selectedPatientId === q.petId}
+        onSelect={q => { setSelectedPatientId(q.petId); setSelectedServices([]); setActiveTab('new_session'); }}
+        statusLabel={() => 'Waiting'}
+      />
     );
   };
 
@@ -328,7 +303,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
         placeholder: "Search Patient or Owner..."
       }}
     >
-      <div className="h-[calc(100vh-140px)] w-full" id="grooming-module-container">
+      <div className="h-full w-full" id="grooming-module-container">
         <MasterDetailLayout
           listHeader={renderActiveQueue()}
           list={

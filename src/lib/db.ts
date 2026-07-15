@@ -913,7 +913,7 @@ export async function fetchPaginatedRecords(
     filtered = filtered.filter(r =>
       (r.ownerName || '').toLowerCase().includes(q) ||
       (r.ownerPhone || '').includes(q) ||
-      (r.petName || '').toLowerCase().includes(q)
+      ((r as any).petName || '').toLowerCase().includes(q)
     );
   }
 

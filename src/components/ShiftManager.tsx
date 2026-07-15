@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { Modal } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import { Lock, Calculator, AlertTriangle, CheckCircle2, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
@@ -258,7 +259,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
           </div>
         }
       >
-        <div className="flex-1 flex flex-col h-[calc(100vh-140px)] gap-4 print:hidden" id="shift-manager-module">
+        <div className="flex-1 flex flex-col h-full gap-4 print:hidden" id="shift-manager-module">
 
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
           
@@ -274,7 +275,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                   <p className="text-xs font-bold text-slate-500 mt-1">Enter the starting cash amount in the drawer to open the POS terminal.</p>
                 </div>
                 <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block pl-1">Starting Float (LKR)</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block pl-1">Starting Float (Rs.)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-3.5 text-xs font-black text-slate-400 font-mono">Rs.</span>
                     <input type="number" value={openingFloatInput} onChange={e => setOpeningFloatInput(e.target.value)}
@@ -390,14 +391,26 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       </div>
 
       {/* Cash Adjustment Modal */}
-      {showAdjModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up">
-            <div className="p-6 bg-slate-900 flex justify-between items-center">
-              <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><DollarSign className="w-4 h-4 text-emerald-400"/> Adjust Drawer Cash</h3>
-              <button onClick={() => setShowAdjModal(false)} className="text-slate-400 hover:text-white transition-colors cursor-pointer">✕</button>
-            </div>
-            <form onSubmit={handleSaveAdjustment} className="p-6 space-y-5">
+      <Modal
+        open={showAdjModal}
+        onClose={() => setShowAdjModal(false)}
+        size="sm"
+        title={
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-emerald-600"/> 
+            <span className="text-sm font-black uppercase tracking-widest text-slate-800">Adjust Drawer Cash</span>
+          </div>
+        }
+        footer={
+          <>
+            <button type="button" onClick={() => setShowAdjModal(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
+            <button type="submit" form="adjForm" className={`flex-[2] py-3 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-md transition-colors cursor-pointer ${adjType === 'IN' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
+              Confirm {adjType === 'IN' ? 'Cash Addition' : 'Cash Removal'}
+            </button>
+          </>
+        }
+      >
+        <form id="adjForm" onSubmit={handleSaveAdjustment} className="space-y-5">
               <div className="flex bg-slate-100 p-1 rounded-xl">
                 <button type="button" onClick={() => setAdjType('OUT')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${adjType === 'OUT' ? 'bg-white shadow-sm text-rose-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Take Cash Out</button>
                 <button type="button" onClick={() => setAdjType('IN')} className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer ${adjType === 'IN' ? 'bg-white shadow-sm text-emerald-600 border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Add Cash In</button>
@@ -431,52 +444,70 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                 <input type="text" value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g. Bought cleaning supplies..."
                   className="w-full px-4 py-3 text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500" required />
               </div>
-              <div className="pt-2">
-                <button type="submit" className={`w-full py-4 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-transform active:scale-95 cursor-pointer ${adjType === 'IN' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
-                  Confirm {adjType === 'IN' ? 'Cash Addition' : 'Cash Removal'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
-      )}
+        </form>
+      </Modal>
 
       {/* VIEW C: Z-Report Print Modal */}
-      {lastClosedShift && createPortal(
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 print:p-0 print:bg-white print:block print:static">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-8 shadow-2xl relative print:shadow-none print:w-full print:max-w-none print:border-none print:p-0 animate-scale-up">
-            
-            <div className="text-center border-b border-slate-200 pb-4 mb-6">
-              <h2 className="text-xl font-mono font-black text-slate-800 tracking-tight uppercase">Z-Report / End of Day</h2>
-              <p className="text-[10px] font-mono text-slate-500 mt-1">{new Date(lastClosedShift.timestamp).toLocaleString()}</p>
-            </div>
-
-            <div className="space-y-2 font-mono text-xs text-slate-700 mb-6">
-              <div className="flex justify-between border-b border-slate-100 pb-1"><span>Shift ID:</span> <span>{lastClosedShift.id.slice(0,8).toUpperCase()}</span></div>
-              <div className="flex justify-between border-b border-slate-100 pb-1"><span>Cashier:</span> <span>{lastClosedShift.userName}</span></div>
-              <div className="flex justify-between border-b border-slate-100 pb-1 mt-4"><span>Opening Float:</span> <span>{lastClosedShift.openingFloat.toFixed(2)}</span></div>
-              <div className="flex justify-between border-b border-slate-100 pb-1"><span>Cash Sales:</span> <span>{lastClosedShift.cashSales.toFixed(2)}</span></div>
-              <div className="flex justify-between border-b border-slate-100 pb-1 mt-4 font-bold text-slate-900"><span>Expected Drawer:</span> <span>{lastClosedShift.expectedClosing.toFixed(2)}</span></div>
-              <div className="flex justify-between border-b border-slate-100 pb-1 font-bold text-slate-900"><span>Actual Cash:</span> <span>{lastClosedShift.actualClosing.toFixed(2)}</span></div>
-              <div className={`flex justify-between pb-1 mt-4 font-black text-sm uppercase ${lastClosedShift.discrepancy === 0 ? 'text-slate-800' : 'text-rose-600'}`}>
-                <span>Discrepancy:</span> <span>{lastClosedShift.discrepancy.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="mt-8 flex flex-col gap-3 print:hidden">
-              <button onClick={() => window.print()} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md text-xs uppercase tracking-widest">
-                <Printer className="w-4 h-4" /> Print Z-Report
-              </button>
-              <button onClick={handleDismissReceipt} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs uppercase tracking-widest cursor-pointer transition-colors">
-                Dismiss & Return to Open Shift
-              </button>
-            </div>
-            
+            {/* VIEW C: Z-Report Print Modal */}
+      <Modal
+        open={!!lastClosedShift}
+        onClose={() => setLastClosedShift(null)}
+        size="sm"
+        title={<span className="text-sm font-black text-slate-800 uppercase tracking-widest">End of Day (Z-Report)</span>}
+        icon={<div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl print:hidden"><FileText className="w-5 h-5"/></div>}
+        headerActions={
+          <button onClick={() => window.print()} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl cursor-pointer transition-colors print:hidden"><Printer className="w-4 h-4"/></button>
+        }
+        footer={
+          <button onClick={() => setLastClosedShift(null)} className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-colors cursor-pointer print:hidden">Done</button>
+        }
+      >
+        <div className="print:p-0 print:bg-white print:block print:static relative -mx-6 -my-4 p-6 text-sm">
+          <div className="text-center border-b border-slate-200 pb-4 mb-6">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Veterinary Hospital</h2>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">End of Day (Z-Report)</p>
           </div>
-        </div>,
-        document.body
-      )}
+          
+          <div className="space-y-2 mb-6 text-xs font-mono font-bold text-slate-700">
+            <div className="flex justify-between"><span>Shift ID:</span> <span>{lastClosedShift?.id}</span></div>
+            <div className="flex justify-between"><span>Opened:</span> <span>{new Date(lastClosedShift?.openedAt || '').toLocaleString()}</span></div>
+            <div className="flex justify-between"><span>Closed:</span> <span>{new Date(lastClosedShift?.closedAt || '').toLocaleString()}</span></div>
+            <div className="flex justify-between"><span>Cashier:</span> <span>{lastClosedShift?.openedBy}</span></div>
+          </div>
+
+          <div className="border-t border-b border-slate-200 py-4 mb-6 space-y-3">
+            <div className="flex justify-between font-bold text-slate-600">
+              <span>Starting Drawer Float</span>
+              <span className="font-mono">Rs.{(lastClosedShift?.startingCash || 0).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-slate-600">
+              <span>Cash Invoices & Adjustments</span>
+              <span className="font-mono text-emerald-600">+Rs.{((lastClosedShift?.actualCash || 0) - (lastClosedShift?.startingCash || 0)).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-black text-slate-900 text-base pt-2 border-t border-slate-100">
+              <span>Actual Cash in Drawer</span>
+              <span className="font-mono">Rs.{(lastClosedShift?.actualCash || 0).toFixed(2)}</span>
+            </div>
+            
+            {lastClosedShift?.discrepancy !== 0 && (
+              <div className="flex justify-between font-black text-rose-600 bg-rose-50 p-2 rounded-lg mt-2">
+                <span>Discrepancy (Overage/Shortage)</span>
+                <span className="font-mono">Rs.{(lastClosedShift?.discrepancy || 0).toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1 mb-10 text-xs font-bold text-slate-500">
+            {lastClosedShift?.notes && <p className="mb-2 italic text-slate-600">"{lastClosedShift.notes}"</p>}
+            <p>System automatically syncs Z-reports to the cloud ledger.</p>
+          </div>
+
+          <div className="flex justify-between pt-10 border-t border-slate-300">
+            <div className="text-center w-32 border-t border-slate-800 pt-1 text-xs font-black">Cashier Sign</div>
+            <div className="text-center w-32 border-t border-slate-800 pt-1 text-xs font-black">Manager Sign</div>
+          </div>
+        </div>
+      </Modal>
       </PageShell>
     </>
   );

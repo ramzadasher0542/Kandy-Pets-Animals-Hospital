@@ -53,6 +53,23 @@ const STORE_MAPPINGS: StoreMapping[] = [
   { storeKey: 'deletionAudit',    table: 'deletion_audit',    idField: 'id' },
 ];
 
+/**
+ * Deletes every row from every synced Supabase table. Irreversible and affects
+ * ALL devices sharing this cloud project — only call from an explicit,
+ * password-gated "erase cloud data" action, never automatically.
+ * Returns { table, error } for any table that failed, so the caller can report
+ * partial failure honestly instead of claiming a clean wipe.
+ */
+export async function wipeAllCloudTables(): Promise<{ table: string; error: string }[]> {
+  if (!SYNC_ENABLED || !supabase) return [];
+  const failures: { table: string; error: string }[] = [];
+  for (const mapping of STORE_MAPPINGS) {
+    const { error } = await supabase.from(mapping.table).delete().not(mapping.idField, 'is', null);
+    if (error) failures.push({ table: mapping.table, error: error.message });
+  }
+  return failures;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
