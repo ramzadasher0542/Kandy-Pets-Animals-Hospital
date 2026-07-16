@@ -23,21 +23,28 @@ interface DashboardProps {
   scheduleEntries?: ScheduleEntry[];
   timeEntries?: TimeEntry[];
   staffProfiles?: StaffProfile[];
+  currentUser?: any;
   onNavigate?: (tab: string) => void;
 }
 
-export default function DashboardAnalytics({ 
+export default function DashboardAnalytics({
   invoices = [],
   records = [],
-  appointments = [], 
-  inventory = [], 
-  activeShift = null, 
+  appointments = [],
+  inventory = [],
+  activeShift = null,
   clinicQueue = [],
   scheduleEntries = [],
   timeEntries = [],
   staffProfiles = [],
-  onNavigate = () => {} 
+  currentUser = null,
+  onNavigate = () => {}
 }: DashboardProps) {
+
+  // ACL: only owner/admin see clinic-wide financial performance (revenue,
+  // profit, analytics). Cashiers/vets see operational widgets only — drawer
+  // balance and shift status stay visible to everyone.
+  const canSeeFinancials = currentUser?.role === 'admin' || currentUser?.role === 'owner';
   
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
@@ -245,6 +252,7 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
+          {canSeeFinancials && (
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
               <TrendingUp className="w-7 h-7 text-emerald-600" />
@@ -256,6 +264,7 @@ export default function DashboardAnalytics({
               </div>
             </div>
           </div>
+          )}
 
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
@@ -306,6 +315,7 @@ export default function DashboardAnalytics({
           {/* RIGHT COLUMN */}
           <div className="flex flex-col gap-6 h-[450px]">
             {/* REVENUE CHART */}
+            {canSeeFinancials && (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 shrink-0">
               <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue This Week
@@ -328,6 +338,7 @@ export default function DashboardAnalytics({
                 ))}
               </div>
             </div>
+            )}
 
             {/* TODAY'S SCHEDULE */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex-1 flex flex-col min-h-0">

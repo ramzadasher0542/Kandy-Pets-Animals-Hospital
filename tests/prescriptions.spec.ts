@@ -26,7 +26,7 @@ test('Verify Prescribed Meds Route and Frequency', async ({ page }) => {
       ownerName: 'Test Client', ownerPhone: '123', diagnosis: 'Test Diagnosis', prescribedMeds: [], status: 'draft'
     });
     await db.inventory.setItem('test_med_1', {
-      id: 'test_med_1', name: 'Amoxicillin Test', category: 'pharmacy', unit: 'ml', stock: 100, price: 10
+      id: 'test_med_1', name: 'Amoxicillin Test', category: 'prescription', unit: 'ml', stock: 100, price: 10, cost: 5, minStock: 0, sku: 'RX-TEST'
     });
   });
   

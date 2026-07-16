@@ -26,6 +26,8 @@ test.describe('BM-2 — Boarding food from inventory', () => {
     await page.evaluate(async (s) => {
       // @ts-ignore
       const db = (window as any)._db;
+      // POS now requires an open shift — seed one so the register is unlocked.
+      await db.system.setItem('active_shift', { id: 'shift_bm2', openedAt: new Date().toISOString(), openedBy: 'ashpoint_owner', openedByName: 'Ceylon Pets POS Admin', openingFloat: 500000 });
       // Wipe any leftover of the same ids
       await db.inventory.setItem(s.itemId, {
         id: s.itemId, sku: 'BM2-FOOD-001', name: 'Sardine Fish', category: 'food',

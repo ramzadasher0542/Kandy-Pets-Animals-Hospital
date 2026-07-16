@@ -146,10 +146,29 @@ export default function AppointmentsManager({
 
   const fetchVets = useCallback(async () => {
     try {
+      const byName = new Map<string, { name: string; id: string }>();
+
+      // Primary source: anyone in Staff & Payroll whose role reads as a
+      // practitioner (vet / doctor / surgeon / physician). No manual re-entry —
+      // add a doctor once in Staff and they appear here automatically.
+      await db.staffProfiles.iterate((p: any) => {
+        if (p && !p.is_deleted && p.active !== false) {
+          const role = `${p.position || ''} ${p.department || ''}`.toLowerCase();
+          if (/vet|doctor|surgeon|physician/.test(role) && p.fullName) {
+            byName.set(p.fullName, { name: p.fullName, id: p.id });
+          }
+        }
+      });
+
+      // Also include legacy login accounts with a clinical role.
       const users = await db.users.getItem<AppUser[]>('users_list') || [];
-      const vets = users.filter(u => u.role === 'veterinarian' || u.role === 'admin');
+      users
+        .filter(u => u.role === 'veterinarian' || u.role === 'admin')
+        .forEach(v => { if (v.name && !byName.has(v.name)) byName.set(v.name, { name: v.name, id: v.id }); });
+
+      const vets = Array.from(byName.values());
       if (vets.length > 0) {
-        setLiveVets(vets.map(v => ({ name: v.name, id: v.id })));
+        setLiveVets(vets);
         if (!veterinarian) setVeterinarian(vets[0].name);
       } else {
         const fallback = { name: 'Attending Doctor', id: 'fallback' };

@@ -47,6 +47,8 @@ test.describe('CV-1 — closeVisit unification', () => {
         id: SEED.itemId, sku: 'CONSULT-CV1', name: 'Consultation Fee CV1',
         category: 'service', price: 2500, cost: 0, stock: 999, minStock: 0, unit: 'each'
       });
+      // POS now requires an open shift — seed one so the register is unlocked.
+      await db.system.setItem('active_shift', { id: 'shift_cv1', openedAt: new Date().toISOString(), openedBy: 'ashpoint_owner', openedByName: 'Ceylon Pets POS Admin', openingFloat: 500000 });
       await db.appointments.setItem(SEED.aptId, {
         id: SEED.aptId, petName: 'CV1Rex', petType: 'Canine', breed: 'Lab',
         ownerName: 'CV1 Owner', ownerPhone: '+94 771111111', date: todayStr,

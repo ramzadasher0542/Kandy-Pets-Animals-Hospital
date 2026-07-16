@@ -25,13 +25,14 @@ interface BoardingProps {
   inventory?: InventoryItem[];
   onUpdateStock?: (itemId: string, qtyDelta: number) => Promise<void>;
   onUpdateRecord: (record: MedicalRecord) => void;
+  onDischargeToQueue?: (item: ClinicQueueItem) => Promise<void>;
 }
 
 const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord }: BoardingProps) {
+export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
@@ -260,6 +261,33 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     };
     await upsertBoardingRecord(updated);
     setBoardingRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+
+    // Re-Entry: push the discharged pet back into the shared clinic queue so the
+    // front desk can settle the final balance / handle follow-ups — it isn't
+    // "lost" the moment it leaves the kennel board.
+    if (onDischargeToQueue) {
+      const pet = pets.find(p => p.id === b.petId);
+      const client = pet ? clients.find(c => c.client_id === pet.clientId) : undefined;
+      try {
+        await onDischargeToQueue({
+          id: `queue_discharge_${b.id}`,
+          petId: b.petId,
+          petName: pet?.name || 'Discharged Patient',
+          ownerName: client?.full_name || 'Unknown',
+          ownerPhone: client?.primary_phone || '',
+          appointmentId: '',
+          serviceType: 'Examination',
+          checkInTime: new Date().toISOString(),
+          status: 'active',
+          priority: 2,
+          urgency: 'routine',
+          emergencyBackfillRequired: false,
+        });
+      } catch (err) {
+        console.error('[Boarding] Failed to re-queue discharged patient:', err);
+      }
+    }
+
     showToast(toastMsg, 'success');
     setSelectedCage(null);
     setDischargeModalCage(null);

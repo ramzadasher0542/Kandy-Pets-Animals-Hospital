@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom';
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard,
   User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
-  PenTool, CheckCircle2
+  PenTool, CheckCircle2, Lock
 } from 'lucide-react';
 import PageShell from './ui/PageShell';
 import { Badge } from './ui/Badge';
@@ -44,6 +44,7 @@ interface POSProps {
   incomingClient?: any;
   onUpdateRecord?: (record: MedicalRecord) => Promise<void>;
   onAtomicCheckout?: (invoice: Invoice, cart: any[]) => Promise<void>;
+  onNavigateToShift?: () => void;
 }
 
 interface CartItem extends InventoryItem {
@@ -68,7 +69,8 @@ export default function POSRegister({
   currentUser,
   systemConfig,
   invoices = [],
-  onVerifyMasterPin
+  onVerifyMasterPin,
+  onNavigateToShift
 }: POSProps) {
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -288,6 +290,10 @@ export default function POSRegister({
 
   const handleCheckout = async () => {
     console.log('[POS] handleCheckout initiated. Cart size:', cart.length, 'Total:', total);
+    if (!activeShift) {
+      showToast('Register is closed. Open a shift before taking payments.', 'error');
+      return;
+    }
     if (cart.length === 0) {
       showToast('Cart is empty.', 'error');
       return;
@@ -394,6 +400,24 @@ export default function POSRegister({
 
   return (
     <PageShell title="POS Register">
+    {!activeShift && (
+      <div data-testid="pos-shift-gate" className="absolute inset-0 z-[60] bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-6">
+        <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-8 text-center animate-scale-up">
+          <div className="w-16 h-16 mx-auto bg-rose-100 rounded-full flex items-center justify-center mb-4">
+            <Lock className="w-8 h-8 text-rose-600" />
+          </div>
+          <h2 className="text-xl font-black text-slate-800 tracking-tight">Register is Closed</h2>
+          <p className="text-xs font-bold text-slate-500 mt-2 leading-relaxed">The POS terminal is locked until a shift is open. Open a shift to count your starting float and begin taking payments.</p>
+          <button
+            data-testid="btn-open-shift-from-pos"
+            onClick={() => onNavigateToShift?.()}
+            className="mt-6 w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Lock className="w-4 h-4" /> Open New Shift
+          </button>
+        </div>
+      </div>
+    )}
     <div className="flex h-full w-full gap-4 overflow-hidden" id="pos-register-container">
       
       {/* LEFT PANE: CHECKOUT CART */}

@@ -183,7 +183,11 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
   const displayPatients = useMemo(() => {
     // MISSION 2: In "All History" mode, use paginated DB results
     if (!showQueueOnly) {
-      return historyRecords.map(r => {
+      // Ghost-record guard: drop entries missing an active Pet link (patientId)
+      // or a Visit link (visitDate) so history shows only real encounters.
+      return historyRecords
+        .filter(r => r && r.patientId && r.visitDate)
+        .map(r => {
         const p = pets.find(pet => pet.id === r.patientId);
         return {
           id: r.id,
