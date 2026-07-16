@@ -21,6 +21,7 @@ import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';
+import { requireAuth } from '../lib/requireAuth';
 
 interface CustomersManagerProps {
   clients: Client[];
@@ -40,6 +41,7 @@ interface CustomersManagerProps {
   onUpdateClient?: (client: any) => Promise<void>;
   onUpdatePet?: (oldPatientId: string, newPetName: string, newDetails: any) => void;
   onVerifyMasterPin?: (pin: string) => boolean;
+  currentUser?: any;
   onDeleteClient?: (client: Client, meta: { hadHistory: boolean; historySummary: string; overrideConfirmed: boolean }) => Promise<void>;
   onDeletePet?: (pet: Pet, meta: { hadHistory: boolean; historySummary: string; overrideConfirmed: boolean }) => Promise<void>;
 }
@@ -62,6 +64,7 @@ export default function CustomersManager({
   onUpdateClient,
   onUpdatePet,
   onVerifyMasterPin,
+  currentUser,
   onDeleteClient,
   onDeletePet
 }: CustomersManagerProps) {
@@ -85,7 +88,6 @@ export default function CustomersManager({
     | null
   >(null);
   const [deleteOverride, setDeleteOverride] = useState(false);
-  const [deletePin, setDeletePin] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   // BUG #12 FIX: Full historical data loaded from DB, not today-only props
@@ -356,7 +358,6 @@ export default function CustomersManager({
     const counts = await computeHistory(petIds, normalizePhone(client.primary_phone || ''));
     const summary = buildHistorySummary(counts);
     setDeleteOverride(false);
-    setDeletePin('');
     setDeleteTarget({ type: 'client', client, hadHistory: summary.length > 0, historySummary: summary });
   };
 
@@ -374,15 +375,17 @@ export default function CustomersManager({
     counts.appointments = petAppointments;
     const summary = buildHistorySummary(counts);
     setDeleteOverride(false);
-    setDeletePin('');
     setDeleteTarget({ type: 'pet', pet, hadHistory: summary.length > 0, historySummary: summary });
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     if (deleteTarget.hadHistory && !deleteOverride) return; // guard: override required
-    if (!onVerifyMasterPin) { showToast('Master PIN verification unavailable.', 'error'); return; }
-    if (!deletePin || !onVerifyMasterPin(deletePin)) { showToast('Authorization failed. Incorrect Master PIN.', 'error'); return; }
+
+    // AUTH-3: authorize against the operator's OWN credential (with supervisor
+    // override + audit) instead of a shared master PIN.
+    const auth = await requireAuth(currentUser || null, 'delete_client_or_pet');
+    if (!auth.allowed) { showToast('Authorization failed. Nothing was deleted.', 'error'); return; }
 
     setDeleteBusy(true);
     try {
@@ -395,7 +398,6 @@ export default function CustomersManager({
         if (selectedPetId === deleteTarget.pet.id) setSelectedPetId(null);
       }
       setDeleteTarget(null);
-      setDeletePin('');
       setDeleteOverride(false);
     } finally {
       setDeleteBusy(false);
@@ -1156,7 +1158,7 @@ export default function CustomersManager({
         if (!deleteTarget) return null;
         const label = deleteTarget.type === 'client' ? 'client' : 'pet';
         const name = deleteTarget.type === 'client' ? displayName(deleteTarget.client) : deleteTarget.pet.name;
-        const canDelete = !deleteBusy && deletePin.trim().length > 0 && (!deleteTarget.hadHistory || deleteOverride);
+        const canDelete = !deleteBusy && (!deleteTarget.hadHistory || deleteOverride);
         return (
           <Modal
             open={!!deleteTarget}
@@ -1216,17 +1218,10 @@ export default function CustomersManager({
                     </div>
                   )}
 
-                  <div>
-                    <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Master PIN *</label>
-                    <input
-                      data-testid="delete-pin-input"
-                      type="password"
-                      value={deletePin}
-                      onChange={e => setDeletePin(e.target.value)}
-                      autoFocus
-                      placeholder="Enter Master PIN to authorize"
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/20 font-bold text-sm tracking-widest"
-                    />
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                    <p className="text-[10px] font-bold text-indigo-800 leading-snug">
+                      You'll be asked to confirm with your own credential on the next step.
+                    </p>
                   </div>
                 </div>
 

@@ -31,29 +31,34 @@ test.describe('F-3 — Safe deletion of clients and pets', () => {
     await registerClient(page, 'DelTest A', '779000001', 'PetA');
     const clientId = 'client_779000001';
 
-    // Open delete modal — PIN prompt must appear.
+    // Open delete modal. AUTH-3: the credential is now requested by the shared
+    // AuthPrompt on confirm, not by a PIN field inside this modal.
     await page.getByTestId(`btn-delete-client-${clientId}`).click();
-    await expect(page.getByTestId('delete-pin-input')).toBeVisible();
+    await expect(page.getByTestId('btn-confirm-delete')).toBeVisible();
     // No history → no override checkbox.
     await expect(page.getByTestId('delete-override-checkbox')).toHaveCount(0);
 
-    // STEP 3: wrong PIN — delete BLOCKED.
-    await page.getByTestId('delete-pin-input').fill('1111');
+    // STEP 3: wrong credential — delete BLOCKED.
     await page.getByTestId('btn-confirm-delete').click();
-    await page.waitForTimeout(500);
+    await expect(page.getByTestId('auth-credential')).toBeVisible();
+    await page.getByTestId('auth-credential').fill('1111');
+    await page.getByTestId('auth-submit').click();
+    await page.waitForTimeout(900);
     const blockedState = await page.evaluate(async (id: string) => {
       const c = await (window as any)._db.clients.getItem(id);
       return { exists: !!c, deleted: !!(c && c.is_deleted) };
     }, clientId);
-    console.log('STEP 3 (wrong PIN) →', JSON.stringify(blockedState), '| modal still open:', await page.getByTestId('delete-pin-input').isVisible());
+    console.log('STEP 3 (wrong PIN) →', JSON.stringify(blockedState), '| modal still open:', await page.getByTestId('btn-confirm-delete').isVisible());
     expect(blockedState.exists).toBe(true);
     expect(blockedState.deleted).toBe(false); // NOT deleted
-    await expect(page.getByTestId('delete-pin-input')).toBeVisible(); // modal still open
+    await expect(page.getByTestId('btn-confirm-delete')).toBeVisible(); // modal still open
 
-    // STEP 4: correct PIN — client disappears.
-    await page.getByTestId('delete-pin-input').fill('5692');
+    // STEP 4: correct credential — client disappears.
     await page.getByTestId('btn-confirm-delete').click();
-    await page.waitForTimeout(800);
+    await expect(page.getByTestId('auth-credential')).toBeVisible();
+    await page.getByTestId('auth-credential').fill('5692');
+    await page.getByTestId('auth-submit').click();
+    await page.waitForTimeout(1200);
     await expect(page.getByTestId(`btn-delete-client-${clientId}`)).toHaveCount(0);
 
     const afterDelete = await page.evaluate(async (id: string) => {
@@ -109,19 +114,21 @@ test.describe('F-3 — Safe deletion of clients and pets', () => {
     console.log('STEP 7 warning text:', warningText.replace(/\n/g, ' '));
     await expect(page.getByTestId('delete-history-warning')).toContainText('1 invoice');
 
-    // STEP 8: Delete button DISABLED until checkbox ticked (even with PIN entered).
-    await page.getByTestId('delete-pin-input').fill('5692');
+    // STEP 8: Delete button DISABLED until the history-override checkbox is ticked.
     const disabledBefore = await page.getByTestId('btn-confirm-delete').isDisabled();
-    console.log('STEP 8 → confirm disabled with PIN but no checkbox:', disabledBefore);
+    console.log('STEP 8 → confirm disabled before checkbox:', disabledBefore);
     expect(disabledBefore).toBe(true);
     await page.getByTestId('delete-override-checkbox').check();
     const enabledAfter = await page.getByTestId('btn-confirm-delete').isEnabled();
     console.log('STEP 8 → confirm enabled after checkbox:', enabledAfter);
     expect(enabledAfter).toBe(true);
 
-    // STEP 9: delete — client gone BUT invoice intact.
+    // STEP 9: delete (AUTH-3 credential confirm) — client gone BUT invoice intact.
     await page.getByTestId('btn-confirm-delete').click();
-    await page.waitForTimeout(800);
+    await expect(page.getByTestId('auth-credential')).toBeVisible();
+    await page.getByTestId('auth-credential').fill('5692');
+    await page.getByTestId('auth-submit').click();
+    await page.waitForTimeout(1200);
     await expect(page.getByTestId(`btn-delete-client-${clientId}`)).toHaveCount(0);
 
     const invAfter = await page.evaluate(async () => await (window as any)._db.invoices.getItem('F3-INV-1'));

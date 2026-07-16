@@ -13,6 +13,7 @@ import {
   PenTool, CheckCircle2, Lock
 } from 'lucide-react';
 import PageShell from './ui/PageShell';
+import { requireAuth } from '../lib/requireAuth';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem, User as UserType } from '../types';
@@ -302,12 +303,8 @@ export default function POSRegister({
     if (discount > 0 && subtotal > 0) {
       const discountPct = (discount / subtotal) * 100;
       if (discountPct > DISCOUNT_APPROVAL_THRESHOLD_PCT) {
-        if (!onVerifyMasterPin) {
-          showToast('Master PIN verification unavailable.', 'error');
-          return;
-        }
-        const pin = window.prompt(`AUTHORIZATION REQUIRED: Discount of ${discountPct.toFixed(1)}% exceeds approval threshold (${DISCOUNT_APPROVAL_THRESHOLD_PCT}%). Enter Master PIN:`);
-        if (!pin || !onVerifyMasterPin(pin)) {
+        const auth = await requireAuth(currentUser || null, 'discount_override');
+        if (!auth.allowed) {
           showToast('Discount authorization failed.', 'error');
           return;
         }

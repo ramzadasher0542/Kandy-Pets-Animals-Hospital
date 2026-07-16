@@ -13,6 +13,7 @@ import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
 import { ItemCategory, InventoryItem } from '../types';
+import { requireAuth } from '../lib/requireAuth';
 
 export interface SystemConfig {
   appName: string;
@@ -82,7 +83,7 @@ interface SettingsProps {
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser
 }: SettingsProps) {
 
   const [showPurgeModal, setShowPurgeModal] = useState(false);
@@ -97,8 +98,9 @@ export default function SystemSettings({
       showToast('Type DELETE exactly to confirm. Nothing was erased.', 'error');
       return;
     }
-    if (!onVerifyMasterPin || !onVerifyMasterPin(cloudWipePin)) {
-      showToast('Incorrect admin password. Nothing was erased.', 'error');
+    const auth = await requireAuth(currentUser || null, 'wipe_cloud_database');
+    if (!auth.allowed) {
+      showToast('Authorization failed. Nothing was erased.', 'error');
       return;
     }
     setCloudWipeBusy(true);
@@ -109,9 +111,10 @@ export default function SystemSettings({
     }
   };
 
-  const handleConfirmPurge = () => {
-    if (!onVerifyMasterPin || !onVerifyMasterPin(purgePin)) {
-      showToast('Incorrect admin password. Database was NOT erased.', 'error');
+  const handleConfirmPurge = async () => {
+    const auth = await requireAuth(currentUser || null, 'erase_local_database');
+    if (!auth.allowed) {
+      showToast('Authorization failed. Database was NOT erased.', 'error');
       return;
     }
     setShowPurgeModal(false);
@@ -232,15 +235,10 @@ export default function SystemSettings({
     }
   };
 
-  const handleRestoreBackupTrigger = () => {
-    if (!onVerifyMasterPin) {
-      showToast('System configuration error: Master PIN verification unavailable.', 'error');
-      return;
-    }
-    const pin = window.prompt("Enter Master PIN to authorize system restoration:");
-    if (!pin) return;
-    if (!onVerifyMasterPin(pin)) {
-      showToast('Invalid Master PIN.', 'error');
+  const handleRestoreBackupTrigger = async () => {
+    const auth = await requireAuth(currentUser || null, 'system_restore');
+    if (!auth.allowed) {
+      showToast('Authorization failed. Restore cancelled.', 'error');
       return;
     }
     backupInputRef.current?.click();

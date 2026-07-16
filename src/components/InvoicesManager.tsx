@@ -269,6 +269,21 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
         headerActions={
           <button onClick={handlePrint} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl cursor-pointer transition-colors"><Printer className="w-4 h-4"/></button>
         }
+        footer={
+          selectedInvoice?.paymentStatus !== 'void' ? (
+            <div className="flex justify-end">
+              {/* AUTH-3: handleVoid existed but was never wired to any control, so
+                  voiding was impossible from the UI. Now reachable and gated. */}
+              <button
+                data-testid="btn-void-invoice"
+                onClick={handleVoid}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer"
+              >
+                Void Invoice
+              </button>
+            </div>
+          ) : undefined
+        }
       >
         <div className="print:p-4 print:overflow-visible relative">
           

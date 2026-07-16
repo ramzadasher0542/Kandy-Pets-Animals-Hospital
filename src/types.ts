@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'admin' | 'veterinarian' | 'cashier' | 'owner' | 'dummy_admin';
+// AUTH-3: 'manager' added so the per-action allow-lists can express hospital
+// middle-management. AUTH-4 restructures this into Provider / Owner / Staff.
+export type UserRole = 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin';
 
 export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; }
 
@@ -299,6 +301,29 @@ export interface Payslip {
 
 // F-3: Audit trail for soft-deletions of clients and pets. Every deletion is
 // logged here for owner oversight; financial/clinical records are never touched.
+/**
+ * AUTH-3: one row per privileged-action authorization attempt — granted,
+ * denied, or supervisor-overridden. Written on EVERY call, not just failures,
+ * so "who approved this void at 2am" is answerable after the fact.
+ */
+export interface AuthAudit {
+  id: string;
+  action: string;                  // AuthAction key, e.g. 'void_invoice'
+  action_description: string;      // human phrasing shown in the prompt
+  attempted_by: string;            // User.id of the operator at the keyboard
+  attempted_by_name: string;
+  attempted_by_role: string;
+  allowed: boolean;
+  is_override: boolean;            // a supervisor authorized it for someone below
+  approved_by?: string;            // User.id who ultimately authorized
+  approved_by_name?: string;
+  approved_by_role?: string;
+  reason?: string;                 // 'role_denied' | 'bad_credential' | 'cancelled' | 'granted'
+  timestamp: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DeletionAudit {
   id: string;
   entity_type: 'client' | 'pet';

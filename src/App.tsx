@@ -83,6 +83,8 @@ import {
   hashCredential, verifyCredential, verifyCredentialSync, isBcryptHash,
   migrateOldHash, recordFailedAttempt, isLockedOut, resetAttempts
 } from './lib/credentials';
+import { requireAuth } from './lib/requireAuth';
+import AuthPromptHost from './components/ui/AuthPrompt';
 
 // @ts-ignore
 window._db = db;
@@ -232,6 +234,21 @@ function App() {
     },
     masterPin: hashPin('5692')
   } as SystemConfig);
+
+  /**
+   * HOTFIX: verify a master-PIN attempt against the stored credential in EITHER
+   * format. AUTH-2 migrates `masterPin` to bcrypt on first owner login, which
+   * silently broke every gate still doing a raw `hashPin(pin) === masterPin`
+   * compare (delete inventory / delete record / void invoice). Declared here,
+   * above those callbacks, so they can all share one correct check.
+   * AUTH-3 replaces these gates with requireAuth() entirely.
+   */
+  const verifyMasterPin = (pin: string): boolean => {
+    const stored = systemConfig.masterPin || hashPin('0000');
+    if (!pin) return false;
+    if (isBcryptHash(stored)) return verifyCredentialSync(pin, stored);
+    return hashPin(pin) === stored;
+  };
 
   // --- THE INDEXED-DB BOOTLOADER & MIGRATION ENGINE ---
   useEffect(() => {
@@ -834,9 +851,9 @@ function App() {
   }, []);
 
   const handleDeleteInventoryItem = useCallback(async (id: string) => {
-    const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
-    if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
-      showToast("Unauthorized. Invalid Master PIN.", "error");
+    const auth = await requireAuth(currentUser, 'delete_inventory');
+    if (!auth.allowed) {
+      showToast('Unauthorized. Inventory item was not deleted.', 'error');
       return;
     }
     try {
@@ -845,12 +862,12 @@ function App() {
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, [systemConfig]);
+  }, [currentUser]);
 
   const handleDeleteRecord = useCallback(async (id: string) => {
-    const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
-    if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
-      showToast("Unauthorized. Invalid Master PIN.", "error");
+    const auth = await requireAuth(currentUser, 'delete_medical_record');
+    if (!auth.allowed) {
+      showToast('Unauthorized. Medical record was not deleted.', 'error');
       return;
     }
     try {
@@ -860,7 +877,7 @@ function App() {
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, [systemConfig]);
+  }, [currentUser]);
 
   // MISSION 2 FIX: Iterates IndexedDB directly instead of stale React state arrays.
   // This ensures ALL historical records are updated, not just today's in-memory subset.
@@ -1024,9 +1041,9 @@ function App() {
   // FIXED: No longer mutates React state directly — creates a new object
   // MISSION 2 FIX: Read from DB directly instead of stale state (old invoices aren't in state)
   const handleVoidInvoice = useCallback(async (id: any) => {
-    const pin = window.prompt("AUTHORIZATION REQUIRED: Enter Master PIN to execute this destructive action.");
-    if (!pin || hashPin(pin) !== (systemConfig.masterPin || hashPin('0000'))) {
-      showToast("Unauthorized. Invalid Master PIN.", "error");
+    const auth = await requireAuth(currentUser, 'void_invoice');
+    if (!auth.allowed) {
+      showToast('Unauthorized. Invoice was not voided.', 'error');
       return;
     }
     try {
@@ -1068,7 +1085,7 @@ function App() {
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
-  }, [systemConfig]);
+  }, [currentUser]);
 
   // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
   // BUG #1 FIX: Removed outer globalMutex.lock() — atomicStockDecrement already
@@ -1189,14 +1206,40 @@ function App() {
     }
   }, [handlePurgeDatabases]);
 
-  // Format-aware and still synchronous, so the existing window.prompt master-PIN
-  // gates keep working unchanged once masterPin migrates to bcrypt (AUTH-3 will
-  // convert those call sites to the async verifier).
-  const handleVerifyMasterPin = (pin: string): boolean => {
-    const stored = systemConfig.masterPin || hashPin('0000');
-    if (isBcryptHash(stored)) return verifyCredentialSync(pin, stored);
-    return hashPin(pin) === stored;
-  };
+  // Single shared implementation — see verifyMasterPin above. Kept as a named
+  // prop-facing wrapper for the panels that receive onVerifyMasterPin.
+  const handleVerifyMasterPin = (pin: string): boolean => verifyMasterPin(pin);
+
+  /**
+   * AUTH-3: resolve + verify a username's OWN credential (never a shared master
+   * PIN). Lives here because App owns systemConfig, which holds the provider's
+   * masterPin including its default fallback.
+   */
+  const checkCredential = useCallback(async (username: string, credential: string) => {
+    if (!username || !credential) return { valid: false, user: null };
+
+    // The provider/admin account is config-backed, not a db.users row.
+    if (username === 'ashpoint_owner') {
+      const stored = systemConfig.masterPin || hashPin('5692');
+      const valid = isBcryptHash(stored)
+        ? await verifyCredential(credential, stored)
+        : await migrateOldHash(stored, credential);
+      const user = valid
+        ? ({ id: 'ashpoint_owner', name: `${systemConfig.appName} Admin`, username: 'ashpoint_owner', role: 'admin', avatarColor: '' } as any)
+        : null;
+      return { valid, user };
+    }
+
+    let found: any = null;
+    await db.users.iterate((u: any) => { if (u && !u.is_deleted && u.username === username) found = u; });
+    const stored = found?.pin || pinCache[username] || '';
+    if (!found || !stored) return { valid: false, user: null };
+
+    const valid = isBcryptHash(stored)
+      ? await verifyCredential(credential, stored)
+      : await migrateOldHash(stored, credential);
+    return { valid, user: valid ? found : null };
+  }, [systemConfig, pinCache]);
 
   const isViewPermitted = (viewName: string, user: any): boolean => {
     if (!user) return false;
@@ -1466,7 +1509,7 @@ function App() {
       case 'vaccinations': return <VaccinationsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
       // FIX 8: Pass appointments prop to Lab
       case 'laboratory': return <LaboratoryManager clients={clients} pets={pets} records={records} inventory={inventory as any} appointments={appointments} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} />;
-      case 'customers': return <CustomersManager clients={clients} pets={pets} records={records} invoices={invoices} appointments={appointments} clinicQueue={clinicQueue} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} onVerifyMasterPin={handleVerifyMasterPin} onDeleteClient={handleDeleteClient} onDeletePet={handleDeletePet} />;
+      case 'customers': return <CustomersManager currentUser={currentUser} clients={clients} pets={pets} records={records} invoices={invoices} appointments={appointments} clinicQueue={clinicQueue} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} onVerifyMasterPin={handleVerifyMasterPin} onDeleteClient={handleDeleteClient} onDeletePet={handleDeletePet} />;
       default: return null;
     }
   };
@@ -1706,6 +1749,8 @@ function App() {
           </div>
         )}
         <ToastContainer />
+        {/* AUTH-3: single authorization modal driven by requireAuth() */}
+        <AuthPromptHost checkCredential={checkCredential} />
         <Modal
           open={showNotifications}
           onClose={() => setShowNotifications(false)}

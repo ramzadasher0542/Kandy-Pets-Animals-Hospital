@@ -48,7 +48,12 @@ export const db = {
   payslips: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'payslips' }),
 
   // F-3: Audit trail for soft-deletions of clients and pets (owner oversight)
-  deletionAudit: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'deletion_audit' })
+  deletionAudit: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'deletion_audit' }),
+
+  // AUTH-3: Audit trail for every privileged-action authorization attempt
+  // (granted, denied, or supervisor-overridden). Local-only by design — it is
+  // deliberately NOT in syncEngine's STORE_MAPPINGS, so it never leaves the till.
+  authAudit: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'auth_audit' })
 };
 
 /**

@@ -12,6 +12,7 @@ import { showToast } from './Toast';
 import { db, stampRecord } from '../lib/localDb';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
+import { requireAuth } from '../lib/requireAuth';
 
 // --- Cash Adjustment Type ---
 interface CashAdjustment {
@@ -211,12 +212,8 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     if (!amt || amt <= 0) return showToast('Enter a valid amount.', 'error');
     if (!adjReason.trim()) return showToast('Reason is required.', 'error');
 
-    if (!onVerifyMasterPin) {
-      showToast('Master PIN verification unavailable.', 'error');
-      return;
-    }
-    const pin = window.prompt('AUTHORIZATION REQUIRED: Cash drawer adjustment requires manager approval. Enter Master PIN:');
-    if (!pin || !onVerifyMasterPin(pin)) {
+    const auth = await requireAuth(currentUser || null, 'cash_adjustment');
+    if (!auth.allowed) {
       showToast('Authorization failed.', 'error');
       return;
     }
