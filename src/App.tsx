@@ -79,6 +79,10 @@ export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, Pane
 
 import { db, initializeDatabaseVault, stampRecord } from './lib/localDb';
 import { seedDemoData } from './lib/demoSeed';
+import {
+  hashCredential, verifyCredential, verifyCredentialSync, isBcryptHash,
+  migrateOldHash, recordFailedAttempt, isLockedOut, resetAttempts
+} from './lib/credentials';
 
 // @ts-ignore
 window._db = db;
@@ -89,7 +93,7 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Printer, Lock,
-  ChevronLeft, PenTool, Home, Scissors, Activity, Bell, UserCog
+  ChevronLeft, PenTool, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff
 } from 'lucide-react';
 
 import {
@@ -537,6 +541,29 @@ function App() {
   const [enteredPin, setEnteredPin] = useState('');
   const [selectedUsername, setSelectedUsername] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Owner / provider-admin sign in with a full alphanumeric password; till roles
+  // (cashier, vet, groomer) keep the fast 4-digit numeric PIN.
+  const selectedRole = selectedUsername === 'ashpoint_owner'
+    ? 'admin'
+    : (users.find(u => u.username === selectedUsername)?.role || '');
+  const isPasswordAccount = selectedUsername === 'ashpoint_owner' || selectedRole === 'admin' || selectedRole === 'owner';
+
+  // Live lockout countdown for the selected account — re-enables the form the
+  // moment the lockout expires, without needing a page refresh.
+  useEffect(() => {
+    if (!selectedUsername) { setLockoutSeconds(0); return; }
+    const tick = () => {
+      const { locked, secondsRemaining } = isLockedOut(selectedUsername);
+      setLockoutSeconds(locked ? secondsRemaining : 0);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [selectedUsername]);
 
   useEffect(() => {
     if (currentUser && !isViewPermitted(activeView, currentUser)) {
@@ -1162,7 +1189,14 @@ function App() {
     }
   }, [handlePurgeDatabases]);
 
-  const handleVerifyMasterPin = (pin: string): boolean => hashPin(pin) === (systemConfig.masterPin || hashPin('0000'));
+  // Format-aware and still synchronous, so the existing window.prompt master-PIN
+  // gates keep working unchanged once masterPin migrates to bcrypt (AUTH-3 will
+  // convert those call sites to the async verifier).
+  const handleVerifyMasterPin = (pin: string): boolean => {
+    const stored = systemConfig.masterPin || hashPin('0000');
+    if (isBcryptHash(stored)) return verifyCredentialSync(pin, stored);
+    return hashPin(pin) === stored;
+  };
 
   const isViewPermitted = (viewName: string, user: any): boolean => {
     if (!user) return false;
@@ -1193,28 +1227,82 @@ function App() {
     return 'portal';
   };
 
-  const handlePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUsername) return;
-    const ownerPinHash = systemConfig.masterPin || hashPin('5692');
-    const dummyPinHash = systemConfig.dummyAdminPin || hashPin('7777');
-    const enteredPinHash = hashPin(enteredPin);
+  /**
+   * Verify `attempt` against a stored credential that may still be in the OLD
+   * homemade hash format. Returns whether it matched, plus the freshly-bcrypted
+   * hash to persist when a legacy credential is successfully upgraded.
+   */
+  const verifyAndUpgrade = async (
+    stored: string,
+    attempt: string
+  ): Promise<{ ok: boolean; upgradedHash?: string }> => {
+    if (!stored || !attempt) return { ok: false };
+    if (isBcryptHash(stored)) {
+      return { ok: await verifyCredential(attempt, stored) };
+    }
+    // Legacy credential — check it, and if it matches, re-hash with bcrypt so
+    // the user silently upgrades without a manual reset.
+    if (await migrateOldHash(stored, attempt)) {
+      return { ok: true, upgradedHash: await hashCredential(attempt) };
+    }
+    return { ok: false };
+  };
 
-    if (selectedUsername === 'ashpoint_owner') {
-      if (true) { // BYPASS PIN
+  const registerFailure = (username: string) => {
+    recordFailedAttempt(username);
+    setPinError(true);
+    setTimeout(() => setPinError(false), 2000);
+    setEnteredPin('');
+    const l = isLockedOut(username);
+    setLockoutSeconds(l.locked ? l.secondsRemaining : 0);
+  };
+
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUsername || isVerifying) return;
+
+    // Guess limiter — refuse to even attempt while locked out.
+    const lock = isLockedOut(selectedUsername);
+    if (lock.locked) { setLockoutSeconds(lock.secondsRemaining); return; }
+
+    setIsVerifying(true);
+    try {
+      if (selectedUsername === 'ashpoint_owner') {
+        const stored = systemConfig.masterPin || hashPin('5692');
+        const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
+        if (!ok) { registerFailure(selectedUsername); return; }
+
+        if (upgradedHash) {
+          const nextConfig = { ...systemConfig, masterPin: upgradedHash };
+          await db.system.setItem('config', nextConfig);
+          setSystemConfig(nextConfig);
+        }
+        resetAttempts(selectedUsername);
         setCurrentUser({ id: crypto.randomUUID(), name: `${systemConfig.appName} Admin`, username: 'ashpoint_owner', role: 'admin', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
         setActiveView('settings');
-      } else { setPinError(true); setTimeout(() => setPinError(false), 2000); }
-      setEnteredPin(''); setSelectedUsername(''); return;
-    }
+        setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
+        return;
+      }
 
-    const foundUser = users.find(u => u.username === selectedUsername);
-    if (foundUser && (enteredPinHash === foundUser.pin || enteredPinHash === pinCache[selectedUsername])) {
-      setCurrentUser(foundUser); setActiveView(getDefaultViewForUser(foundUser));
-    } else {
-      setPinError(true); setTimeout(() => setPinError(false), 2000);
+      const foundUser = users.find(u => u.username === selectedUsername);
+      const stored = foundUser?.pin || pinCache[selectedUsername] || '';
+      const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
+      if (!foundUser || !ok) { registerFailure(selectedUsername); return; }
+
+      if (upgradedHash) {
+        const persisted = await db.users.getItem<any>(foundUser.id);
+        const updated = { ...(persisted || foundUser), pin: upgradedHash };
+        await db.users.setItem(foundUser.id, updated);
+        setUsers(prev => prev.map(u => u.id === foundUser.id ? { ...u, pin: upgradedHash } : u));
+        setPinCache(prev => ({ ...prev, [selectedUsername]: upgradedHash }));
+      }
+      resetAttempts(selectedUsername);
+      setCurrentUser(foundUser);
+      setActiveView(getDefaultViewForUser(foundUser));
+      setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
+    } finally {
+      setIsVerifying(false);
     }
-    setEnteredPin(''); setSelectedUsername('');
   };
 
   const handleSaveStaffProfile = useCallback(async (profile: StaffProfile) => {
@@ -1451,7 +1539,7 @@ function App() {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-lg font-black text-slate-800">Secure Clinician Sign-In</h3>
-                    <p className="text-slate-400 mt-1">Select your account and enter your secure 4-digit PIN to access the terminal.</p>
+                    <p className="text-slate-400 mt-1">{isPasswordAccount ? 'Enter your administrator password to access the terminal.' : 'Select your account and enter your secure 4-digit PIN to access the terminal.'}</p>
                   </div>
                 </div>
                 <div className="pt-4 border-t border-slate-100 space-y-4">
@@ -1466,13 +1554,52 @@ function App() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
-                        <label htmlFor="login-pin" className="font-bold text-slate-700 block text-[10px]">Enter 4-Digit Passcode PIN</label>
-                        {pinError && <span className="text-[10px] text-rose-600 font-bold animate-pulse">Incorrect passcode pin.</span>}
+                        <label htmlFor="login-pin" className="font-bold text-slate-700 block text-[10px]">{isPasswordAccount ? 'Enter Administrator Password' : 'Enter 4-Digit Passcode PIN'}</label>
+                        {pinError && <span data-testid="login-error" className="text-[10px] text-rose-600 font-bold animate-pulse">{isPasswordAccount ? 'Incorrect password.' : 'Incorrect passcode pin.'}</span>}
                       </div>
                       <div className="flex gap-2">
-                        <input id="login-pin" data-testid="input-pin" name="pin" type="password" autoComplete="current-password" maxLength={4} placeholder="••••" value={enteredPin} onChange={(e) => setEnteredPin(e.target.value)} className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 text-center font-mono font-bold tracking-widest text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500" required />
-                        <button type="submit" data-testid="btn-verify-pin" className="px-5 bg-slate-800 hover:bg-slate-900 font-bold text-white rounded-xl transition-all font-mono">Verify</button>
+                        <div className="relative flex-1">
+                          <input
+                            id="login-pin"
+                            data-testid="input-pin"
+                            name="pin"
+                            type={isPasswordAccount && showPassword ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            {...(isPasswordAccount ? { inputMode: 'text' as const } : { inputMode: 'numeric' as const, maxLength: 4, pattern: '[0-9]*' })}
+                            placeholder={isPasswordAccount ? 'Password' : '••••'}
+                            value={enteredPin}
+                            onChange={(e) => setEnteredPin(e.target.value)}
+                            disabled={isVerifying || lockoutSeconds > 0}
+                            className={`w-full py-2.5 bg-slate-50 border border-slate-200 font-mono font-bold text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60 ${isPasswordAccount ? 'pl-3 pr-10 text-left tracking-normal' : 'px-3 text-center tracking-widest'}`}
+                            required
+                          />
+                          {isPasswordAccount && (
+                            <button
+                              type="button"
+                              data-testid="btn-toggle-password"
+                              onClick={() => setShowPassword(v => !v)}
+                              tabIndex={-1}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                              aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="submit"
+                          data-testid="btn-verify-pin"
+                          disabled={isVerifying || lockoutSeconds > 0}
+                          className="px-5 bg-slate-800 hover:bg-slate-900 font-bold text-white rounded-xl transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[76px]"
+                        >
+                          {isVerifying ? <span data-testid="login-spinner" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Verify'}
+                        </button>
                       </div>
+                      {lockoutSeconds > 0 && (
+                        <p data-testid="login-lockout" className="text-[10px] text-rose-600 font-black pt-1">
+                          Too many attempts, try again in {lockoutSeconds}s
+                        </p>
+                      )}
                     </div>
                   </form>
                 </div>

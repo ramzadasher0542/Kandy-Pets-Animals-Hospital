@@ -7,12 +7,12 @@ test.describe('Emergency Intake Flow', () => {
     await page.goto('http://localhost:3000');
     await page.waitForLoadState('networkidle');
 
-    const pinInput = page.getByPlaceholder('••••');
+    const pinInput = page.getByTestId('input-pin');
     const pinVisible = await pinInput.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
     if (pinVisible) {
       await page.locator('select').selectOption('ashpoint_owner');
       await pinInput.fill('5692');
-      await page.getByText('Verify').click();
+      await page.getByTestId('btn-verify-pin').click();
     }
 
     // Reset DB for clean state
@@ -22,12 +22,12 @@ test.describe('Emergency Intake Flow', () => {
     });
     await page.reload();
 
-    const pinInput2 = page.getByPlaceholder('••••');
+    const pinInput2 = page.getByTestId('input-pin');
     const pinVisible2 = await pinInput2.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
     if (pinVisible2) {
       await page.locator('select').selectOption('ashpoint_owner');
       await pinInput2.fill('5692');
-      await page.getByText('Verify').click();
+      await page.getByTestId('btn-verify-pin').click();
     }
 
     // Go to Appointments

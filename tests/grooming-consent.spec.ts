@@ -5,12 +5,12 @@ test('Verify Grooming Consent and Instructions', async ({ page }) => {
   await page.goto('http://localhost:3000');
 
   // Login and seed patient
-  const pinInput = page.getByPlaceholder('••••');
+  const pinInput = page.getByTestId('input-pin');
   const pinVisible = await pinInput.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
   if (pinVisible) {
     await page.locator('select').selectOption('ashpoint_owner');
     await pinInput.fill('5692');
-    await page.getByText('Verify').click();
+    await page.getByTestId('btn-verify-pin').click();
   }
 
   // Seed a patient so we can click them
@@ -29,12 +29,12 @@ test('Verify Grooming Consent and Instructions', async ({ page }) => {
   });
   
   await page.reload();
-  const pinInput2 = page.getByPlaceholder('••••');
+  const pinInput2 = page.getByTestId('input-pin');
   const pinVisible2 = await pinInput2.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
   if (pinVisible2) {
     await page.locator('select').selectOption('ashpoint_owner');
     await pinInput2.fill('5692');
-    await page.getByText('Verify').click();
+    await page.getByTestId('btn-verify-pin').click();
   }
 
   // Go to Grooming Salon
@@ -119,12 +119,12 @@ test('Verify Grooming Consent and Instructions', async ({ page }) => {
 
   // 7. Reload and verify persistence
   await page.reload();
-  const pinInput3 = page.getByPlaceholder('••••');
+  const pinInput3 = page.getByTestId('input-pin');
   const pinVisible3 = await pinInput3.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
   if (pinVisible3) {
     await page.locator('select').selectOption('ashpoint_owner');
     await pinInput3.fill('5692');
-    await page.getByText('Verify').click();
+    await page.getByTestId('btn-verify-pin').click();
   }
   await page.click('button:has-text("Grooming Salon")');
   await expect(page.locator('text=Active Grooming Queue')).toBeVisible();
