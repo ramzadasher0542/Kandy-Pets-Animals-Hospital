@@ -1,0 +1,712 @@
+﻿[
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  32,
+        "Line":  "            \u003cp className=\"text-slate-600 font-semibold leading-relaxed\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1315,
+        "Line":  "        \u003cdiv className=\"max-w-md w-full bg-slate-800 border border-rose-500/50 p-8 rounded-3xl shadow-2xl space-y-6\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1320,
+        "Line":  "          \u003cp className=\"text-slate-400 font-medium text-sm leading-relaxed\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1338,
+        "Line":  "        \u003cdiv className=\"w-24 h-24 mb-8 bg-slate-800 rounded-3xl flex items-center justify-center animate-pulse border border-slate-700 shadow-2xl\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1355,
+        "Line":  "            \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 overflow-hidden shadow-2xl animate-fade-in text-xs\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1359,
+        "Line":  "                    \u003cspan className=\"px-3 py-1 bg-white/20 text-white font-bold rounded-full text-[9px] uppercase tracking-wider flex items-center gap-1.5 w-max\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1363,
+        "Line":  "                      \u003cp className=\"text-white/70 font-bold text-xs uppercase tracking-widest text-center\"\u003eYour Logo Here\u003cbr /\u003e\u003cspan className=\"text-[9px] font-medium opacity-75 capitalize mt-1 block\"\u003e(Upload via System Settings)\u003c/span\u003e\u003c/p\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1365,
+        "Line":  "                    \u003cp className=\"text-white/80 leading-relaxed font-semibold text-sm max-w-sm\"\u003eServing Pet parents cleanly and securely. Tablet-ready clinical charts, custom billing registers, and automated client alerts.\u003c/p\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1367,
+        "Line":  "                  \u003cdiv className=\"text-white/90 font-semibold tracking-wide text-[10px] uppercase flex flex-col gap-0.5 mt-12 pb-4\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1386,
+        "Line":  "                      \u003cselect id=\"login-username\" name=\"username\" autoComplete=\"username\" value={selectedUsername} onChange={(e) =\u003e setSelectedUsername(e.target.value)} className=\"w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-semibold text-slate-700\" required\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1395,
+        "Line":  "                        {pinError \u0026\u0026 \u003cspan className=\"text-[10px] text-rose-600 font-semibold animate-pulse\"\u003eIncorrect passcode pin.\u003c/span\u003e}"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1399,
+        "Line":  "                        \u003cbutton type=\"submit\" data-testid=\"btn-verify-pin\" className=\"px-5 bg-slate-800 hover:bg-slate-900 font-extrabold text-white rounded-xl transition-all font-mono\"\u003eVerify\u003c/button\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1414,
+        "Line":  "                  \u003cdiv className=\"bg-blue-600 p-1.5 rounded-lg shadow-sm\"\u003e\u003cPawPrint className=\"w-5 h-5 text-white\" /\u003e\u003c/div\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1417,
+        "Line":  "                    \u003cp className=\"text-[10px] font-semibold text-gray-400 uppercase tracking-widest mt-1\"\u003e{systemConfig.resellerName || \u0027Ash Point\u0027}\u003c/p\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1424,
+        "Line":  "                  if (!item.isLive) return \u003ca key={item.id} data-testid={`nav-${item.id}`} href=\"#\" onClick={(e) =\u003e e.preventDefault()} className=\"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default\"\u003e\u003cIcon className=\"w-5 h-5\" /\u003e{item.label}\u003c/a\u003e;"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1429,
+        "Line":  "                    \u003cbutton key={item.id} data-testid={`nav-${item.id}`} onClick={() =\u003e { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isSelected ? \u0027bg-blue-50 text-blue-700\u0027 : \u0027text-gray-600 hover:bg-gray-100 hover:text-gray-900\u0027}`}\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1438,
+        "Line":  "                  \u003cspan className=\"block text-[10px] text-gray-400 capitalize font-medium mt-0.5 truncate\"\u003e{currentUser.role} console\u003c/span\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1444,
+        "Line":  "                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeView === \u0027settings\u0027"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1455,
+        "Line":  "                  className=\"w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer\""
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1475,
+        "Line":  "                      className=\"flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-all cursor-pointer\""
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1486,
+        "Line":  "                      \u003cspan className=\"absolute top-0 right-0 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[8px] font-black text-white border-2 border-white\"\u003e"
+    },
+    {
+        "Filename":  "AppointmentsManager.tsx",
+        "LineNumber":  1213,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-3xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]\"\u003e"
+    },
+    {
+        "Filename":  "AppointmentsManager.tsx",
+        "LineNumber":  1460,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-rose-200\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  687,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-6 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  712,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  780,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  813,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  967,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-2xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]\"\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  1075,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  1142,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  1201,
+        "Line":  "              \u003cdiv className=\"bg-white rounded-3xl border border-rose-100 max-w-md w-full shadow-2xl animate-scale-up flex flex-col overflow-hidden\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  331,
+        "Line":  "                      \u003cdiv className=\"absolute -top-8 bg-slate-800 text-white text-[9px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10\"\u003e"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  335,
+        "Line":  "                    \u003cdiv className=\"text-[8px] font-bold text-slate-400 uppercase mt-1\"\u003e{d.label}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  356,
+        "Line":  "                        \u003cdiv className=\"text-[9px] font-bold text-slate-500\"\u003e{s.role}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  401,
+        "Line":  "                          {q.urgency === \u0027emergency\u0027 \u0026\u0026 \u003cspan className=\"px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[9px] font-black uppercase tracking-widest rounded shrink-0\"\u003eEMERGENCY\u003c/span\u003e}"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  402,
+        "Line":  "                          {q.urgency === \u0027non-emergency\u0027 \u0026\u0026 \u003cspan className=\"px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-widest rounded shrink-0\"\u003eURGENT\u003c/span\u003e}"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  405,
+        "Line":  "                          \u003cdiv className=\"text-[9px] font-black uppercase tracking-widest text-amber-600 mt-0.5\"\u003e⚠ DETAILS PENDING\u003c/div\u003e"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  412,
+        "Line":  "                      {q.status === \u0027active\u0027 \u0026\u0026 \u003cspan className=\"px-3 py-1.5 bg-emerald-100 text-emerald-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs\"\u003eActive\u003c/span\u003e}"
+    },
+    {
+        "Filename":  "DashboardAnalytics.tsx",
+        "LineNumber":  413,
+        "Line":  "                      {q.status === \u0027scheduled\u0027 \u0026\u0026 \u003cspan className=\"px-3 py-1.5 bg-sky-100 text-sky-700 text-[9px] font-black uppercase tracking-widest rounded-lg shadow-xs\"\u003eScheduled\u003c/span\u003e}"
+    },
+    {
+        "Filename":  "GroomingManager.tsx",
+        "LineNumber":  568,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-amber-200\"\u003e"
+    },
+    {
+        "Filename":  "InventoryManager.tsx",
+        "LineNumber":  519,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh]\"\u003e"
+    },
+    {
+        "Filename":  "InventoryManager.tsx",
+        "LineNumber":  675,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full animate-scale-up overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "InventoryManager.tsx",
+        "LineNumber":  712,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col max-h-[90vh]\"\u003e"
+    },
+    {
+        "Filename":  "InvoicesManager.tsx",
+        "LineNumber":  289,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh] print:shadow-none print:border-none print:w-full print:max-w-none print:h-auto\"\u003e"
+    },
+    {
+        "Filename":  "LaboratoryManager.tsx",
+        "LineNumber":  415,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 p-6 max-w-2xl w-full flex flex-col shadow-2xl animate-scale-up max-h-[90vh]\"\u003e"
+    },
+    {
+        "Filename":  "MedicalRecordsManager.tsx",
+        "LineNumber":  986,
+        "Line":  "          \u003cdiv className=\"bg-slate-100 rounded-3xl border border-indigo-100/50 max-w-6xl w-full h-[85vh] shadow-2xl animate-scale-up flex overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  68,
+        "Line":  "              \u003ch4 className=\"text-base font-extrabold text-slate-800 flex items-center gap-2\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  74,
+        "Line":  "            \u003cspan className=\"px-2.5 py-0.5 bg-rose-100 text-rose-800 text-[10px] font-bold rounded-lg\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  88,
+        "Line":  "                  \u003cspan className=\"text-[9px] font-mono font-bold uppercase tracking-wider block opacity-70 mb-0.5\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  91,
+        "Line":  "                  \u003cp className=\"font-semibold leading-relaxed text-xs\"\u003e{alert.message}\u003c/p\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  92,
+        "Line":  "                  \u003cspan className=\"text-[9px] font-medium font-mono block mt-1.5 opacity-50\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  99,
+        "Line":  "                  className=\"absolute right-3 top-3.5 p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors\""
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  114,
+        "Line":  "        \u003cdiv className=\"p-3 bg-indigo-50 border border-indigo-100 text-indigo-950 font-medium rounded-xl flex gap-3 mt-4 items-start\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  128,
+        "Line":  "            \u003ch4 className=\"text-base font-extrabold text-slate-800 flex items-center gap-2\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  134,
+        "Line":  "          \u003cspan className=\"px-2.5 py-0.5 bg-sky-100 text-sky-850 text-[10px] font-bold rounded-lg font-mono\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  148,
+        "Line":  "                  \u003cspan className=\"px-2 py-0.5 bg-slate-100 text-slate-500 font-mono font-bold text-[9px] rounded uppercase\"\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  153,
+        "Line":  "                \u003cp className=\"text-slate-600 leading-relaxed font-medium\"\u003e{notif.message}\u003c/p\u003e"
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  169,
+        "Line":  "                    className=\"px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 text-[11px]\""
+    },
+    {
+        "Filename":  "NotificationsModal.tsx",
+        "LineNumber":  175,
+        "Line":  "                  \u003cspan className=\"px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-lg flex items-center gap-1\"\u003e"
+    },
+    {
+        "Filename":  "PatientPortal.tsx",
+        "LineNumber":  469,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "PhoneInput.tsx",
+        "LineNumber":  40,
+        "Line":  "        className=\"w-full pl-14 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-medium text-sm text-slate-700 placeholder-slate-400\""
+    },
+    {
+        "Filename":  "ShiftManager.tsx",
+        "LineNumber":  395,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  485,
+        "Line":  "              \u003ch2 className=\"text-lg font-extrabold text-slate-800 tracking-tight\"\u003eActive Roster\u003c/h2\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  498,
+        "Line":  "                      \u003cspan className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${p.employmentType === \u0027hourly\u0027 ? \u0027bg-amber-100 text-amber-700\u0027 : \u0027bg-indigo-100 text-indigo-700\u0027}`}\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  502,
+        "Line":  "                        \u003cspan className=\"px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  524,
+        "Line":  "                \u003cbutton onClick={() =\u003e setShowInactive(!showInactive)} className=\"flex items-center gap-2 text-sm font-extrabold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  536,
+        "Line":  "                          \u003cspan className=\"px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-slate-200 text-slate-500\"\u003eInactive\u003c/span\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  551,
+        "Line":  "                \u003cdiv className=\"text-sm font-extrabold text-slate-800\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  569,
+        "Line":  "                      \u003cdiv className=\"text-lg font-extrabold text-slate-800\"\u003e{date.getDate()} {date.toLocaleDateString(\u0027en-US\u0027, {month: \u0027short\u0027})}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  576,
+        "Line":  "                          \u003cbutton onClick={() =\u003e onDeleteScheduleEntry(shift.id)} className=\"absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/10\"\u003e\u003cX className=\"w-3 h-3\"/\u003e\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  577,
+        "Line":  "                          \u003cdiv className=\"font-extrabold text-xs\"\u003e{p?.fullName || \u0027Unknown\u0027}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  578,
+        "Line":  "                          \u003cdiv className=\"text-[9px] font-black uppercase tracking-widest opacity-80 mt-1\"\u003e{shift.role}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  594,
+        "Line":  "                \u003ch3 className=\"text-sm font-extrabold text-slate-800 flex items-center gap-2\"\u003e\u003cLink className=\"w-4 h-4 text-indigo-500\"/\u003e Connect Staff to System Logins\u003c/h3\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  605,
+        "Line":  "                        \u003cdiv className=\"font-extrabold text-slate-800\"\u003e{p.fullName}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  609,
+        "Line":  "                        \u003cselect value={selectedUserIds[p.id] || \u0027\u0027} onChange={(e) =\u003e setSelectedUserIds(prev =\u003e ({...prev, [p.id]: e.target.value}))} className=\"w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  615,
+        "Line":  "                        \u003cbutton onClick={() =\u003e handleLink(p)} className=\"px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer shadow-sm\"\u003eLink\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  626,
+        "Line":  "                \u003ch3 className=\"text-sm font-extrabold text-slate-800 flex items-center gap-2\"\u003e\u003cCheckCircle2 className=\"w-4 h-4 text-emerald-500\"/\u003e Linked Profiles\u003c/h3\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  637,
+        "Line":  "                        \u003ctd className=\"p-4 font-extrabold text-slate-800\"\u003e{p.fullName}\u003c/td\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  640,
+        "Line":  "                          \u003cbutton onClick={() =\u003e handleUnlink(p)} className=\"px-3 py-1.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer flex items-center gap-1 ml-auto\"\u003e\u003cUnlink className=\"w-3 h-3\"/\u003e Unlink\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  654,
+        "Line":  "                \u003ch2 className=\"text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2 mb-6\"\u003e\u003cClock className=\"w-5 h-5 text-indigo-500\"/\u003e Quick Clock Panel\u003c/h2\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  656,
+        "Line":  "                  \u003cselect value={clockSelectedStaff} onChange={e =\u003e setClockSelectedStaff(e.target.value)} className=\"w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  669,
+        "Line":  "                        \u003cp className=\"text-sm font-bold text-emerald-600 bg-emerald-50 py-2 rounded-lg border border-emerald-100\"\u003e{activeProfiles.find(p =\u003e p.id === clockSelectedStaff)?.fullName} is currently CLOCKED IN since {new Date(selectedStaffOpenEntry.clockIn).toLocaleTimeString([], {hour: \u00272-digit\u0027, minute:\u00272-digit\u0027})}\u003c/p\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  671,
+        "Line":  "                        \u003cp className=\"text-sm font-bold text-slate-500 bg-slate-50 py-2 rounded-lg border border-slate-200\"\u003e{activeProfiles.find(p =\u003e p.id === clockSelectedStaff)?.fullName} is not clocked in today.\u003c/p\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  681,
+        "Line":  "                \u003ch2 className=\"text-lg font-extrabold text-slate-800 tracking-tight mb-6\"\u003eManager Override — Edit / Add Entry\u003c/h2\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  686,
+        "Line":  "                      \u003cselect required value={manualClockData.staffId} onChange={e =\u003e setManualClockData({...manualClockData, staffId: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  693,
+        "Line":  "                      \u003cinput required type=\"date\" value={manualClockData.date} onChange={e =\u003e setManualClockData({...manualClockData, date: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  699,
+        "Line":  "                      \u003cinput required type=\"time\" value={manualClockData.clockIn} onChange={e =\u003e setManualClockData({...manualClockData, clockIn: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  703,
+        "Line":  "                      \u003cinput type=\"time\" value={manualClockData.clockOut} onChange={e =\u003e setManualClockData({...manualClockData, clockOut: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  708,
+        "Line":  "                    \u003cinput type=\"text\" value={manualClockData.notes} onChange={e =\u003e setManualClockData({...manualClockData, notes: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" placeholder=\"Reason for override...\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  719,
+        "Line":  "                \u003ch3 className=\"text-sm font-extrabold text-slate-800 flex items-center gap-2\"\u003eToday\u0027s Entries\u003c/h3\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  730,
+        "Line":  "                        \u003ctd className=\"p-4 font-extrabold text-slate-800\"\u003e{profile?.fullName || \u0027Unknown\u0027}\u003c/td\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  736,
+        "Line":  "                          \u003cspan className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${entry.source === \u0027manager\u0027 ? \u0027bg-amber-100 text-amber-700\u0027 : \u0027bg-slate-100 text-slate-500\u0027}`}\u003e{entry.source}\u003c/span\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  750,
+        "Line":  "              \u003ch2 className=\"text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2\"\u003e\u003cWallet className=\"w-5 h-5 text-indigo-500\"/\u003e Generate New Payslip\u003c/h2\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  754,
+        "Line":  "                \u003cselect data-testid=\"payslip-staff-select\" value={payslipStaffId} onChange={e =\u003e { setPayslipStaffId(e.target.value); setPayslipCalculated(null); }} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  763,
+        "Line":  "                  \u003cinput data-testid=\"payslip-period-start\" type=\"date\" value={payslipPeriodStart} onChange={e =\u003e setPayslipPeriodStart(e.target.value)} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  767,
+        "Line":  "                  \u003cinput data-testid=\"payslip-period-end\" type=\"date\" value={payslipPeriodEnd} onChange={e =\u003e setPayslipPeriodEnd(e.target.value)} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  784,
+        "Line":  "                            \u003cdiv key={t.id} className=\"flex justify-between text-xs font-mono bg-white p-2 rounded-lg border border-slate-100\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  815,
+        "Line":  "                    \u003cbutton data-testid=\"payslip-add-deduction-btn\" onClick={() =\u003e setPayslipDeductions(prev =\u003e [...prev, { label: \u0027\u0027, amountRs: \u0027\u0027 }])} className=\"px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer flex items-center gap-1\"\u003e\u003cPlus className=\"w-3 h-3\"/\u003e Add Deduction\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  819,
+        "Line":  "                      \u003cinput data-testid={`payslip-deduction-label-${i}`} type=\"text\" value={d.label} onChange={e =\u003e setPayslipDeductions(prev =\u003e prev.map((x, idx) =\u003e idx === i ? { ...x, label: e.target.value } : x))} placeholder=\"Label (e.g. Advance)\" className=\"flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  820,
+        "Line":  "                      \u003cinput data-testid={`payslip-deduction-amount-${i}`} type=\"number\" step=\"0.01\" min=\"0\" value={d.amountRs} onChange={e =\u003e setPayslipDeductions(prev =\u003e prev.map((x, idx) =\u003e idx === i ? { ...x, amountRs: e.target.value } : x))} placeholder=\"Rs.\" className=\"w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  821,
+        "Line":  "                      \u003cbutton onClick={() =\u003e setPayslipDeductions(prev =\u003e prev.filter((_, idx) =\u003e idx !== i))} className=\"p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer\"\u003e\u003cX className=\"w-4 h-4\"/\u003e\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  838,
+        "Line":  "                \u003ch3 className=\"text-sm font-extrabold text-slate-800 flex items-center gap-2\"\u003e\u003cFileText className=\"w-4 h-4 text-indigo-500\"/\u003e Payslip History\u003c/h3\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  848,
+        "Line":  "                        \u003cdiv className=\"font-extrabold text-slate-800 truncate\"\u003e{staff?.fullName || \u0027Unknown Staff\u0027}\u003c/div\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  853,
+        "Line":  "                        \u003cspan data-testid={`payslip-status-${p.id}`} className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeCls}`}\u003e{p.status}\u003c/span\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  856,
+        "Line":  "                            \u003cbutton data-testid={`payslip-finalize-${p.id}`} onClick={() =\u003e handleUpdatePayslipStatus(p, \u0027finalized\u0027)} className=\"px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer\"\u003eFinalize\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  859,
+        "Line":  "                            \u003cbutton data-testid={`payslip-mark-paid-${p.id}`} onClick={() =\u003e handleUpdatePayslipStatus(p, \u0027paid\u0027)} className=\"px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer\"\u003eMark Paid\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  862,
+        "Line":  "                            \u003cbutton data-testid={`payslip-download-${p.id}`} onClick={() =\u003e staff \u0026\u0026 generatePayslipPDF(p, staff)} className=\"px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[9px] font-black uppercase tracking-widest rounded-lg transition-colors cursor-pointer\"\u003eDownload PDF\u003c/button\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  879,
+        "Line":  "              \u003ch3 className=\"font-extrabold text-slate-800\"\u003e{isEditing ? \u0027Edit Staff Profile\u0027 : \u0027New Staff Profile\u0027}\u003c/h3\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  885,
+        "Line":  "                \u003cinput required type=\"text\" value={formData.fullName || \u0027\u0027} onChange={e =\u003e setFormData({...formData, fullName: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  890,
+        "Line":  "                  \u003cinput type=\"text\" value={formData.position || \u0027\u0027} onChange={e =\u003e setFormData({...formData, position: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  894,
+        "Line":  "                  \u003cinput type=\"text\" value={formData.department || \u0027\u0027} onChange={e =\u003e setFormData({...formData, department: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  900,
+        "Line":  "                  \u003cselect value={formData.employmentType || \u0027hourly\u0027} onChange={e =\u003e setFormData({...formData, employmentType: e.target.value as any})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  907,
+        "Line":  "                  \u003cinput type=\"date\" value={formData.hireDate || \u0027\u0027} onChange={e =\u003e setFormData({...formData, hireDate: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  914,
+        "Line":  "                  \u003cinput type=\"number\" step=\"0.01\" min=\"0\" value={formData.hourlyRate || \u0027\u0027} onChange={e =\u003e setFormData({...formData, hourlyRate: e.target.value ? Number(e.target.value) : undefined})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  920,
+        "Line":  "                  \u003cinput type=\"number\" step=\"0.01\" min=\"0\" value={formData.monthlySalary || \u0027\u0027} onChange={e =\u003e setFormData({...formData, monthlySalary: e.target.value ? Number(e.target.value) : undefined})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  943,
+        "Line":  "              \u003ch3 className=\"font-extrabold text-slate-800\"\u003eAdd Shift\u003c/h3\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  949,
+        "Line":  "                \u003cselect required value={scheduleData.staffId} onChange={e =\u003e setScheduleData({...scheduleData, staffId: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\"\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  957,
+        "Line":  "                  \u003cinput required type=\"date\" value={scheduleData.date} onChange={e =\u003e setScheduleData({...scheduleData, date: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  961,
+        "Line":  "                  \u003cinput required type=\"text\" list=\"roles-list\" value={scheduleData.role} onChange={e =\u003e setScheduleData({...scheduleData, role: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" placeholder=\"e.g. Vet on Call\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  974,
+        "Line":  "                  \u003cinput required type=\"time\" value={scheduleData.startTime} onChange={e =\u003e setScheduleData({...scheduleData, startTime: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  978,
+        "Line":  "                  \u003cinput required type=\"time\" value={scheduleData.endTime} onChange={e =\u003e setScheduleData({...scheduleData, endTime: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono\" /\u003e"
+    },
+    {
+        "Filename":  "StaffManager.tsx",
+        "LineNumber":  983,
+        "Line":  "                \u003cinput type=\"text\" value={scheduleData.notes} onChange={e =\u003e setScheduleData({...scheduleData, notes: e.target.value})} className=\"w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500\" /\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  489,
+        "Line":  "                       \u003cspan className=\"text-[9px] font-black uppercase tracking-widest text-slate-400\"\u003eTerminal Access Key\u003c/span\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  492,
+        "Line":  "                      \u003cbutton onClick={() =\u003e onRemoveUser(u.id)} className=\"absolute top-2 right-2 p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 rounded-lg transition-colors cursor-pointer opacity-0 group-hover:opacity-100\" title=\"Revoke Access\"\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  548,
+        "Line":  "                      \u003cspan className=\"text-[9px] font-bold text-slate-400 uppercase tracking-widest\"\u003eEmpty CSV Format\u003c/span\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  554,
+        "Line":  "                      \u003cspan className=\"text-[9px] font-bold text-slate-400 uppercase tracking-widest\"\u003eBackup Live DB Stock\u003c/span\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  561,
+        "Line":  "                      \u003cspan className=\"text-[9px] font-bold text-slate-400 uppercase tracking-widest\"\u003eStage for Import\u003c/span\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  769,
+        "Line":  "                    \u003cp className=\"text-[10px] font-medium text-slate-400 mt-1\"\u003eFlat deposit collected at every intake, regardless of estimated stay. All charges run against this at discharge.\u003c/p\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  782,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[90vh]\"\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  802,
+        "Line":  "                        \u003cth className=\"px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest\"\u003eStatus\u003c/th\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  803,
+        "Line":  "                        \u003cth className=\"px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest\"\u003eSKU\u003c/th\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  804,
+        "Line":  "                        \u003cth className=\"px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest\"\u003eName\u003c/th\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  805,
+        "Line":  "                        \u003cth className=\"px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest\"\u003eCategory\u003c/th\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  806,
+        "Line":  "                        \u003cth className=\"px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right\"\u003eStock/Min\u003c/th\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  807,
+        "Line":  "                        \u003cth className=\"px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right\"\u003eCost/Price\u003c/th\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  818,
+        "Line":  "                          \u003ctd className=\"px-4 py-2 text-[9px] uppercase tracking-wider font-bold text-indigo-600\"\u003e{row.category}\u003c/td\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  848,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full animate-scale-up overflow-hidden flex flex-col\"\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  854,
+        "Line":  "              \u003cbutton onClick={() =\u003e setShowAddStaff(false)} className=\"p-1.5 hover:bg-slate-200 text-slate-400 rounded-lg transition-colors cursor-pointer\"\u003e\u003cX className=\"w-5 h-5\"/\u003e\u003c/button\u003e"
+    },
+    {
+        "Filename":  "Toast.tsx",
+        "LineNumber":  70,
+        "Line":  "              \u003cspan className=\"font-semibold text-[15px] text-slate-100 block mb-0.5\"\u003e"
+    },
+    {
+        "Filename":  "Toast.tsx",
+        "LineNumber":  76,
+        "Line":  "              \u003cspan className=\"font-medium text-[13px] text-slate-300 leading-snug\"\u003e{toast.message}\u003c/span\u003e"
+    },
+    {
+        "Filename":  "Modal.tsx",
+        "LineNumber":  32,
+        "Line":  "        className={`bg-white rounded-3xl max-w-md w-full shadow-2xl animate-scale-up flex flex-col overflow-hidden ${className}`}"
+    },
+    {
+        "Filename":  "Modal.tsx",
+        "LineNumber":  40,
+        "Line":  "              className=\"p-1.5 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer transition-colors\""
+    }
+]

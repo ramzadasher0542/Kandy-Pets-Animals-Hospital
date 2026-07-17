@@ -1,0 +1,127 @@
+﻿[
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1315,
+        "Line":  "        \u003cdiv className=\"max-w-md w-full bg-slate-800 border border-rose-500/50 p-8 rounded-3xl shadow-2xl space-y-6\"\u003e"
+    },
+    {
+        "Filename":  "App.tsx",
+        "LineNumber":  1355,
+        "Line":  "            \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 overflow-hidden shadow-2xl animate-fade-in text-xs\"\u003e"
+    },
+    {
+        "Filename":  "AppointmentsManager.tsx",
+        "LineNumber":  1213,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-3xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]\"\u003e"
+    },
+    {
+        "Filename":  "AppointmentsManager.tsx",
+        "LineNumber":  1460,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border-2 border-rose-200\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  687,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-6 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  712,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  780,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "BoardingManager.tsx",
+        "LineNumber":  813,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl animate-scale-up\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  967,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-2xl w-full text-[10px] shadow-2xl animate-scale-up flex flex-col overflow-hidden max-h-[calc(100vh-40px)]\"\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  1075,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  1142,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "CustomersManager.tsx",
+        "LineNumber":  1201,
+        "Line":  "              \u003cdiv className=\"bg-white rounded-3xl border border-rose-100 max-w-md w-full shadow-2xl animate-scale-up flex flex-col overflow-hidden\" onClick={e =\u003e e.stopPropagation()}\u003e"
+    },
+    {
+        "Filename":  "GroomingManager.tsx",
+        "LineNumber":  568,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-amber-200\"\u003e"
+    },
+    {
+        "Filename":  "InventoryManager.tsx",
+        "LineNumber":  519,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh]\"\u003e"
+    },
+    {
+        "Filename":  "InventoryManager.tsx",
+        "LineNumber":  675,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full animate-scale-up overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "InventoryManager.tsx",
+        "LineNumber":  712,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col max-h-[90vh]\"\u003e"
+    },
+    {
+        "Filename":  "InvoicesManager.tsx",
+        "LineNumber":  289,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full animate-scale-up flex flex-col overflow-hidden max-h-[95vh] print:shadow-none print:border-none print:w-full print:max-w-none print:h-auto\"\u003e"
+    },
+    {
+        "Filename":  "LaboratoryManager.tsx",
+        "LineNumber":  415,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 p-6 max-w-2xl w-full flex flex-col shadow-2xl animate-scale-up max-h-[90vh]\"\u003e"
+    },
+    {
+        "Filename":  "MedicalRecordsManager.tsx",
+        "LineNumber":  986,
+        "Line":  "          \u003cdiv className=\"bg-slate-100 rounded-3xl border border-indigo-100/50 max-w-6xl w-full h-[85vh] shadow-2xl animate-scale-up flex overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "PatientPortal.tsx",
+        "LineNumber":  469,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-sky-100 max-w-lg w-full text-xs shadow-xl animate-fade-in flex flex-col overflow-hidden\"\u003e"
+    },
+    {
+        "Filename":  "ShiftManager.tsx",
+        "LineNumber":  395,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-up\"\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  782,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full animate-scale-up flex flex-col overflow-hidden max-h-[90vh]\"\u003e"
+    },
+    {
+        "Filename":  "SystemSettings.tsx",
+        "LineNumber":  848,
+        "Line":  "          \u003cdiv className=\"bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full animate-scale-up overflow-hidden flex flex-col\"\u003e"
+    },
+    {
+        "Filename":  "Modal.tsx",
+        "LineNumber":  32,
+        "Line":  "        className={`bg-white rounded-3xl max-w-md w-full shadow-2xl animate-scale-up flex flex-col overflow-hidden ${className}`}"
+    },
+    {
+        "Filename":  "Modal.tsx",
+        "LineNumber":  40,
+        "Line":  "              className=\"p-1.5 hover:bg-slate-100 text-slate-400 rounded-lg cursor-pointer transition-colors\""
+    }
+]
