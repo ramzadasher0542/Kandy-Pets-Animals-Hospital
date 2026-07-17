@@ -39,22 +39,6 @@ const { chromium } = require('playwright');
       return !!document.querySelector('#login-username') || !!document.querySelector('aside');
     }, { timeout: 10000 });
 
-    // Inject active shift to bypass POS gate perfectly
-    await page.evaluate(async () => {
-      const shift = {
-        id: 'test-shift-1',
-        startTime: new Date().toISOString(),
-        openedBy: 'ashpoint_owner',
-        status: 'open',
-        isOpen: true,
-        opening_float: 0
-      };
-      if (window._db && window._db.shifts) {
-         await window._db.shifts.setItem('test-shift-1', shift);
-         await window._db.system.setItem('active_shift', shift);
-      }
-      localStorage.setItem('ceylon_active_shift_id', 'test-shift-1');
-    });
 
     // 1. Log in as admin
     const bodyText = await page.evaluate(() => document.body.innerText);
@@ -97,7 +81,8 @@ const { chromium } = require('playwright');
     console.log(`Added ${itemName}`);
 
     // 4. Receive Batch A
-    await page.locator(`tr:has-text("${itemName}")`).first().locator('button[title="Receive Stock"]').click({ force: true });
+    await page.waitForSelector(`tr:has-text("${itemName}")`, { timeout: 10000 });
+    await page.locator(`tr:has-text("${itemName}")`).first().locator('button[title="Receive Stock"]').click();
     await page.waitForSelector('#receiveStockForm input');
     await page.locator('#receiveStockForm input[type="text"]').nth(1).fill('OLD-LOT');
     await page.locator('#receiveStockForm input[type="date"]').fill('2024-01-01');
@@ -109,7 +94,7 @@ const { chromium } = require('playwright');
     console.log('Received Batch A');
 
     // 5. Receive Batch B
-    await page.locator(`tr:has-text("${itemName}")`).first().locator('button[title="Receive Stock"]').click({ force: true });
+    await page.locator(`tr:has-text("${itemName}")`).first().locator('button[title="Receive Stock"]').click();
     await page.waitForSelector('#receiveStockForm input');
     await page.locator('#receiveStockForm input[type="text"]').nth(1).fill('NEW-LOT');
     await page.locator('#receiveStockForm input[type="date"]').fill('2025-01-01');
@@ -131,11 +116,24 @@ const { chromium } = require('playwright');
        console.log('Shift gate detected. Bypassing...');
        await shiftGateBtn.click();
        await page.waitForTimeout(1000);
+       
+       // Fill the starting float input
+       await page.fill('input[placeholder="0.00"]', '100');
+       await page.waitForTimeout(500);
+
+       // Click the Open Register button
        await page.click('button:has-text("Open Register")');
        await page.waitForTimeout(2000); // wait for state to propagate
-       const posLink2 = await page.$('[data-testid="nav-pos"]');
-       if (posLink2) await posLink2.click();
+       
+       // Click POS link again to return to POS
+       await page.click('[data-testid="nav-pos"]');
        await page.waitForTimeout(2000);
+       
+       // Check if gate is gone
+       const stillThere = await page.$('[data-testid="btn-open-shift-from-pos"]');
+       if (stillThere) {
+           throw new Error('Shift gate is STILL there! App state failed to update.');
+       }
     }
 
     // 7. Add item to cart, quantity 5
