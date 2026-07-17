@@ -296,14 +296,17 @@ export class SyncEngine {
 
     if (dirtyRecords.length === 0) return 0;
 
-    // Strip _dirty before sending and map feedingPlan to feeding_plan for boarding_records
+    // Strip _dirty before sending. No field-name transformation: every column is
+    // quoted camelCase matching the TypeScript interfaces exactly.
+    //
+    // AUTH-7: the old `feedingPlan -> feeding_plan` special case is gone. It was
+    // patching ONE of ten snake_case columns that had been ALTERed in against the
+    // schema's camelCase contract; the other nine had no mapping, so boarding and
+    // grooming pushes failed silently forever. The live columns were renamed to
+    // camelCase, so the hack is now dead code — and would actively break pushes.
     const payload = dirtyRecords.map(({ record }) => {
-      let clean: any = { ...record };
+      const clean: any = { ...record };
       delete clean._dirty;
-      if (mapping.table === 'boarding_records' && clean.feedingPlan !== undefined) {
-        const { feedingPlan, ...rest } = clean;
-        clean = { ...rest, feeding_plan: feedingPlan };
-      }
       return clean;
     });
 
