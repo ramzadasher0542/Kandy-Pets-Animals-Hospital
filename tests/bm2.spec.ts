@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test.describe('BM-2 — Boarding food from inventory', () => {
   test.setTimeout(90_000);

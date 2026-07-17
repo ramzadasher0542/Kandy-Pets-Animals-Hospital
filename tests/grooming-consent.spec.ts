@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test('Verify Grooming Consent and Instructions', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });

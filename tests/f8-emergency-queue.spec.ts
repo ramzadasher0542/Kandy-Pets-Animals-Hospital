@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 async function login(page: any) {
   const pin = page.getByTestId('input-pin');

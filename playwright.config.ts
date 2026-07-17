@@ -19,10 +19,21 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* FIX-1: The app persists to a SINGLE fixed-name IndexedDB that Playwright
+   * does not partition per test/context. Parallel workers would clear and write
+   * into each other's store mid-run, so tests must run serially. Combined with
+   * the per-test isolation in tests/fixtures.ts (store wipe + Supabase network
+   * cutoff), a single worker makes every run start from a clean, isolated store
+   * and makes a green run trustworthy. */
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
+  /* FIX-1: Give web-first assertions a little more headroom. Under full-suite
+   * serial load the Vite dev server + React re-hydration after a reload can push
+   * a legitimate render past the 5s default, causing load-sensitive flakes (e.g.
+   * the prescriptions persistence re-check). 10s never turns a real failure green
+   * — an assertion that never becomes true still fails, just later. */
+  expect: { timeout: 10_000 },
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */

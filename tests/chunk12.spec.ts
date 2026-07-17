@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test.describe('Chunk 12 - Deterministic IDs', () => {
   test('Creates deterministic client and pet IDs, and updates on conflict', async ({ page }) => {
