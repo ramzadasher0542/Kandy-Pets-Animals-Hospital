@@ -95,7 +95,7 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Printer, Lock,
-  ChevronLeft, PenTool, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff
+  ChevronLeft, PenTool, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle
 } from 'lucide-react';
 
 import {
@@ -564,6 +564,7 @@ function App() {
   const [viewPayload, setViewPayload] = useState<any>(null);
   const [historyStack, setHistoryStack] = useState<string[]>(['dashboard']);
   const [consentPayload, setConsentPayload] = useState<{ clientName: string, petName: string } | null>(null);
+  const [idleMessage, setIdleMessage] = useState<string | null>(null);
 
   const [enteredPin, setEnteredPin] = useState('');
   const [selectedUsername, setSelectedUsername] = useState('');
@@ -571,6 +572,43 @@ function App() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
+
+  // AUTH-8: Idle timeout tracking
+  useEffect(() => {
+    if (!currentUser || !systemConfig.idleLogoutMinutes || systemConfig.idleLogoutMinutes <= 0) return;
+    
+    let timeoutId: ReturnType<typeof setTimeout>;
+    
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setCurrentUser(null);
+        setIdleMessage("Logged out due to inactivity");
+      }, systemConfig.idleLogoutMinutes * 60 * 1000);
+    };
+
+    // Throttle the event listeners so they don't fire continuously
+    let isThrottled = false;
+    const handleActivity = () => {
+      if (isThrottled) return;
+      isThrottled = true;
+      resetTimer();
+      setTimeout(() => { isThrottled = false; }, 1000);
+    };
+
+    resetTimer();
+
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleActivity, { passive: true });
+    window.addEventListener('click', handleActivity, { passive: true });
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+    };
+  }, [currentUser, systemConfig.idleLogoutMinutes]);
 
   // AUTH-4: push the admin-edited access matrix into requireAuth whenever config
   // loads or changes. Absent overrides fall back to ACTION_POLICIES defaults.
@@ -1644,6 +1682,12 @@ function App() {
 
               <div className="p-8 flex flex-col justify-between space-y-6 font-sans">
                 <div className="space-y-4">
+                  {idleMessage && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-xl text-xs font-bold animate-fade-in flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      {idleMessage}
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-lg font-black text-slate-800">Secure Clinician Sign-In</h3>
                     <p className="text-slate-400 mt-1">{isPasswordAccount ? 'Enter your administrator password to access the terminal.' : 'Select your account and enter your secure 4-digit PIN to access the terminal.'}</p>
@@ -1749,7 +1793,9 @@ function App() {
               </div>
               <div className="p-3 border-t border-gray-200 bg-gray-50/50 space-y-1">
                 {isViewPermitted('settings', currentUser) && (
-                  <button onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
+                  <button
+                    data-testid="nav-settings"
+                    onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -1760,11 +1806,34 @@ function App() {
                   </button>
                 )}
                 <button
-                  onClick={() => setCurrentUser(null)}
+                  onClick={() => {
+                    setCurrentUser(null);
+                    setSelectedUsername('');
+                    setEnteredPin('');
+                    setIdleMessage(null);
+                    setActiveView('pos');
+                    setViewPayload(null);
+                    setHistoryStack(['dashboard']);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <Users className="w-5 h-5 text-slate-400" />
+                  Switch User
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentUser(null);
+                    setSelectedUsername('');
+                    setEnteredPin('');
+                    setIdleMessage(null);
+                    setActiveView('pos');
+                    setViewPayload(null);
+                    setHistoryStack(['dashboard']);
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
                 >
                   <LogOut className="w-5 h-5 text-rose-500" />
-                  Lock/Logout
+                  Sign Out
                 </button>
               </div>
             </aside>

@@ -63,6 +63,7 @@ export interface SystemConfig {
   };
   defaultDepositCents?: number;
   dummyAdminPin?: string;
+  idleLogoutMinutes?: number;
 }
 
 interface SettingsProps {
@@ -587,6 +588,36 @@ export default function SystemSettings({
                 <button onClick={() => setShowAddStaff(true)} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-sm text-[10px] uppercase tracking-widest flex items-center gap-2 transition-colors cursor-pointer">
                   <Plus className="w-4 h-4" /> Issue ID Card
                 </button>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+                <div className="mb-3">
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Lock className="w-4 h-4 text-sky-500" /> Session Security</h3>
+                  <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Automatic logout due to terminal inactivity</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 max-w-[200px]">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Idle Timeout (Minutes)</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      disabled={localConfig.idleLogoutMinutes === undefined}
+                      value={localConfig.idleLogoutMinutes || ''}
+                      onChange={e => updateConfig('idleLogoutMinutes', parseInt(e.target.value) || 15)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed" 
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 mt-4">
+                    <input 
+                      type="checkbox" 
+                      id="neverLogout"
+                      checked={localConfig.idleLogoutMinutes === undefined || localConfig.idleLogoutMinutes === 0}
+                      onChange={e => updateConfig('idleLogoutMinutes', e.target.checked ? undefined : 15)}
+                      className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                    />
+                    <label htmlFor="neverLogout" className="text-xs font-bold text-slate-700 cursor-pointer">Never (Stay logged in)</label>
+                  </div>
+                </div>
               </div>
 
               {/* AUTH-4: Access matrix — provider/admin only */}
