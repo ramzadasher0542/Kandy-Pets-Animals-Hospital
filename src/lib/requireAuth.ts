@@ -30,7 +30,12 @@ export type AuthAction =
   | 'system_restore'
   | 'delete_client_or_pet'
   | 'wipe_cloud_database'
-  | 'erase_local_database';
+  | 'erase_local_database'
+  | 'change_password'
+  | 'manage_staff_logins';
+
+/** Every role the access matrix can toggle. 'admin' is shown but never editable. */
+export const ALL_ACTION_ROLES: ActionRole[] = ['cashier', 'veterinarian', 'manager', 'owner', 'admin'];
 
 export interface ActionPolicy {
   /** Used verbatim in the prompt: "…to void an invoice". */
@@ -54,7 +59,29 @@ export const ACTION_POLICIES: Record<AuthAction, ActionPolicy> = {
   delete_client_or_pet:  { description: 'delete a client or pet',              allowedRoles: ['owner', 'manager'] },
   wipe_cloud_database:   { description: 'wipe the cloud database',             allowedRoles: [] },
   erase_local_database:  { description: 'erase the local database',            allowedRoles: [] },
+  change_password:       { description: 'change an account password',          allowedRoles: ['owner', 'manager'] },
+  manage_staff_logins:   { description: 'manage staff logins',                 allowedRoles: ['owner'] },
 };
+
+// ---------------------------------------------------------------------------
+// Runtime overrides (AUTH-4)
+// ---------------------------------------------------------------------------
+// ACTION_POLICIES above stays the DEFAULT. The admin-editable access matrix
+// persists overrides in systemConfig.actionPolicies; App pushes them here on
+// load/change. Enforcement semantics are unchanged — only where the allow-list
+// is READ from. An action with no override falls back to its default.
+
+let policyOverrides: Partial<Record<AuthAction, ActionRole[]>> = {};
+
+export function setPolicyOverrides(overrides: Partial<Record<AuthAction, ActionRole[]>> | undefined): void {
+  policyOverrides = overrides ? { ...overrides } : {};
+}
+
+/** The allow-list actually in force for this action right now. */
+export function getEffectiveRoles(action: AuthAction): ActionRole[] {
+  const override = policyOverrides[action];
+  return override ?? ACTION_POLICIES[action].allowedRoles;
+}
 
 export interface AuthResult {
   allowed: boolean;
@@ -71,14 +98,59 @@ export interface AuthResult {
  * isViewPermitted. Actions with an empty allowedRoles list are admin-ONLY.
  */
 export function isRoleAllowed(role: string | undefined, action: AuthAction): boolean {
-  if (role === 'admin') return true;
+  if (ROOT_ROLES.includes(role as any)) return true;
   if (!role) return false;
-  return ACTION_POLICIES[action].allowedRoles.includes(role as ActionRole);
+  return getEffectiveRoles(action).includes(role as ActionRole);
 }
 
 /** Everyone who could authorize this action — used to word the override prompt. */
 export function authorizedRolesFor(action: AuthAction): string[] {
-  return [...ACTION_POLICIES[action].allowedRoles, 'admin'];
+  return Array.from(new Set([...getEffectiveRoles(action), 'admin']));
+}
+
+// ---------------------------------------------------------------------------
+// AUTH-6 — Provider tier (identity, not permission)
+// ---------------------------------------------------------------------------
+// 'provider' is the vendor's root account and sits ABOVE 'admin'. Both are
+// universally permitted for ACTIONS, so ROOT_ROLES drives isRoleAllowed.
+//
+// Settings VISIBILITY is a separate question and deliberately NOT part of the
+// access matrix: "who is the provider" is an identity fact, not a role
+// permission someone can be granted. So these are constants, not config —
+// otherwise an admin could edit the matrix to hand themselves vendor surfaces.
+
+export const ROOT_ROLES = ['admin', 'provider'] as const;
+
+export type SettingsTab = 'profile' | 'pos' | 'staff' | 'database' | 'rates';
+
+/** Vendor-only Settings surfaces (licensing / secret rotation / db-level config). */
+export const PROVIDER_ONLY_TABS: SettingsTab[] = ['database'];
+
+export function isProviderOnlyTab(tab: SettingsTab): boolean {
+  return PROVIDER_ONLY_TABS.includes(tab);
+}
+
+/** Only 'provider' may see provider-only tabs — admin is explicitly below it. */
+export function canViewSettingsTab(role: string | undefined, tab: SettingsTab): boolean {
+  if (!isProviderOnlyTab(tab)) return true;
+  return role === 'provider';
+}
+
+/**
+ * Actions whose ONLY trigger UI lives inside a provider-only Settings tab.
+ * These are identity-scoped, not role-grantable: showing them as togglable rows
+ * would let an admin "grant owner erase_local_database" — a control that could
+ * never fire, because owner cannot reach the surface that triggers it. The
+ * matrix hides them; enforcement is unchanged (allowedRoles: [] => root only).
+ */
+export const PROVIDER_ONLY_ACTIONS: AuthAction[] = [
+  'system_restore',
+  'wipe_cloud_database',
+  'erase_local_database',
+];
+
+export function isProviderOnlyAction(action: AuthAction): boolean {
+  return PROVIDER_ONLY_ACTIONS.includes(action);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +211,7 @@ export async function requireAuth(currentUser: User | null, action: AuthAction):
   const policy = ACTION_POLICIES[action];
   const denied: AuthResult = { allowed: false, isOverride: false };
 
-  if (!currentUser) return denied;
+  if (!currentUser || currentUser.active === false) return denied;
   if (!promptFn || !checkFn) {
     console.error('[requireAuth] Auth bridge not registered — denying by default.');
     return denied;

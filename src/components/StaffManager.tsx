@@ -9,6 +9,8 @@ import autoTable from 'jspdf-autotable';
 import { stampRecord } from '../lib/localDb';
 import { createPortal } from 'react-dom';
 import PageShell from './ui/PageShell';
+import { requireAuth } from '../lib/requireAuth';
+import { hashCredential } from '../lib/credentials';
 
 interface StaffManagerProps {
   staffProfiles: StaffProfile[];
@@ -23,9 +25,10 @@ interface StaffManagerProps {
   onSaveProfile: (p: StaffProfile) => Promise<void>;
   onDeactivateProfile: (id: string) => Promise<void>;
   onSavePayslip: (p: Payslip) => Promise<void>;
+  onSaveUser?: (u: User) => Promise<void>;
 }
 
-export default function StaffManager({ staffProfiles, users, currentUser, timeEntries, scheduleEntries, payslips, onSaveTimeEntry, onSaveScheduleEntry, onDeleteScheduleEntry, onSaveProfile, onDeactivateProfile, onSavePayslip }: StaffManagerProps) {
+export default function StaffManager({ staffProfiles, users, currentUser, timeEntries, scheduleEntries, payslips, onSaveTimeEntry, onSaveScheduleEntry, onDeleteScheduleEntry, onSaveProfile, onDeactivateProfile, onSavePayslip, onSaveUser }: StaffManagerProps) {
   const [activeTab, setActiveTab] = useState<'roster' | 'link' | 'clock' | 'schedule' | 'payslips'>('roster');
   
   // Roster Tab State
@@ -39,6 +42,99 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
 
   const linkedProfiles = staffProfiles.filter(p => p.userId);
   const unlinkedProfiles = staffProfiles.filter(p => !p.userId && p.active);
+
+  const [loginModalState, setLoginModalState] = useState<{ type: 'create' | 'reset', profileId: string } | null>(null);
+  const [loginFormData, setLoginFormData] = useState({ username: '', role: 'cashier', pin: '' });
+
+  const handleOpenCreateLogin = async (profile: StaffProfile) => {
+    const auth = await requireAuth(currentUser, 'manage_staff_logins');
+    if (!auth.allowed) return;
+    setLoginFormData({ username: '', role: 'cashier', pin: '' });
+    setLoginModalState({ type: 'create', profileId: profile.id });
+  };
+
+  const handleOpenResetPin = async (profile: StaffProfile) => {
+    const auth = await requireAuth(currentUser, 'manage_staff_logins');
+    if (!auth.allowed) return;
+    const user = users.find(u => u.id === profile.userId);
+    setLoginFormData({ username: '', role: user?.role || 'cashier', pin: '' });
+    setLoginModalState({ type: 'reset', profileId: profile.id });
+  };
+
+  const handleDeactivateLogin = async (profile: StaffProfile) => {
+    const auth = await requireAuth(currentUser, 'manage_staff_logins');
+    if (!auth.allowed) return;
+    const user = users.find(u => u.id === profile.userId);
+    if (!user) return showToast('User not found', 'error');
+    if (!onSaveUser) return showToast('User saving not configured', 'error');
+    try {
+      await onSaveUser({ ...user, active: false });
+      showToast('Login deactivated', 'success');
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  const handleEnableLogin = async (profile: StaffProfile) => {
+    const auth = await requireAuth(currentUser, 'manage_staff_logins');
+    if (!auth.allowed) return;
+    const user = users.find(u => u.id === profile.userId);
+    if (!user) return showToast('User not found', 'error');
+    if (!onSaveUser) return showToast('User saving not configured', 'error');
+    try {
+      await onSaveUser({ ...user, active: true });
+      showToast('Login enabled', 'success');
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  const handleSaveLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginModalState) return;
+    
+    if (loginFormData.pin.length !== 4) return showToast('PIN must be 4 digits', 'error');
+    if (!onSaveUser) return showToast('User saving not configured', 'error');
+
+    const profile = staffProfiles.find(p => p.id === loginModalState.profileId);
+    if (!profile) return;
+
+    if (loginModalState.type === 'create') {
+      if (!loginFormData.username) return showToast('Username required', 'error');
+      if (users.some(u => u.username.toLowerCase() === loginFormData.username.toLowerCase())) {
+        return showToast('Username already taken', 'error');
+      }
+      try {
+        const hashedPin = await hashCredential(loginFormData.pin);
+        const newUser: User = {
+          id: crypto.randomUUID(),
+          name: profile.fullName,
+          username: loginFormData.username,
+          role: loginFormData.role as any,
+          avatarColor: 'bg-indigo-500',
+          pin: hashedPin,
+          active: true
+        };
+        await onSaveUser(newUser);
+        await onSaveProfile(stampRecord({ ...profile, userId: newUser.id }) as StaffProfile);
+        showToast('Login created successfully', 'success');
+        setLoginModalState(null);
+      } catch (e: any) {
+        showToast(`Error: ${e.message}`, 'error');
+      }
+    } else {
+      const user = users.find(u => u.id === profile.userId);
+      if (!user) return showToast('User not found', 'error');
+      try {
+        const hashedPin = await hashCredential(loginFormData.pin);
+        await onSaveUser({ ...user, pin: hashedPin, active: true });
+        showToast('PIN reset successfully', 'success');
+        setLoginModalState(null);
+      } catch (e: any) {
+        showToast(`Error: ${e.message}`, 'error');
+      }
+    }
+  };
 
   // Link Tab state
   const [selectedUserIds, setSelectedUserIds] = useState<Record<string, string>>({}); // profileId -> userId
@@ -513,9 +609,17 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                       )}
                     </div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-2">
                     <div className="text-[10px] font-bold text-slate-400 font-mono">Hired: {p.hireDate || 'N/A'}</div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap">
+                      {!p.userId && <button onClick={() => handleOpenCreateLogin(p)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer">Create Login</button>}
+                      {p.userId && <button onClick={() => handleOpenResetPin(p)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer">Reset PIN</button>}
+                      {p.userId && (users.find(u => u.id === p.userId)?.active === false ? (
+                        <button onClick={() => handleEnableLogin(p)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors cursor-pointer">Enable Login</button>
+                      ) : (
+                        <button onClick={() => handleDeactivateLogin(p)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer">Disable Login</button>
+                      ))}
+                      <div className="flex-1"></div>
                       <button onClick={() => openEdit(p)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer" title="Edit Profile"><Edit className="w-4 h-4"/></button>
                       <button onClick={() => onDeactivateProfile(p.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer" title="Deactivate"><Trash2 className="w-4 h-4"/></button>
                     </div>
@@ -984,6 +1088,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Start Time *</label>
                   <input required type="time" value={scheduleData.startTime} onChange={e => setScheduleData({...scheduleData, startTime: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
+
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">End Time *</label>
                   <input required type="time" value={scheduleData.endTime} onChange={e => setScheduleData({...scheduleData, endTime: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
@@ -993,7 +1098,6 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Notes (Optional)</label>
                 <input type="text" value={scheduleData.notes} onChange={e => setScheduleData({...scheduleData, notes: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
               </div>
-
         </form>
       </Modal>
 
@@ -1003,6 +1107,52 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
+
+      {/* Login Management Modal */}
+      {loginModalState && (
+        <Modal open={true} onClose={() => setLoginModalState(null)} title={loginModalState.type === 'create' ? 'Create Login' : 'Reset PIN'}>
+          <form onSubmit={handleSaveLogin} className="space-y-4">
+            {loginModalState.type === 'create' && (
+              <>
+                <div className="space-y-1">
+                  <label htmlFor="login-username" className="text-xs font-bold text-slate-500 uppercase tracking-widest">Username</label>
+                  <input id="login-username" required type="text" value={loginFormData.username} onChange={e => setLoginFormData({...loginFormData, username: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="login-role" className="text-xs font-bold text-slate-500 uppercase tracking-widest">Role</label>
+                  <select id="login-role" required value={loginFormData.role} onChange={e => setLoginFormData({...loginFormData, role: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    {/* AUTH-6: 'admin' removed — vendor-root is never issuable
+                        from a staff UI. 'owner'/'provider' are never offered. */}
+                    <option value="cashier">Cashier</option>
+                    <option value="veterinarian">Veterinarian</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                </div>
+              </>
+            )}
+            <div className="space-y-1">
+              {(() => {
+                const isPasswordAccount = ['admin', 'owner', 'manager'].includes(loginFormData.role);
+                return isPasswordAccount ? (
+                  <>
+                    <label htmlFor="login-pin" className="text-xs font-bold text-slate-500 uppercase tracking-widest">{loginModalState.type === 'create' ? 'Initial Password (min 8 characters)' : 'New Password (min 8 characters)'}</label>
+                    <input id="login-pin" required type="password" minLength={8} value={loginFormData.pin} onChange={e => setLoginFormData({...loginFormData, pin: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="login-pin" className="text-xs font-bold text-slate-500 uppercase tracking-widest">{loginModalState.type === 'create' ? 'Initial PIN (4 digits)' : 'New PIN (4 digits)'}</label>
+                    <input id="login-pin" required type="password" maxLength={4} pattern="\d{4}" value={loginFormData.pin} onChange={e => setLoginFormData({...loginFormData, pin: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </>
+                );
+              })()}
+            </div>
+            <div className="pt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setLoginModalState(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-xl font-bold transition-colors cursor-pointer text-sm">Cancel</button>
+              <button type="submit" className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm transition-colors cursor-pointer text-sm">Save</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
     </PageShell>
   );

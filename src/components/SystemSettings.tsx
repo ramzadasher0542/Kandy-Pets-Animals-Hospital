@@ -13,7 +13,7 @@ import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
 import { ItemCategory, InventoryItem } from '../types';
-import { requireAuth } from '../lib/requireAuth';
+import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction } from '../lib/requireAuth';
 
 export interface SystemConfig {
   appName: string;
@@ -45,6 +45,9 @@ export interface SystemConfig {
     owner: string[];
   };
   masterPin?: string;
+  /** AUTH-4: admin-editable overrides for requireAuth's ACTION_POLICIES.
+   *  Shape: { [AuthAction]: ActionRole[] }. Absent action = use the default. */
+  actionPolicies?: Record<string, string[]>;
   // F-5: EmailJS credentials for emailing the Z-Report (owner-configured, never hardcoded)
   emailjsServiceId?: string;
   emailjsTemplateId?: string;
@@ -80,10 +83,11 @@ interface SettingsProps {
   onWipeCloudAndPurge?: () => Promise<void>;
   cloudSyncEnabled?: boolean;
   onVerifyMasterPin?: (pin: string) => boolean;
+  onChangePassword?: (target: any, newPassword: string) => Promise<void>;
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser, onChangePassword
 }: SettingsProps) {
 
   const [showPurgeModal, setShowPurgeModal] = useState(false);
@@ -130,6 +134,70 @@ export default function SystemSettings({
   const [showAddStaff, setShowAddStaff] = useState(false);
   const [newStaff, setNewStaff] = useState({ name: '', username: '', role: 'veterinarian', pin: '' });
 
+  // AUTH-6: never leave the user stranded on a provider-only tab (e.g. a provider
+  // signs out and an admin signs in while 'database' was active).
+  useEffect(() => {
+    if (!canViewSettingsTab(currentUser?.role, activeTab as SettingsTab)) {
+      setActiveTab('profile');
+    }
+  }, [currentUser, activeTab]);
+
+  // ---- AUTH-4: admin-editable access matrix -------------------------------
+  // Root tier only (admin today, provider above it). Settings is already
+  // root-gated by isViewPermitted, but dummy_admin can also reach Settings —
+  // so gate explicitly.
+  const canEditMatrix = ROOT_ROLES.includes(currentUser?.role);
+  const effectiveRolesFor = (action: AuthAction): string[] =>
+    (localConfig.actionPolicies?.[action]) ?? ACTION_POLICIES[action].allowedRoles;
+
+  const toggleMatrix = (action: AuthAction, role: string) => {
+    if (role === 'admin') return; // admin is universally permitted — never editable
+    const current = effectiveRolesFor(action);
+    const next = current.includes(role) ? current.filter(r => r !== role) : [...current, role];
+    const merged = { ...(localConfig.actionPolicies || {}), [action]: next };
+    const updated = { ...localConfig, actionPolicies: merged };
+    setLocalConfig(updated);
+    onChangeConfig(updated); // persist immediately so requireAuth picks it up
+    showToast(`${ACTION_POLICIES[action].description}: ${role} ${next.includes(role) ? 'granted' : 'revoked'}.`, 'success');
+  };
+
+  // ---- AUTH-4: change password --------------------------------------------
+  const [pwTarget, setPwTarget] = useState<any | null>(null);
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+
+  const passwordStrength = (v: string): { label: string; tone: string } => {
+    if (v.length < 8) return { label: 'Too short — minimum 8 characters', tone: 'text-rose-600' };
+    let score = 0;
+    if (v.length >= 12) score++;
+    if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
+    if (/\d/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    if (score >= 3) return { label: 'Strong', tone: 'text-emerald-600' };
+    if (score === 2) return { label: 'Reasonable', tone: 'text-amber-600' };
+    return { label: 'Weak — but allowed', tone: 'text-amber-600' };
+  };
+
+  const handleChangePassword = async () => {
+    if (!pwTarget) return;
+    if (pwNew.length < 8) { showToast('New password must be at least 8 characters.', 'error'); return; }
+    if (pwNew !== pwConfirm) { showToast('Passwords do not match.', 'error'); return; }
+
+    // Confirm the OPERATOR's own current credential before setting a new one.
+    const auth = await requireAuth(currentUser || null, 'change_password');
+    if (!auth.allowed) { showToast('Authorization failed. Password unchanged.', 'error'); return; }
+
+    setPwBusy(true);
+    try {
+      if (onChangePassword) await onChangePassword(pwTarget, pwNew);
+      showToast(`Password updated for ${pwTarget.name}.`, 'success');
+      setPwTarget(null); setPwNew(''); setPwConfirm('');
+    } finally {
+      setPwBusy(false);
+    }
+  };
+
   // Bulk CSV States
   const [stagedImports, setStagedImports] = useState<any[]>([]);
   const [showStagingModal, setShowStagingModal] = useState(false);
@@ -162,6 +230,7 @@ export default function SystemSettings({
     let avatarColor = 'bg-slate-100 text-slate-700 border-slate-200';
     if (newStaff.role === 'veterinarian') avatarColor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
     if (newStaff.role === 'cashier') avatarColor = 'bg-sky-100 text-sky-700 border-sky-200';
+    if (newStaff.role === 'manager') avatarColor = 'bg-amber-100 text-amber-700 border-amber-200';
     if (newStaff.role === 'admin' || newStaff.role === 'owner') avatarColor = 'bg-indigo-100 text-indigo-700 border-indigo-200';
 
     await onAddUser({
@@ -352,6 +421,10 @@ export default function SystemSettings({
     { id: 'rates', label: 'Billing & Rates', icon: Banknote }
   ];
 
+  // AUTH-6: provider-only surfaces (db-level config) are filtered out of the nav
+  // entirely for anyone who isn't 'provider' — admin included, by design.
+  const visibleTabs = TABS.filter(t => canViewSettingsTab(currentUser?.role, t.id as SettingsTab));
+
   return (
     <div className="flex h-[calc(100vh-80px)] w-full bg-slate-50 overflow-hidden font-sans gap-6 p-6">
       
@@ -363,7 +436,7 @@ export default function SystemSettings({
         </div>
         
         <nav className="flex-1 space-y-2">
-          {TABS.map(tab => {
+          {visibleTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -516,6 +589,54 @@ export default function SystemSettings({
                 </button>
               </div>
 
+              {/* AUTH-4: Access matrix — provider/admin only */}
+              {canEditMatrix && (
+                <div data-testid="access-matrix" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-x-auto">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-indigo-500" /> Action Access Matrix</h3>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Who may perform each privileged action. Administrator always retains full access.</p>
+                  </div>
+                  <table className="w-full text-left border-collapse min-w-[640px]">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
+                        <th className="py-3 px-3">Action</th>
+                        {ALL_ACTION_ROLES.map(r => <th key={r} className="py-3 px-3 text-center">{r}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(Object.keys(ACTION_POLICIES) as AuthAction[]).filter(a => !isProviderOnlyAction(a)).map(action => {
+                        const roles = effectiveRolesFor(action);
+                        return (
+                          <tr key={action} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3 px-3">
+                              <div className="text-xs font-black text-slate-800 capitalize">{action.replace(/_/g, ' ')}</div>
+                              <div className="text-[10px] font-bold text-slate-400">{ACTION_POLICIES[action].description}</div>
+                            </td>
+                            {ALL_ACTION_ROLES.map(role => {
+                              const isAdmin = role === 'admin';
+                              const checked = isAdmin || roles.includes(role);
+                              return (
+                                <td key={role} className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    data-testid={`matrix-${action}-${role}`}
+                                    checked={checked}
+                                    disabled={isAdmin}
+                                    onChange={() => toggleMatrix(action, role)}
+                                    title={isAdmin ? 'Administrator always has full access' : undefined}
+                                    className={`w-4 h-4 rounded ${isAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer accent-indigo-600'}`}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-12">
                 {users.map(u => (
                   <div key={u.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col relative group">
@@ -531,6 +652,17 @@ export default function SystemSettings({
                       </div>
                       <h4 className="text-base font-black text-slate-800 leading-tight">{u.name}</h4>
                       <p className="text-xs font-mono font-bold text-slate-500 mt-1">@{u.username}</p>
+                      {/* AUTH-4: password change is for password-roles only —
+                          cashier/vet keep the fast 4-digit PIN. */}
+                      {['owner', 'manager', 'admin'].includes(u.role) && (
+                        <button
+                          data-testid={`btn-change-password-${u.username}`}
+                          onClick={() => { setPwTarget(u); setPwNew(''); setPwConfirm(''); }}
+                          className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[10px] uppercase tracking-widest transition-colors cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Lock className="w-3 h-3" /> Change Password
+                        </button>
+                      )}
                     </div>
                     <div className={`p-2.5 text-center border-t text-[10px] font-black uppercase tracking-widest shrink-0 ${u.role === 'admin' || u.role === 'owner' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : u.role === 'veterinarian' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-sky-50 text-sky-700 border-sky-100'}`}>
                       {u.role} Clearance
@@ -544,11 +676,65 @@ export default function SystemSettings({
                   </div>
                 )}
               </div>
+
+              {/* AUTH-4: Change Password */}
+              <Modal
+                open={!!pwTarget}
+                onClose={() => { setPwTarget(null); setPwNew(''); setPwConfirm(''); }}
+                size="sm"
+                icon={<Lock className="w-5 h-5 text-indigo-600" />}
+                title={`Change Password — ${pwTarget?.name || ''}`}
+                footer={
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={() => { setPwTarget(null); setPwNew(''); setPwConfirm(''); }} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors">Cancel</button>
+                    <button
+                      data-testid="btn-save-password"
+                      onClick={handleChangePassword}
+                      disabled={pwBusy}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Save Password
+                    </button>
+                  </div>
+                }
+              >
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">New Password (min 8 characters)</label>
+                    <input
+                      data-testid="input-new-password"
+                      type="password"
+                      value={pwNew}
+                      onChange={e => setPwNew(e.target.value)}
+                      autoFocus
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    {pwNew.length > 0 && (
+                      <p data-testid="password-strength" className={`text-[10px] font-black mt-1.5 ${passwordStrength(pwNew).tone}`}>
+                        {passwordStrength(pwNew).label}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Confirm New Password</label>
+                    <input
+                      data-testid="input-confirm-password"
+                      type="password"
+                      value={pwConfirm}
+                      onChange={e => setPwConfirm(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-500 leading-snug">
+                    You'll confirm your own credential before this is applied.
+                  </p>
+                </div>
+              </Modal>
             </div>
           )}
 
           {/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
-          {activeTab === 'database' && (
+          {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database') && (
             <div className="space-y-6 animate-fade-in">
               
               {/* SECTION: Bulk Inventory Logistics */}
@@ -995,9 +1181,12 @@ export default function SystemSettings({
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Clearance Level (Role)</label>
                 <select value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
+                  {/* AUTH-6: 'admin' removed — it is vendor-root (universally
+                      permitted), so it must never be issuable from a staff UI.
+                      'owner' and 'provider' are likewise never offered here. */}
                   <option value="veterinarian">Veterinarian / Doctor</option>
                   <option value="cashier">Cashier / Receptionist</option>
-                  <option value="admin">Clinic Administrator</option>
+                  <option value="manager">Manager</option>
                 </select>
               </div>
               <div>

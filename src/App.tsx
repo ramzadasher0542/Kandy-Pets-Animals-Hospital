@@ -83,7 +83,7 @@ import {
   hashCredential, verifyCredential, verifyCredentialSync, isBcryptHash,
   migrateOldHash, recordFailedAttempt, isLockedOut, resetAttempts
 } from './lib/credentials';
-import { requireAuth } from './lib/requireAuth';
+import { requireAuth, setPolicyOverrides, ROOT_ROLES } from './lib/requireAuth';
 import AuthPromptHost from './components/ui/AuthPrompt';
 
 // @ts-ignore
@@ -562,12 +562,21 @@ function App() {
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
 
+  // AUTH-4: push the admin-edited access matrix into requireAuth whenever config
+  // loads or changes. Absent overrides fall back to ACTION_POLICIES defaults.
+  useEffect(() => {
+    setPolicyOverrides((systemConfig as any).actionPolicies);
+  }, [systemConfig]);
+
   // Owner / provider-admin sign in with a full alphanumeric password; till roles
   // (cashier, vet, groomer) keep the fast 4-digit numeric PIN.
   const selectedRole = selectedUsername === 'ashpoint_owner'
     ? 'admin'
     : (users.find(u => u.username === selectedUsername)?.role || '');
-  const isPasswordAccount = selectedUsername === 'ashpoint_owner' || selectedRole === 'admin' || selectedRole === 'owner';
+  // AUTH-4: 'manager' is a password role too (it has a Change Password flow), so
+  // its login must accept a full alphanumeric password, not a 4-digit PIN.
+  const isPasswordAccount = selectedUsername === 'ashpoint_owner'
+    || ['admin', 'owner', 'manager'].includes(selectedRole);
 
   // Live lockout countdown for the selected account — re-enables the form the
   // moment the lockout expires, without needing a page refresh.
@@ -1231,7 +1240,7 @@ function App() {
     }
 
     let found: any = null;
-    await db.users.iterate((u: any) => { if (u && !u.is_deleted && u.username === username) found = u; });
+    await db.users.iterate((u: any) => { if (u && !u.is_deleted && u.username === username && u.active !== false) found = u; });
     const stored = found?.pin || pinCache[username] || '';
     if (!found || !stored) return { valid: false, user: null };
 
@@ -1241,9 +1250,25 @@ function App() {
     return { valid, user: valid ? found : null };
   }, [systemConfig, pinCache]);
 
+  /**
+   * AUTH-6: the ONLY roles any UI may mint. 'provider' (vendor root) and 'admin'
+   * (universally permitted today) and 'owner' are deliberately absent — they are
+   * seeded/onboarded out-of-band, never issued from a staff screen. This is the
+   * real guard; removing them from the dropdowns is only the cosmetic half.
+   */
+  const ISSUABLE_ROLES = ['cashier', 'veterinarian', 'manager', 'groomer'];
+  const assertIssuableRole = (role: string): boolean => {
+    if (ISSUABLE_ROLES.includes(role)) return true;
+    showToast(`Role "${role}" cannot be issued from this screen.`, 'error');
+    console.warn(`[AUTH-6] Blocked attempt to issue privileged role "${role}" via UI.`);
+    return false;
+  };
+
   const isViewPermitted = (viewName: string, user: any): boolean => {
     if (!user) return false;
-    if (user.role === 'admin') return true;
+    // AUTH-6: root tier = admin (vendor-root today) and provider (above it).
+    // Deliberate and explicit — not the accidental bypass this used to be.
+    if (ROOT_ROLES.includes(user.role)) return true;
     if (user.role === 'dummy_admin') return viewName === 'settings';
     if (user.role === 'pet_parent') return viewName === 'portal';
     if (viewName === 'settings') return false;
@@ -1261,7 +1286,7 @@ function App() {
 
   const getDefaultViewForUser = (user: any): any => {
     if (!user) return 'portal';
-    if (user.role === 'admin' || user.role === 'dummy_admin') return 'settings';
+    if (ROOT_ROLES.includes(user.role) || user.role === 'dummy_admin') return 'settings';
     if (user.role === 'pet_parent') return 'portal';
     const priorityViews = ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'portal'] as const;
     for (const view of priorityViews) {
@@ -1327,7 +1352,7 @@ function App() {
         return;
       }
 
-      const foundUser = users.find(u => u.username === selectedUsername);
+      const foundUser = users.find(u => u.username === selectedUsername && u.active !== false);
       const stored = foundUser?.pin || pinCache[selectedUsername] || '';
       const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
       if (!foundUser || !ok) { registerFailure(selectedUsername); return; }
@@ -1453,7 +1478,7 @@ function App() {
       case 'reports':
         return <ReportsManager onVerifyMasterPin={handleVerifyMasterPin} currentUser={currentUser} config={systemConfig} />;
       case 'staff': 
-        return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} />;
+        return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await db.users.setItem(user.id, user); setUsers(prev => { const next = [...prev]; const idx = next.findIndex(u => u.id === user.id); if (idx >= 0) next[idx] = user; else next.push(user); return next; }); }} />;
       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
@@ -1468,16 +1493,16 @@ function App() {
             onForceCloudSync={async () => { if (syncEngineRef.current) await syncEngineRef.current.forceSync(); }}
             onRefreshUsers={async () => { }}
             onAddUser={async (user) => {
+              // AUTH-4 FIX: new accounts previously stored their PIN in PLAINTEXT,
+              // which no verifier accepts — so every account made here could never
+              // log in. Hash it with bcrypt on creation, like every other credential.
+              if (!assertIssuableRole(user.role)) return; // AUTH-6 guard
               const { pin, ...safeUser } = user;
-              if (pin) {
-                setPinCache(prev => ({ ...prev, [user.username]: pin }));
-              }
-              const userToSave = {
-                ...safeUser,
-                pin: pin || pinCache[user.username]
-              };
+              const raw = pin || pinCache[user.username];
+              const hashed = raw ? await hashCredential(String(raw)) : undefined;
+              const userToSave = { ...safeUser, pin: hashed };
               await db.users.setItem(userToSave.id, userToSave);
-              setUsers(prev => [...prev, safeUser]);
+              setUsers(prev => [...prev, userToSave]);
               showToast(`User ${safeUser.name} added successfully.`);
             }}
             onRemoveUser={async (id) => {
@@ -1498,6 +1523,27 @@ function App() {
             onUpdateInventory={handleUpdateInventoryItem}
             onDeleteInventory={handleDeleteInventoryItem}
             onRestoreSnapshot={async () => true}
+            onChangePassword={async (target: any, newPassword: string) => {
+              // AUTH-4: min-8 is enforced HERE (at set time) and in the UI — never
+              // at login/verify time, which would lock out the legacy short owner
+              // credential. Always stored bcrypt-hashed.
+              if (!newPassword || newPassword.length < 8) {
+                showToast('New password must be at least 8 characters.', 'error');
+                return;
+              }
+              const hashed = await hashCredential(newPassword);
+              if (target?.username === 'ashpoint_owner' || target?.id === 'ashpoint_owner') {
+                const next = { ...systemConfig, masterPin: hashed };
+                await db.system.setItem('config', next);
+                setSystemConfig(next);
+              } else {
+                const persisted = await db.users.getItem<any>(target.id);
+                const updated = { ...(persisted || target), pin: hashed };
+                await db.users.setItem(target.id, updated);
+                setUsers(prev => prev.map(u => u.id === target.id ? { ...u, pin: hashed } : u));
+                setPinCache(prev => ({ ...prev, [target.username]: hashed }));
+              }
+            }}
             onPurgeDatabases={handlePurgeDatabases}
             onWipeCloudAndPurge={handleWipeCloudAndPurge}
             cloudSyncEnabled={SYNC_ENABLED}
@@ -1592,7 +1638,7 @@ function App() {
                       <select id="login-username" name="username" autoComplete="username" value={selectedUsername} onChange={(e) => setSelectedUsername(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-bold text-slate-700" required>
                         <option value="" disabled>-- Choose Staff --</option>
                         <option value="ashpoint_owner">Service Provider (System Root Admin)</option>
-                        {users.map((u) => <option key={u.id} value={u.username}>{u.name} ({u.role ? u.role.toUpperCase() : 'UNKNOWN'})</option>)}
+                        {users.filter(u => u.active !== false).map((u) => <option key={u.id} value={u.username}>{u.name} ({u.role ? u.role.toUpperCase() : 'UNKNOWN'})</option>)}
                       </select>
                     </div>
                     <div className="space-y-1">

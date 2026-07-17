@@ -5,9 +5,11 @@
 
 // AUTH-3: 'manager' added so the per-action allow-lists can express hospital
 // middle-management. AUTH-4 restructures this into Provider / Owner / Staff.
-export type UserRole = 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin';
+// AUTH-6: 'provider' is the vendor's root tier and sits ABOVE 'admin'. It is
+// never issuable from any UI — only the onboarding script (AUTH-7) may mint one.
+export type UserRole = 'provider' | 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin' | 'groomer';
 
-export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; }
+export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; active?: boolean; }
 
 export type ItemCategory = 'retail' | 'prescription' | 'lab_service' | 'service' | 'vaccine' | 'food';
 
