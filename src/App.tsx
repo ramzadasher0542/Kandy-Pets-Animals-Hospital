@@ -229,6 +229,11 @@ function App() {
     rolePermissions: {
       cashier: ['pos', 'shift'],
       veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming', 'shift'],
+      // HOTFIX-1: 'manager' had NO entry anywhere, so isViewPermitted fell through
+      // to `|| []` and every manager account could log in but saw zero views.
+      // Operational floor above cashier; no 'reminders'/'portal' (owner-only).
+      // 'settings' is impossible here regardless — hard-blocked above.
+      manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift']
     },
@@ -463,6 +468,11 @@ function App() {
                 if (!merged.rolePermissions) merged.rolePermissions = prev.rolePermissions;
                 if (!merged.rolePermissions.cashier || merged.rolePermissions.cashier.length === 0) merged.rolePermissions.cashier = prev.rolePermissions.cashier;
                 if (!merged.rolePermissions.veterinarian) merged.rolePermissions.veterinarian = prev.rolePermissions.veterinarian;
+                // HOTFIX-1: without this backfill, any installation with a config
+                // already persisted before 'manager' existed (i.e. every live one)
+                // would never gain the key, and managers would stay locked out
+                // even after the code fix.
+                if (!merged.rolePermissions.manager) merged.rolePermissions.manager = prev.rolePermissions.manager;
                 if (!merged.rolePermissions.admin) merged.rolePermissions.admin = prev.rolePermissions.admin;
                 if (!merged.rolePermissions.owner) merged.rolePermissions.owner = prev.rolePermissions.owner;
                 if (merged.masterPin === prev.masterPin) merged.masterPin = hashPin(merged.masterPin);
@@ -1273,13 +1283,21 @@ function App() {
     if (user.role === 'pet_parent') return viewName === 'portal';
     if (viewName === 'settings') return false;
     const checkedView = (viewName === 'reports' || viewName === 'dashboard') ? 'dashboard' : viewName;
-    const defaultPermissions = {
+    // NOTE: this literal is only a fallback — systemConfig.rolePermissions is
+    // always populated, so it normally wins. Both must stay in sync; a role
+    // missing from EITHER falls through to `|| []` (= zero views).
+    const defaultPermissions: Record<string, string[]> = {
       cashier: ['pos', 'shift'],
       veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming', 'shift'],
+      manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift']
     };
-    const permissions = (systemConfig.rolePermissions || defaultPermissions)[user.role as 'cashier' | 'veterinarian' | 'admin' | 'owner'] || [];
+    // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
+    // TypeScript — it is why the missing 'manager' key compiled cleanly instead of
+    // erroring. Indexing a Record<string, string[]> keeps this honest.
+    const rolePerms: Record<string, string[]> = (systemConfig.rolePermissions as any) || defaultPermissions;
+    const permissions = rolePerms[user.role] || defaultPermissions[user.role] || [];
     if (checkedView === 'portal') return true;
     return permissions.includes(checkedView);
   };
