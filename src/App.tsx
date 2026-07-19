@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
@@ -246,6 +246,17 @@ function App() {
     },
     masterPin: hashPin('5692')
   } as SystemConfig);
+
+  // SECURE-1: banner deep-link flag + "default password still in use" detector.
+  // True whether masterPin is the shipped legacy default OR its bcrypt upgrade —
+  // i.e. whenever '5692' would still authenticate as provider.
+  const [autoOpenProviderPw, setAutoOpenProviderPw] = useState(false);
+  const isDefaultProviderPassword = useMemo(() => {
+    const mp = systemConfig.masterPin;
+    if (!mp) return true;
+    if (mp === hashPin('5692')) return true;
+    try { return verifyCredentialSync('5692', mp); } catch { return false; }
+  }, [systemConfig.masterPin]);
 
   /**
    * HOTFIX: verify a master-PIN attempt against the stored credential in EITHER
@@ -1555,8 +1566,13 @@ function App() {
           <SystemSettings
             config={safeSystemConfig}
             onChangeConfig={async (config) => {
-              await db.system.setItem('config', config);
-              setSystemConfig(config);
+              // SECURE-1: `config` here is safeSystemConfig (masterPin/dummyAdminPin
+              // stripped), so a naive replace would silently reset the provider
+              // password to the shipped default on ANY settings save. Merge onto the
+              // full config so those secrets survive.
+              const merged = { ...systemConfig, ...config } as SystemConfig;
+              await db.system.setItem('config', merged);
+              setSystemConfig(merged);
             }}
             users={users.map(({ pin, ...safeU }) => safeU)}
             onForceCloudSync={async () => { if (syncEngineRef.current) await syncEngineRef.current.forceSync(); }}
@@ -1593,15 +1609,17 @@ function App() {
             onDeleteInventory={handleDeleteInventoryItem}
             onRestoreSnapshot={async () => true}
             onChangePassword={async (target: any, newPassword: string) => {
-              // AUTH-4: min-8 is enforced HERE (at set time) and in the UI — never
-              // at login/verify time, which would lock out the legacy short owner
-              // credential. Always stored bcrypt-hashed.
-              if (!newPassword || newPassword.length < 8) {
-                showToast('New password must be at least 8 characters.', 'error');
+              // AUTH-4/SECURE-1: min length enforced HERE (at set time) and in the
+              // UI — never at login/verify time. The provider (root) account needs
+              // 12+; staff accounts 8+. Always stored bcrypt-hashed.
+              const isProviderTarget = target?.username === 'ashpoint_owner' || target?.id === 'ashpoint_owner';
+              const minLen = isProviderTarget ? 12 : 8;
+              if (!newPassword || newPassword.length < minLen) {
+                showToast(`New password must be at least ${minLen} characters.`, 'error');
                 return;
               }
               const hashed = await hashCredential(newPassword);
-              if (target?.username === 'ashpoint_owner' || target?.id === 'ashpoint_owner') {
+              if (isProviderTarget) {
                 const next = { ...systemConfig, masterPin: hashed };
                 await db.system.setItem('config', next);
                 setSystemConfig(next);
@@ -1617,6 +1635,9 @@ function App() {
             onWipeCloudAndPurge={handleWipeCloudAndPurge}
             cloudSyncEnabled={SYNC_ENABLED}
             onVerifyMasterPin={handleVerifyMasterPin}
+            autoOpenProviderPassword={autoOpenProviderPw}
+            onAutoOpenHandled={() => setAutoOpenProviderPw(false)}
+            defaultPasswordActive={isDefaultProviderPassword}
           />
         );
       }
@@ -1853,6 +1874,24 @@ function App() {
 
             {/* MAIN CANVAS */}
             <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
+              {currentUser?.role === 'provider' && isDefaultProviderPassword && (
+                <div data-testid="default-password-banner" className="shrink-0 bg-rose-600 text-white px-6 py-3 flex items-center justify-between gap-4 shadow-md">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-black leading-tight">DEFAULT PASSWORD IN USE — change it now</p>
+                      <p className="text-[11px] font-bold text-rose-100 leading-tight">This deployment still accepts the shipped default provider password. Anyone can log in as root until you change it.</p>
+                    </div>
+                  </div>
+                  <button
+                    data-testid="btn-banner-change-password"
+                    onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); setAutoOpenProviderPw(true); }}
+                    className="shrink-0 px-4 py-2 bg-white text-rose-700 font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-rose-50 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Change Password Now
+                  </button>
+                </div>
+              )}
               <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs justify-between">
                 <div className="flex items-center gap-4">
                   {historyStack.length > 1 && (

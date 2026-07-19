@@ -88,10 +88,16 @@ interface SettingsProps {
   cloudSyncEnabled?: boolean;
   onVerifyMasterPin?: (pin: string) => boolean;
   onChangePassword?: (target: any, newPassword: string) => Promise<void>;
+  // SECURE-1: banner deep-link opens the provider-password modal; and the
+  // default-password state blocks high-risk destructive actions.
+  autoOpenProviderPassword?: boolean;
+  onAutoOpenHandled?: () => void;
+  defaultPasswordActive?: boolean;
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser, onChangePassword
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser, onChangePassword,
+  autoOpenProviderPassword, onAutoOpenHandled, defaultPasswordActive
 }: SettingsProps) {
 
   const [showPurgeModal, setShowPurgeModal] = useState(false);
@@ -102,6 +108,10 @@ export default function SystemSettings({
   const [cloudWipeBusy, setCloudWipeBusy] = useState(false);
 
   const handleConfirmCloudWipe = async () => {
+    if (defaultPasswordActive) {
+      showToast('Change the default provider password before wiping the cloud.', 'error');
+      return;
+    }
     if (cloudWipeConfirmText !== 'DELETE') {
       showToast('Type DELETE exactly to confirm. Nothing was erased.', 'error');
       return;
@@ -120,6 +130,10 @@ export default function SystemSettings({
   };
 
   const handleConfirmPurge = async () => {
+    if (defaultPasswordActive) {
+      showToast('Change the default provider password before erasing data.', 'error');
+      return;
+    }
     const auth = await requireAuth(currentUser || null, 'erase_local_database');
     if (!auth.allowed) {
       showToast('Authorization failed. Database was NOT erased.', 'error');
@@ -188,8 +202,8 @@ export default function SystemSettings({
   const [pwConfirm, setPwConfirm] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
 
-  const passwordStrength = (v: string): { label: string; tone: string } => {
-    if (v.length < 8) return { label: 'Too short — minimum 8 characters', tone: 'text-rose-600' };
+  const passwordStrength = (v: string, minLen: number = 8): { label: string; tone: string } => {
+    if (v.length < minLen) return { label: `Too short — minimum ${minLen} characters`, tone: 'text-rose-600' };
     let score = 0;
     if (v.length >= 12) score++;
     if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
@@ -202,7 +216,9 @@ export default function SystemSettings({
 
   const handleChangePassword = async () => {
     if (!pwTarget) return;
-    if (pwNew.length < 8) { showToast('New password must be at least 8 characters.', 'error'); return; }
+    // SECURE-1: the provider (root) account requires a longer minimum than staff.
+    const minLen = (pwTarget as any)?.__isProvider ? 12 : 8;
+    if (pwNew.length < minLen) { showToast(`New password must be at least ${minLen} characters.`, 'error'); return; }
     if (pwNew !== pwConfirm) { showToast('Passwords do not match.', 'error'); return; }
 
     // Confirm the OPERATOR's own current credential before setting a new one.
@@ -229,6 +245,17 @@ export default function SystemSettings({
     setLocalConfig(config);
     setHasChanges(false);
   }, [config]);
+
+  // SECURE-1: the default-password banner deep-links here — jump to the Staff
+  // tab and open the provider-password modal directly.
+  useEffect(() => {
+    if (autoOpenProviderPassword) {
+      setActiveTab('staff');
+      setPwTarget({ id: 'ashpoint_owner', username: 'ashpoint_owner', name: 'Provider (root)', __isProvider: true } as any);
+      setPwNew(''); setPwConfirm('');
+      onAutoOpenHandled?.();
+    }
+  }, [autoOpenProviderPassword]);
 
   const updateConfig = (key: keyof SystemConfig, value: any) => {
     setLocalConfig(prev => ({ ...prev, [key]: value }));
@@ -641,6 +668,26 @@ export default function SystemSettings({
                 </div>
               </div>
 
+              {/* SECURE-1: Change Provider (root) Password — provider only. Reuses
+                  the AUTH-4 change-password modal (pwTarget), enforcing min 12. */}
+              {currentUser?.role === 'provider' && (
+                <div data-testid="provider-password-card" className="bg-white p-4 rounded-2xl border border-rose-200 shadow-sm shrink-0">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-rose-500" /> Provider Root Password</h3>
+                      <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">The master credential for the vendor root account — minimum 12 characters.</p>
+                    </div>
+                    <button
+                      data-testid="btn-change-provider-password"
+                      onClick={() => { setPwTarget({ id: 'ashpoint_owner', username: 'ashpoint_owner', name: 'Provider (root)', __isProvider: true } as any); setPwNew(''); setPwConfirm(''); }}
+                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-sm transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <Lock className="w-3 h-3" /> Change Provider Password
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* AUTH-4: Access matrix — provider/admin only */}
               {canEditMatrix && (
                 <div data-testid="access-matrix" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-x-auto">
@@ -800,7 +847,7 @@ export default function SystemSettings({
               >
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">New Password (min 8 characters)</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">New Password (min {(pwTarget as any)?.__isProvider ? 12 : 8} characters)</label>
                     <input
                       data-testid="input-new-password"
                       type="password"
@@ -810,8 +857,8 @@ export default function SystemSettings({
                       className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
                     />
                     {pwNew.length > 0 && (
-                      <p data-testid="password-strength" className={`text-[10px] font-black mt-1.5 ${passwordStrength(pwNew).tone}`}>
-                        {passwordStrength(pwNew).label}
+                      <p data-testid="password-strength" className={`text-[10px] font-black mt-1.5 ${passwordStrength(pwNew, (pwTarget as any)?.__isProvider ? 12 : 8).tone}`}>
+                        {passwordStrength(pwNew, (pwTarget as any)?.__isProvider ? 12 : 8).label}
                       </p>
                     )}
                   </div>
