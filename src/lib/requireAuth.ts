@@ -121,7 +121,7 @@ export function authorizedRolesFor(action: AuthAction): string[] {
 
 export const ROOT_ROLES = ['admin', 'provider'] as const;
 
-export type SettingsTab = 'profile' | 'pos' | 'staff' | 'database' | 'rates';
+export type SettingsTab = 'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates';
 
 /** Vendor-only Settings surfaces (licensing / secret rotation / db-level config). */
 export const PROVIDER_ONLY_TABS: SettingsTab[] = ['database'];

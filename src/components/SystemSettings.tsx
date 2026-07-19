@@ -127,7 +127,7 @@ export default function SystemSettings({
     onPurgeDatabases();
   };
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'staff' | 'database' | 'rates'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
   const [hasChanges, setHasChanges] = useState(false);
   
@@ -417,6 +417,7 @@ export default function SystemSettings({
   const TABS = [
     { id: 'profile', label: 'Hospital Profile', icon: Building2 },
     { id: 'pos', label: 'Hardware & POS', icon: Printer },
+    { id: 'inventory', label: 'Inventory & Stock', icon: Layers },
     { id: 'staff', label: 'Staff & Security', icon: Users },
     { id: 'database', label: 'Data & Operations', icon: Database, danger: true },
     { id: 'rates', label: 'Billing & Rates', icon: Banknote }
@@ -764,6 +765,47 @@ export default function SystemSettings({
             </div>
           )}
 
+          {/* TAB: INVENTORY & STOCK — bulk stock update, visible to anyone who can
+              reach Settings (admin/provider). The dangerous backup/restore + erase
+              operations deliberately stay in the provider-only "Data & Operations"
+              tab; routine stock updates do not belong behind that gate. */}
+          {activeTab === 'inventory' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Bulk Stock Update</h3>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Update prices and stock quantities in bulk. Download the template, fill in your items, then upload it. Rows are matched by SKU — existing items are overwritten and new SKUs are added.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button onClick={exportTemplate} className="p-4 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                    <div className="w-10 h-10 bg-white text-indigo-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5"/></div>
+                    <span className="text-xs font-black text-slate-800">Download Template</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
+                  </button>
+
+                  <button onClick={exportCurrentInventory} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
+                    <div className="w-10 h-10 bg-white text-emerald-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Download className="w-5 h-5"/></div>
+                    <span className="text-xs font-black text-slate-800">Export Registry</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
+                  </button>
+
+                  <div data-testid="stock-upload-csv" className="p-4 bg-slate-50 border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative overflow-hidden group">
+                    <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
+                    <div className="w-10 h-10 bg-white text-sky-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Upload className="w-5 h-5"/></div>
+                    <span className="text-xs font-black text-slate-800">Upload CSV</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-[11px] font-bold text-amber-700 leading-relaxed">The upload accepts a <span className="font-black">.csv</span> file. If your stock list is an Excel workbook, open it and use <span className="font-black">Save As → CSV (Comma delimited)</span> first, then upload here. Required columns, in order: <span className="font-mono">sku, name, category, price, cost, stock, minStock, unit, location</span>. Valid categories: <span className="font-mono">retail, prescription, vaccine, service, lab_service</span>. Prices are in whole Rupees.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
           {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database') && (
             <div className="space-y-6 animate-fade-in">
@@ -772,7 +814,7 @@ export default function SystemSettings({
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Data Security & Backups</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Safely backup the full system, live registry, or stage bulk CSV uploads to update stock quantities.</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Safely back up the full system and restore it from a snapshot. (Bulk stock updates now live in the <span className="font-black">Inventory &amp; Stock</span> tab.)</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -790,29 +832,6 @@ export default function SystemSettings({
                   </button>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">CSV Inventory Management</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <button onClick={exportTemplate} className="p-4 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                      <div className="w-10 h-10 bg-white text-indigo-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5"/></div>
-                      <span className="text-xs font-black text-slate-800">Download Template</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Empty CSV Format</span>
-                    </button>
-                    
-                    <button onClick={exportCurrentInventory} className="p-4 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                      <div className="w-10 h-10 bg-white text-emerald-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Download className="w-5 h-5"/></div>
-                      <span className="text-xs font-black text-slate-800">Export Registry</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Backup Live DB Stock</span>
-                    </button>
-
-                    <div className="p-4 bg-slate-50 border border-slate-200 hover:border-sky-300 hover:bg-sky-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative overflow-hidden group">
-                      <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                      <div className="w-10 h-10 bg-white text-sky-600 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"><Upload className="w-5 h-5"/></div>
-                      <span className="text-xs font-black text-slate-800">Upload CSV</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stage for Import</span>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* SECTION: The Danger Zone */}
