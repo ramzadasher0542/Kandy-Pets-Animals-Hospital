@@ -19,7 +19,7 @@
 import { db } from './localDb';
 import { User, AuthAudit } from '../types';
 
-export type ActionRole = 'cashier' | 'veterinarian' | 'manager' | 'owner' | 'admin';
+export type ActionRole = 'cashier' | 'veterinarian' | 'manager' | 'owner' | 'admin' | 'provider';
 
 export type AuthAction =
   | 'delete_inventory'
@@ -34,8 +34,8 @@ export type AuthAction =
   | 'change_password'
   | 'manage_staff_logins';
 
-/** Every role the access matrix can toggle. 'admin' is shown but never editable. */
-export const ALL_ACTION_ROLES: ActionRole[] = ['cashier', 'veterinarian', 'manager', 'owner', 'admin'];
+/** Every role the access matrix can toggle. 'provider' is shown but never editable (root). */
+export const ALL_ACTION_ROLES: ActionRole[] = ['cashier', 'veterinarian', 'manager', 'owner', 'admin', 'provider'];
 
 export interface ActionPolicy {
   /** Used verbatim in the prompt: "…to void an invoice". */
@@ -92,10 +92,11 @@ export interface AuthResult {
 }
 
 /**
- * 'admin' is the system provider (Ash Point Solutions) and is deliberately
- * permitted everywhere — this is an explicit product decision, not the
- * accidental `if (role === 'admin') return true` that used to sit in
- * isViewPermitted. Actions with an empty allowedRoles list are admin-ONLY.
+ * PROVIDER-1: 'provider' is the vendor root (Ash Point Solutions) and is now the
+ * ONLY role permitted everywhere — driven by ROOT_ROLES below. 'admin' was
+ * demoted from god-mode and goes through the normal allow-list like any other
+ * role. Actions with an empty allowedRoles list are root-ONLY (provider),
+ * reachable by others only via a provider override.
  */
 export function isRoleAllowed(role: string | undefined, action: AuthAction): boolean {
   if (ROOT_ROLES.includes(role as any)) return true;
@@ -105,21 +106,21 @@ export function isRoleAllowed(role: string | undefined, action: AuthAction): boo
 
 /** Everyone who could authorize this action — used to word the override prompt. */
 export function authorizedRolesFor(action: AuthAction): string[] {
-  return Array.from(new Set([...getEffectiveRoles(action), 'admin']));
+  return Array.from(new Set([...getEffectiveRoles(action), 'provider']));
 }
 
 // ---------------------------------------------------------------------------
 // AUTH-6 — Provider tier (identity, not permission)
 // ---------------------------------------------------------------------------
-// 'provider' is the vendor's root account and sits ABOVE 'admin'. Both are
-// universally permitted for ACTIONS, so ROOT_ROLES drives isRoleAllowed.
+// PROVIDER-1: 'provider' is the vendor's root account and the SOLE root. 'admin'
+// is no longer universally permitted — only 'provider' bypasses via ROOT_ROLES.
 //
 // Settings VISIBILITY is a separate question and deliberately NOT part of the
 // access matrix: "who is the provider" is an identity fact, not a role
 // permission someone can be granted. So these are constants, not config —
 // otherwise an admin could edit the matrix to hand themselves vendor surfaces.
 
-export const ROOT_ROLES = ['admin', 'provider'] as const;
+export const ROOT_ROLES = ['provider'] as const;
 
 export type SettingsTab = 'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates';
 
@@ -152,6 +153,41 @@ export const PROVIDER_ONLY_ACTIONS: AuthAction[] = [
 export function isProviderOnlyAction(action: AuthAction): boolean {
   return PROVIDER_ONLY_ACTIONS.includes(action);
 }
+
+// ---------------------------------------------------------------------------
+// PROVIDER-1 — Panel (view) access matrix
+// ---------------------------------------------------------------------------
+// Provider chooses which VIEWS each role may open. Enforcement reads
+// systemConfig.rolePermissions (App.tsx isViewPermitted) — the SAME place the
+// app already reads (HOTFIX-1's lesson). These constants only name the matrix's
+// columns and rows. 'provider' is always-on and never editable (root): it is a
+// column for display, guarded in BOTH the UI and the toggle handler.
+
+export type PanelRole = 'cashier' | 'veterinarian' | 'manager' | 'owner' | 'admin' | 'groomer' | 'provider';
+
+export const ALL_PANEL_ROLES: PanelRole[] = ['cashier', 'veterinarian', 'manager', 'owner', 'admin', 'groomer', 'provider'];
+
+export interface PanelDef { id: string; label: string; }
+
+/** Grantable views (nav panels). 'settings' is deliberately absent — it is a
+ *  provider-identity surface, not a grantable permission. 'reports' folds into
+ *  'dashboard' (see App.tsx permissionKey), so it is not a separate row. */
+export const PANEL_VIEWS: PanelDef[] = [
+  { id: 'dashboard',    label: 'Dashboard & Reports' },
+  { id: 'pos',          label: 'POS' },
+  { id: 'appointments', label: 'Appointments' },
+  { id: 'pets',         label: 'Pets' },
+  { id: 'customers',    label: 'Customers' },
+  { id: 'vaccinations', label: 'Vaccinations' },
+  { id: 'examinations', label: 'Examinations' },
+  { id: 'laboratory',   label: 'Laboratory' },
+  { id: 'boarding',     label: 'Boarding / Hotel' },
+  { id: 'grooming',     label: 'Grooming Salon' },
+  { id: 'inventory',    label: 'Inventory' },
+  { id: 'invoices',     label: 'Invoices' },
+  { id: 'shift',        label: 'Shift & Drawer' },
+  { id: 'staff',        label: 'Staff & Payroll' },
+];
 
 // ---------------------------------------------------------------------------
 // Host bridge — lets this module drive a React modal without importing React.

@@ -13,7 +13,7 @@ import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
 import { ItemCategory, InventoryItem } from '../types';
-import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction } from '../lib/requireAuth';
+import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 
 export interface SystemConfig {
   appName: string;
@@ -41,8 +41,11 @@ export interface SystemConfig {
   rolePermissions: {
     cashier: string[];
     veterinarian: string[];
-    admin: string[];
+    manager: string[];
     owner: string[];
+    admin: string[];
+    groomer: string[];
+    provider: string[];
   };
   masterPin?: string;
   /** AUTH-4: admin-editable overrides for requireAuth's ACTION_POLICIES.
@@ -152,7 +155,7 @@ export default function SystemSettings({
     (localConfig.actionPolicies?.[action]) ?? ACTION_POLICIES[action].allowedRoles;
 
   const toggleMatrix = (action: AuthAction, role: string) => {
-    if (role === 'admin') return; // admin is universally permitted — never editable
+    if (role === 'provider') return; // provider is root — never editable
     const current = effectiveRolesFor(action);
     const next = current.includes(role) ? current.filter(r => r !== role) : [...current, role];
     const merged = { ...(localConfig.actionPolicies || {}), [action]: next };
@@ -160,6 +163,23 @@ export default function SystemSettings({
     setLocalConfig(updated);
     onChangeConfig(updated); // persist immediately so requireAuth picks it up
     showToast(`${ACTION_POLICIES[action].description}: ${role} ${next.includes(role) ? 'granted' : 'revoked'}.`, 'success');
+  };
+
+  // ---- PROVIDER-1: Panel (view) access matrix — provider ONLY -------------
+  const canEditPanelMatrix = currentUser?.role === 'provider';
+  const effectivePanelsFor = (role: string): string[] =>
+    ((localConfig.rolePermissions as any)?.[role]) ?? [];
+
+  const togglePanel = (view: string, role: string) => {
+    if (currentUser?.role !== 'provider') return; // guard 1: only provider may edit
+    if (role === 'provider') return;               // guard 2: provider is unremovable
+    const current = effectivePanelsFor(role);
+    const next = current.includes(view) ? current.filter(v => v !== view) : [...current, view];
+    const merged = { ...(localConfig.rolePermissions as any), [role]: next };
+    const updated = { ...localConfig, rolePermissions: merged } as SystemConfig;
+    setLocalConfig(updated);
+    onChangeConfig(updated); // persist immediately so isViewPermitted picks it up
+    showToast(`${role}: ${view} ${next.includes(view) ? 'granted' : 'revoked'}.`, 'success');
   };
 
   // ---- AUTH-4: change password --------------------------------------------
@@ -645,18 +665,18 @@ export default function SystemSettings({
                               <div className="text-[10px] font-bold text-slate-400">{ACTION_POLICIES[action].description}</div>
                             </td>
                             {ALL_ACTION_ROLES.map(role => {
-                              const isAdmin = role === 'admin';
-                              const checked = isAdmin || roles.includes(role);
+                              const isProvider = role === 'provider';
+                              const checked = isProvider || roles.includes(role);
                               return (
                                 <td key={role} className="py-3 px-3 text-center">
                                   <input
                                     type="checkbox"
                                     data-testid={`matrix-${action}-${role}`}
                                     checked={checked}
-                                    disabled={isAdmin}
+                                    disabled={isProvider}
                                     onChange={() => toggleMatrix(action, role)}
-                                    title={isAdmin ? 'Administrator always has full access' : undefined}
-                                    className={`w-4 h-4 rounded ${isAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer accent-indigo-600'}`}
+                                    title={isProvider ? 'Provider always has full access (root)' : undefined}
+                                    className={`w-4 h-4 rounded ${isProvider ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer accent-indigo-600'}`}
                                   />
                                 </td>
                               );
@@ -664,6 +684,54 @@ export default function SystemSettings({
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* PROVIDER-1: Panel Access Matrix — provider ONLY. Controls which
+                  screens each role may open (writes systemConfig.rolePermissions,
+                  the same source isViewPermitted enforces). Provider is always-on
+                  and unremovable — guarded here in the UI and in togglePanel. */}
+              {canEditPanelMatrix && (
+                <div data-testid="panel-matrix" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-x-auto">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Layers className="w-4 h-4 text-indigo-500" /> Panel Access Matrix</h3>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Which screens each role can open. Provider always has every panel.</p>
+                  </div>
+                  <table className="w-full text-left border-collapse min-w-[720px]">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
+                        <th className="py-3 px-3">Panel</th>
+                        {ALL_PANEL_ROLES.map(r => <th key={r} className="py-3 px-3 text-center">{r}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {PANEL_VIEWS.map(panel => (
+                        <tr key={panel.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-3">
+                            <div className="text-xs font-black text-slate-800">{panel.label}</div>
+                            <div className="text-[10px] font-bold text-slate-400 font-mono">{panel.id}</div>
+                          </td>
+                          {ALL_PANEL_ROLES.map(role => {
+                            const isProvider = role === 'provider';
+                            const checked = isProvider || effectivePanelsFor(role).includes(panel.id);
+                            return (
+                              <td key={role} className="py-3 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  data-testid={`panel-${panel.id}-${role}`}
+                                  checked={checked}
+                                  disabled={isProvider}
+                                  onChange={() => togglePanel(panel.id, role)}
+                                  title={isProvider ? 'Provider always has every panel (root)' : undefined}
+                                  className={`w-4 h-4 rounded ${isProvider ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer accent-indigo-600'}`}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

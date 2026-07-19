@@ -44,7 +44,8 @@ export default function DashboardAnalytics({
   // ACL: only owner/admin see clinic-wide financial performance (revenue,
   // profit, analytics). Cashiers/vets see operational widgets only — drawer
   // balance and shift status stay visible to everyone.
-  const canSeeFinancials = currentUser?.role === 'admin' || currentUser?.role === 'owner';
+  // PROVIDER-1: provider is root and must see everything, incl. financials.
+  const canSeeFinancials = currentUser?.role === 'provider' || currentUser?.role === 'admin' || currentUser?.role === 'owner';
   
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;

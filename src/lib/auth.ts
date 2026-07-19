@@ -54,8 +54,11 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     rolePermissions: {
       cashier: [],
       veterinarian: [],
+      manager: [],
+      owner: [],
       admin: [],
-      owner: []
+      groomer: [],
+      provider: []
     },
     boardingRates: {
       catNofoodCents: 100000,

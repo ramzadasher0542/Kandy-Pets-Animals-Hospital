@@ -234,8 +234,15 @@ function App() {
       // Operational floor above cashier; no 'reminders'/'portal' (owner-only).
       // 'settings' is impossible here regardless — hard-blocked above.
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
+      // PROVIDER-1: 'groomer' gets a real floor (grooming + shift) so it does not
+      // repeat the manager zero-panels bug. 'admin' is no longer root — this is
+      // its ordinary default, based on what 'owner' gets; provider can grant or
+      // revoke panels per role from the Panel Access Matrix in Settings.
+      groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift']
+      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      // 'provider' is root and bypasses isViewPermitted; this value is documentary.
+      provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'staff', 'reminders', 'portal']
     },
     masterPin: hashPin('5692')
   } as SystemConfig);
@@ -475,6 +482,10 @@ function App() {
                 if (!merged.rolePermissions.manager) merged.rolePermissions.manager = prev.rolePermissions.manager;
                 if (!merged.rolePermissions.admin) merged.rolePermissions.admin = prev.rolePermissions.admin;
                 if (!merged.rolePermissions.owner) merged.rolePermissions.owner = prev.rolePermissions.owner;
+                // PROVIDER-1: backfill new role keys so existing persisted configs
+                // gain them instead of silently falling through to zero panels.
+                if (!merged.rolePermissions.groomer) merged.rolePermissions.groomer = prev.rolePermissions.groomer;
+                if (!merged.rolePermissions.provider) merged.rolePermissions.provider = prev.rolePermissions.provider;
                 if (merged.masterPin === prev.masterPin) merged.masterPin = hashPin(merged.masterPin);
                 if (merged.dummyAdminPin === prev.dummyAdminPin) merged.dummyAdminPin = hashPin(merged.dummyAdminPin);
                 return merged;
@@ -1282,7 +1293,7 @@ function App() {
         ? await verifyCredential(credential, stored)
         : await migrateOldHash(stored, credential);
       const user = valid
-        ? ({ id: 'ashpoint_owner', name: `${systemConfig.appName} Admin`, username: 'ashpoint_owner', role: 'admin', avatarColor: '' } as any)
+        ? ({ id: 'ashpoint_owner', name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: '' } as any)
         : null;
       return { valid, user };
     }
@@ -1328,8 +1339,10 @@ function App() {
       cashier: ['pos', 'shift'],
       veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming', 'shift'],
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
+      groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift']
+      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'staff', 'reminders', 'portal']
     };
     // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
     // TypeScript — it is why the missing 'manager' key compiled cleanly instead of
@@ -1402,7 +1415,7 @@ function App() {
           setSystemConfig(nextConfig);
         }
         resetAttempts(selectedUsername);
-        setCurrentUser({ id: crypto.randomUUID(), name: `${systemConfig.appName} Admin`, username: 'ashpoint_owner', role: 'admin', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
+        setCurrentUser({ id: crypto.randomUUID(), name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
         setActiveView('settings');
         setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
         return;
