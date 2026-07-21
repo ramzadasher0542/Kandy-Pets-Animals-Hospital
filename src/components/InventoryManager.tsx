@@ -46,6 +46,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   
   // Quick Adjust State
   const [adjustItem, setAdjustItem] = useState<InventoryItem | null>(null);
@@ -107,14 +108,19 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       is_deleted: editingItem ? (editingItem.is_deleted || false) : false
     };
 
-    if (onUpdateInventory) {
-      await onUpdateInventory(payload);
+    setIsSaving(true);
+    try {
+      if (onUpdateInventory) {
+        await onUpdateInventory(payload);
+      }
+      await loadInventory();
+
+      setShowAddModal(false);
+      setEditingItem(null);
+      showToast(editingItem ? 'Item updated successfully.' : 'New item added to registry.', 'success');
+    } finally {
+      setIsSaving(false);
     }
-    await loadInventory();
-    
-    setShowAddModal(false);
-    setEditingItem(null);
-    showToast(editingItem ? 'Item updated successfully.' : 'New item added to registry.', 'success');
   };
 
   const handleQuickAdjust = async (e: React.FormEvent) => {
@@ -494,13 +500,14 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
         footer={
           <>
             <button type="button" onClick={() => setShowAddModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Cancel</button>
-            <button type="submit" form="inventoryForm" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-              <CheckCircle2 className="w-4 h-4"/> Save Record
+            <button type="submit" form="inventoryForm" disabled={isSaving} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <CheckCircle2 className="w-4 h-4"/> {isSaving ? 'Saving...' : 'Save Record'}
             </button>
           </>
         }
       >
         <form id="inventoryForm" onSubmit={handleSaveItem} className="space-y-6">
+          <fieldset disabled={isSaving} className="contents">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item / Test Name *</label>
@@ -629,7 +636,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                     </div>
                   </div>
                 )}
-
+          </fieldset>
         </form>
       </Modal>
 
