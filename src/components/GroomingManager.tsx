@@ -53,7 +53,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   const [showWarningModal, setShowWarningModal] = useState(false);
 
   React.useEffect(() => {
-    fetchGroomingLogs().then(setGroomingLogs).catch(console.error);
+    fetchGroomingLogs().then(setGroomingLogs).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
 
   React.useEffect(() => {

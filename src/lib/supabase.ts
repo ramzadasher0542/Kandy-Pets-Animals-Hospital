@@ -41,7 +41,7 @@ export const supabase: SupabaseClient | null = hasValidConfig
   : null;
 
 if (!SYNC_ENABLED) {
-  console.info('[Supabase] No credentials detected — cloud sync is dormant.');
+  if (import.meta.env.DEV) console.info('[Supabase] No credentials detected — cloud sync is dormant.');
 }
 
 // ---------------------------------------------------------------------------

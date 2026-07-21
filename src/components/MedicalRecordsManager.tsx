@@ -90,7 +90,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
         const b = await fetchBoardingRecords();
         setLocalBoardingRecords(b);
       } catch (err) {
-        console.error('Failed to load boarding records', err);
+        if (import.meta.env.DEV) console.error('Failed to load boarding records', err);
       }
     }
     load();
@@ -164,7 +164,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
       setHistoryRecords(result.records);
       setHistoryTotal(result.total);
     } catch (err) {
-      console.error('[MedicalRecordsManager] History pagination failed:', err);
+      if (import.meta.env.DEV) console.error('[MedicalRecordsManager] History pagination failed:', err);
     } finally {
       setHistoryLoading(false);
     }

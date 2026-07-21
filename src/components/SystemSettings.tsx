@@ -370,7 +370,7 @@ export default function SystemSettings({
       URL.revokeObjectURL(url);
       showToast('Backup downloaded successfully.', 'success');
     } catch (error) {
-      console.error(error);
+      if (import.meta.env.DEV) console.error(error);
       showToast('Failed to export data.', 'error');
     } finally {
       setIsExportingAll(false);
@@ -391,7 +391,7 @@ export default function SystemSettings({
       URL.revokeObjectURL(url);
       showToast('Full system backup downloaded successfully.', 'success');
     } catch (error) {
-      console.error(error);
+      if (import.meta.env.DEV) console.error(error);
       showToast('Failed to download system backup.', 'error');
     }
   };
@@ -418,7 +418,7 @@ export default function SystemSettings({
         showToast('System successfully restored from backup! Rebooting...', 'success');
         setTimeout(() => window.location.reload(), 1500);
       } catch (error) {
-        console.error(error);
+        if (import.meta.env.DEV) console.error(error);
         showToast('Failed to restore backup. Invalid or corrupt file.', 'error');
       }
     };

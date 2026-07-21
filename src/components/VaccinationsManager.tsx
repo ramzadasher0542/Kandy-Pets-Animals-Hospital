@@ -29,7 +29,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
 
   React.useEffect(() => {
-    fetchVaccinations().then(setVaccinations).catch(console.error);
+    fetchVaccinations().then(setVaccinations).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
 
   const vaccineInventory = useMemo(() => inventory.filter(i => i.category === 'vaccine'), [inventory]);

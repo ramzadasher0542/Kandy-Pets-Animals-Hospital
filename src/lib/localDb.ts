@@ -63,14 +63,14 @@ export const db = {
  */
 export async function initializeDatabaseVault() {
   try {
-    console.log('[CeylonPets Vault] Initializing high-capacity IndexedDB matrix...');
+    if (import.meta.env.DEV) console.log('[CeylonPets Vault] Initializing high-capacity IndexedDB matrix...');
     // Just a quick dummy write/read to ensure the driver is locked and ready
     await db.system.setItem('vault_status', 'active');
 
     // AUDIT FIX: Request persistent storage to prevent browser eviction
     if (navigator.storage && navigator.storage.persist) {
       const isPersisted = await navigator.storage.persist();
-      console.log(`[CeylonPets Vault] Persistent storage: ${isPersisted ? 'GRANTED' : 'DENIED'}`);
+      if (import.meta.env.DEV) console.log(`[CeylonPets Vault] Persistent storage: ${isPersisted ? 'GRANTED' : 'DENIED'}`);
     }
 
     // AUDIT FIX: Log storage quota for monitoring
@@ -79,13 +79,13 @@ export async function initializeDatabaseVault() {
       const usedMB = ((usage || 0) / (1024 * 1024)).toFixed(2);
       const quotaMB = ((quota || 0) / (1024 * 1024)).toFixed(0);
       const pct = quota ? (((usage || 0) / quota) * 100).toFixed(1) : '0';
-      console.log(`[CeylonPets Vault] Storage: ${usedMB}MB / ${quotaMB}MB (${pct}% used)`);
+      if (import.meta.env.DEV) console.log(`[CeylonPets Vault] Storage: ${usedMB}MB / ${quotaMB}MB (${pct}% used)`);
     }
 
-    console.log('[CeylonPets Vault] Database instances ready. 5MB limits bypassed.');
+    if (import.meta.env.DEV) console.log('[CeylonPets Vault] Database instances ready. 5MB limits bypassed.');
     return true;
   } catch (error) {
-    console.error('[CeylonPets Vault] CRITICAL FAILURE: Could not mount IndexedDB.', error);
+    if (import.meta.env.DEV) console.error('[CeylonPets Vault] CRITICAL FAILURE: Could not mount IndexedDB.', error);
     return false;
   }
 }
@@ -122,9 +122,9 @@ export async function safeDbWrite<T>(
       || error?.message?.includes('quota');
     
     if (isQuotaError) {
-      console.error(`[CeylonPets Vault] STORAGE FULL: Cannot write to "${key}". Clear old data or increase quota.`);
+      if (import.meta.env.DEV) console.error(`[CeylonPets Vault] STORAGE FULL: Cannot write to "${key}". Clear old data or increase quota.`);
     } else {
-      console.error(`[CeylonPets Vault] DB write failed for "${key}":`, error);
+      if (import.meta.env.DEV) console.error(`[CeylonPets Vault] DB write failed for "${key}":`, error);
     }
     return false;
   }

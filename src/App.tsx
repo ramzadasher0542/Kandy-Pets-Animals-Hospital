@@ -280,8 +280,8 @@ function App() {
       try {
         if (navigator.storage && navigator.storage.persist) {
           navigator.storage.persist().then(granted => {
-            if (granted) console.log('[CeylonPets] Persistent storage granted by browser.');
-            else console.warn('[CeylonPets] Persistent storage denied. Data may be evicted if disk is full.');
+            if (granted) if (import.meta.env.DEV) console.log('[CeylonPets] Persistent storage granted by browser.');
+            else if (import.meta.env.DEV) console.warn('[CeylonPets] Persistent storage denied. Data may be evicted if disk is full.');
           });
         }
 
@@ -528,13 +528,13 @@ function App() {
                     await db.clients.removeItem(dupes[i].client_id);
                     deduped++;
                   }
-                  console.info(`[Boot] Deduped client "${keeper.full_name}" — removed ${dupes.length - 1} ghost(s)`);
+                  if (import.meta.env.DEV) console.info(`[Boot] Deduped client "${keeper.full_name}" — removed ${dupes.length - 1} ghost(s)`);
                 }
                 await db.system.setItem('migration_client_dedup_v1', new Date().toISOString());
-                if (deduped > 0) console.info(`[Boot] Client dedup complete: ${deduped} ghost(s) removed.`);
+                if (deduped > 0) if (import.meta.env.DEV) console.info(`[Boot] Client dedup complete: ${deduped} ghost(s) removed.`);
               }
             } catch (dedupErr) {
-              console.warn('[Boot] Client dedup migration failed (non-fatal):', dedupErr);
+              if (import.meta.env.DEV) console.warn('[Boot] Client dedup migration failed (non-fatal):', dedupErr);
             }
 
             // Allow 500ms for UI painting to stabilize
@@ -570,7 +570,7 @@ function App() {
     // otherwise the engine pulls the old rows straight back from Supabase and
     // the vault is never actually empty. Keeps a purged app blank ("factory" state).
     if (localStorage.getItem('kp_purged')) {
-      console.info('[CeylonPets] Vault was purged — cloud sync stays offline so the app remains blank.');
+      if (import.meta.env.DEV) console.info('[CeylonPets] Vault was purged — cloud sync stays offline so the app remains blank.');
       return;
     }
     const engine = new SyncEngine({ onStatusChange: (online) => setIsOnline(online) });
@@ -707,7 +707,7 @@ function App() {
       }
       showToast(`Stock updated: ${currentItem?.name || itemId} (${newStock} remaining).`);
     } catch (error: any) {
-      console.error('[CeylonPets] Stock update failed:', error);
+      if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
       showToast(`Stock update failed: ${error.message}`, 'error');
     }
   }, [inventory]);
@@ -776,7 +776,7 @@ function App() {
         setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
       }
     } catch (error) {
-      console.error('[CeylonPets] closeVisit failed:', error);
+      if (import.meta.env.DEV) console.error('[CeylonPets] closeVisit failed:', error);
       throw error;
     }
   }, [appointments, clinicQueue]);
@@ -849,7 +849,7 @@ function App() {
 
         showToast(`Appointment status updated to ${status}.`);
       } catch (error: any) {
-        console.error('[CeylonPets] Appointment status update failed:', error);
+        if (import.meta.env.DEV) console.error('[CeylonPets] Appointment status update failed:', error);
         showToast(`Failed to update appointment status: ${error.message}`, 'error');
       }
     }
@@ -891,7 +891,7 @@ function App() {
         setAlerts(prev => prev.map(a => a.id === id ? updated : a));
       }
     } catch (error) {
-      console.error('Failed to dismiss alert:', error);
+      if (import.meta.env.DEV) console.error('Failed to dismiss alert:', error);
     }
   }, [alerts]);
 
@@ -908,7 +908,7 @@ function App() {
       });
       
     } catch (error) {
-      console.error("Bulk sync failed:", error);
+      if (import.meta.env.DEV) console.error("Bulk sync failed:", error);
     }
   }, []);
 
@@ -929,7 +929,7 @@ function App() {
 
   const handleUpdateInventoryItem = useCallback(async (item: InventoryItem) => {
     try {
-      console.log('[App] handleUpdateInventoryItem called for:', item.name, 'stock:', item.stock, 'id:', item.id);
+      if (import.meta.env.DEV) console.log('[App] handleUpdateInventoryItem called for:', item.name, 'stock:', item.stock, 'id:', item.id);
       await upsertInventoryItem(item);
       setInventory(prev => {
         const exists = prev.some(i => i.id === item.id);
@@ -1010,7 +1010,7 @@ function App() {
       setRecords(prev => prev.map(r => recUpdates.find(u => u.id === r.id) || r));
       setInvoices(prev => prev.map(i => invUpdates.find(u => u.id === i.id) || i));
     } catch (error: any) {
-      console.error('[CeylonPets] Customer update failed:', error);
+      if (import.meta.env.DEV) console.error('[CeylonPets] Customer update failed:', error);
       showToast(`Failed to update customer across records: ${error.message}`, 'error');
     }
   }, []);
@@ -1127,7 +1127,7 @@ function App() {
         await closeVisit(invoice.appointmentId);
       }
     } catch (error: any) {
-      console.error('[CeylonPets] Invoice creation failed:', error);
+      if (import.meta.env.DEV) console.error('[CeylonPets] Invoice creation failed:', error);
       showToast(`Checkout failed: ${error.message}`, 'error');
     }
   }, [closeVisit]);
@@ -1244,11 +1244,11 @@ function App() {
             if (rec) await upsertBoardingRecord({ ...rec, billed: true, updated_at: new Date().toISOString() });
           }
         } catch (e) {
-          console.error(`Failed to mark swept record billed:`, e);
+          if (import.meta.env.DEV) console.error(`Failed to mark swept record billed:`, e);
         }
       }
     } catch (error: any) {
-      console.error('Checkout failed:', error);
+      if (import.meta.env.DEV) console.error('Checkout failed:', error);
       showToast(`Checkout Error: ${error.message}`, 'error');
       throw error;
     }
@@ -1345,7 +1345,7 @@ function App() {
   const assertIssuableRole = (role: string): boolean => {
     if (ISSUABLE_ROLES.includes(role)) return true;
     showToast(`Role "${role}" cannot be issued from this screen.`, 'error');
-    console.warn(`[AUTH-6] Blocked attempt to issue privileged role "${role}" via UI.`);
+    if (import.meta.env.DEV) console.warn(`[AUTH-6] Blocked attempt to issue privileged role "${role}" via UI.`);
     return false;
   };
 
@@ -1969,7 +1969,7 @@ function App() {
             onDismissAlert={handleDismissAlert}
             onSendNotification={(id) => {
               // TODO: wire to real SMS/email provider.
-              console.log(`Simulated sending notification ${id}`);
+              if (import.meta.env.DEV) console.log(`Simulated sending notification ${id}`);
               showToast('Notification dispatched to queue.', 'success');
             }}
           />

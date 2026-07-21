@@ -85,11 +85,11 @@ export default function POSRegister({
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
 
   React.useEffect(() => {
-    fetchPets().then(setPets).catch(console.error);
-    fetchBoardingRecords().then(setActiveBoarding).catch(console.error);
-    fetchGroomingLogs().then(setGroomingLogs).catch(console.error);
-    fetchLabResults().then(setLabResults).catch(console.error);
-    fetchVaccinations().then(setVaccinations).catch(console.error);
+    fetchPets().then(setPets).catch((e) => { if (import.meta.env.DEV) console.error(e); });
+    fetchBoardingRecords().then(setActiveBoarding).catch((e) => { if (import.meta.env.DEV) console.error(e); });
+    fetchGroomingLogs().then(setGroomingLogs).catch((e) => { if (import.meta.env.DEV) console.error(e); });
+    fetchLabResults().then(setLabResults).catch((e) => { if (import.meta.env.DEV) console.error(e); });
+    fetchVaccinations().then(setVaccinations).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer' | 'split'>('cash');
   const [splitAmounts, setSplitAmounts] = useState({ cash: 0, card: 0, bank_transfer: 0 });
@@ -290,7 +290,7 @@ export default function POSRegister({
   const total = Math.max(0, subtotal - discount);
 
   const handleCheckout = async () => {
-    console.log('[POS] handleCheckout initiated. Cart size:', cart.length, 'Total:', total);
+    if (import.meta.env.DEV) console.log('[POS] handleCheckout initiated. Cart size:', cart.length, 'Total:', total);
     if (!activeShift) {
       showToast('Register is closed. Open a shift before taking payments.', 'error');
       return;
@@ -312,30 +312,30 @@ export default function POSRegister({
     }
 
     // FIXED: Stock validation — prevent over-selling
-    console.log('[POS] Checkout initiated. Cart size:', cart.length, 'Total:', subtotal);
-    console.log('[POS] Current inventory prop size:', inventory.length);
+    if (import.meta.env.DEV) console.log('[POS] Checkout initiated. Cart size:', cart.length, 'Total:', subtotal);
+    if (import.meta.env.DEV) console.log('[POS] Current inventory prop size:', inventory.length);
     const overSoldItems = cart.filter(c => {
       const invItem = inventory.find(i => i.id === c.id);
-      console.log('[POS] Checkout stock check:', c.name, 'cartQty:', c.cartQuantity, 'invStock:', invItem?.stock, 'invId:', invItem?.id);
+      if (import.meta.env.DEV) console.log('[POS] Checkout stock check:', c.name, 'cartQty:', c.cartQuantity, 'invStock:', invItem?.stock, 'invId:', invItem?.id);
       return invItem && !['service', 'lab_service'].includes(invItem.category) && c.cartQuantity > invItem.stock;
     });
     if (overSoldItems.length > 0) {
-      console.error('[POS] Insufficient stock for:', overSoldItems.map(i => i.name).join(', '));
+      if (import.meta.env.DEV) console.error('[POS] Insufficient stock for:', overSoldItems.map(i => i.name).join(', '));
       showToast(`Insufficient stock for: ${overSoldItems.map(i => i.name).join(', ')}`, 'error');
       return;
     }
 
-    console.log('[POS] Passed stock validation. Building invoice...');
+    if (import.meta.env.DEV) console.log('[POS] Passed stock validation. Building invoice...');
     
     const isWalkIn = !selectedAppointment;
     const clientName = isWalkIn ? (customClientName || 'Walk-in Client') : selectedAppointment.ownerName;
     const clientPhone = isWalkIn ? (customClientPhone || '0000000000') : selectedAppointment.ownerPhone;
     const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
     
-    console.log('[POS] Resolving patientId...');
+    if (import.meta.env.DEV) console.log('[POS] Resolving patientId...');
     const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase().trim()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
 
-    console.log('[POS] Mapping cart items...');
+    if (import.meta.env.DEV) console.log('[POS] Mapping cart items...');
     const invoiceItems: InvoiceItem[] = cart.map(c => {
       const numericPrice = Number(c.price) || 0;
       return {
@@ -376,21 +376,21 @@ export default function POSRegister({
     };
 
     try {
-      console.log('[POS] Calling onAtomicCheckout...');
+      if (import.meta.env.DEV) console.log('[POS] Calling onAtomicCheckout...');
       if (onAtomicCheckout) {
         await onAtomicCheckout(invoice, cart);
       }
-      console.log('[POS] onAtomicCheckout completed.');
+      if (import.meta.env.DEV) console.log('[POS] onAtomicCheckout completed.');
 
       showToast(`Transaction completed — Invoice #${invoice.id.slice(0,8)}`, 'success');
 
       // Receipt preview trigger
-      console.log('[POS] Triggering receipt modal...');
+      if (import.meta.env.DEV) console.log('[POS] Triggering receipt modal...');
       setLastCompletedInvoice(invoice);
       setShowReceiptModal(true);
-      console.log('[POS] Receipt modal triggered.');
+      if (import.meta.env.DEV) console.log('[POS] Receipt modal triggered.');
     } catch (error: any) {
-      console.error('Checkout failed:', error);
+      if (import.meta.env.DEV) console.error('Checkout failed:', error);
       showToast(error.message || 'Checkout failed', 'error');
     }
   };

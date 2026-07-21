@@ -215,7 +215,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
       setAppointments(appts); setClients(cls); setPayslips(pays); setShiftRecons(recs);
       calculateVault(invs, adjs);
     } catch (e) {
-      console.error('Vault Error:', e);
+      if (import.meta.env.DEV) console.error('Vault Error:', e);
     } finally {
       setLoading(false);
     }

@@ -102,12 +102,12 @@ export class SyncEngine {
   /** Start the engine. Complete no-op when SYNC_ENABLED is false. */
   start(): void {
     if (!SYNC_ENABLED) {
-      console.info(`${TAG} Sync disabled (no Supabase credentials). Engine dormant.`);
+      if (import.meta.env.DEV) console.info(`${TAG} Sync disabled (no Supabase credentials). Engine dormant.`);
       return;
     }
     if (this.running) return;
     this.running = true;
-    console.info(`${TAG} Starting background sync engine.`);
+    if (import.meta.env.DEV) console.info(`${TAG} Starting background sync engine.`);
 
     // Listen for connectivity changes
     window.addEventListener('online', this.handleOnline);
@@ -131,7 +131,7 @@ export class SyncEngine {
   stop(): void {
     if (!this.running) return;
     this.running = false;
-    console.info(`${TAG} Stopping sync engine.`);
+    if (import.meta.env.DEV) console.info(`${TAG} Stopping sync engine.`);
 
     if (this.initialTimerId !== null) {
       clearTimeout(this.initialTimerId);
@@ -167,13 +167,13 @@ export class SyncEngine {
   // -----------------------------------------------------------------------
 
   private handleOnline = (): void => {
-    console.info(`${TAG} Network online — triggering sync.`);
+    if (import.meta.env.DEV) console.info(`${TAG} Network online — triggering sync.`);
     this.onStatusChange?.(true);
     this.tick();
   };
 
   private handleOffline = (): void => {
-    console.info(`${TAG} Network offline.`);
+    if (import.meta.env.DEV) console.info(`${TAG} Network offline.`);
     this.onStatusChange?.(false);
   };
 
@@ -198,7 +198,7 @@ export class SyncEngine {
 
     this.realtimeChannel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        console.info(`${TAG} Realtime synced to Supabase channels.`);
+        if (import.meta.env.DEV) console.info(`${TAG} Realtime synced to Supabase channels.`);
       }
     });
   }
@@ -223,7 +223,7 @@ export class SyncEngine {
         await store.removeItem(cloudRecord[mapping.idField]);
       }
     } catch (err) {
-      console.error(`${TAG} Realtime event error [${mapping.table}]:`, err);
+      if (import.meta.env.DEV) console.error(`${TAG} Realtime event error [${mapping.table}]:`, err);
     }
   }
 
@@ -251,16 +251,16 @@ export class SyncEngine {
     try {
       pulled = await this.pullAll();
     } catch (err) {
-      console.error(`${TAG} Pull phase error:`, err);
+      if (import.meta.env.DEV) console.error(`${TAG} Pull phase error:`, err);
     }
 
     try {
       pushed = await this.pushAll();
     } catch (err) {
-      console.error(`${TAG} Push phase error:`, err);
+      if (import.meta.env.DEV) console.error(`${TAG} Push phase error:`, err);
     }
 
-    console.info(`${TAG} Cycle complete — pushed: ${pushed}, pulled: ${pulled}`);
+    if (import.meta.env.DEV) console.info(`${TAG} Cycle complete — pushed: ${pushed}, pulled: ${pulled}`);
     return { pushed, pulled };
   }
 
@@ -276,7 +276,7 @@ export class SyncEngine {
         const pushed = await this.pushStore(mapping);
         totalPushed += pushed;
       } catch (err) {
-        console.error(`${TAG} Push error [${mapping.table}]:`, err);
+        if (import.meta.env.DEV) console.error(`${TAG} Push error [${mapping.table}]:`, err);
       }
     }
 
@@ -316,7 +316,7 @@ export class SyncEngine {
       .upsert(payload, { onConflict: mapping.idField });
 
     if (error) {
-      console.error(`${TAG} Upsert failed [${mapping.table}]:`, error.message);
+      if (import.meta.env.DEV) console.error(`${TAG} Upsert failed [${mapping.table}]:`, error.message);
       return 0; // Will retry next cycle
     }
 
@@ -326,7 +326,7 @@ export class SyncEngine {
         const updated = { ...record, _dirty: false };
         await store.setItem(key, updated);
       } catch (err) {
-        console.error(`${TAG} Failed to clear _dirty for key "${key}" [${mapping.table}]:`, err);
+        if (import.meta.env.DEV) console.error(`${TAG} Failed to clear _dirty for key "${key}" [${mapping.table}]:`, err);
       }
     }
 
@@ -346,7 +346,7 @@ export class SyncEngine {
       const stored = await db.system.getItem<string>(LAST_SYNC_KEY);
       if (stored) lastSync = stored;
     } catch (err) {
-      console.error(`${TAG} Could not read ${LAST_SYNC_KEY}:`, err);
+      if (import.meta.env.DEV) console.error(`${TAG} Could not read ${LAST_SYNC_KEY}:`, err);
     }
 
     let latestTimestamp = lastSync;
@@ -366,7 +366,7 @@ export class SyncEngine {
           if (maxTs) tableSince = maxTs;
         } while (batchPulled >= PULL_LIMIT);
       } catch (err) {
-        console.error(`${TAG} Pull error [${mapping.table}]:`, err);
+        if (import.meta.env.DEV) console.error(`${TAG} Pull error [${mapping.table}]:`, err);
       }
     }
 
@@ -375,7 +375,7 @@ export class SyncEngine {
       try {
         await db.system.setItem(LAST_SYNC_KEY, latestTimestamp);
       } catch (err) {
-        console.error(`${TAG} Failed to persist ${LAST_SYNC_KEY}:`, err);
+        if (import.meta.env.DEV) console.error(`${TAG} Failed to persist ${LAST_SYNC_KEY}:`, err);
       }
     }
 
@@ -394,7 +394,7 @@ export class SyncEngine {
       .limit(PULL_LIMIT);
 
     if (error) {
-      console.error(`${TAG} Pull query failed [${mapping.table}]:`, error.message);
+      if (import.meta.env.DEV) console.error(`${TAG} Pull query failed [${mapping.table}]:`, error.message);
       return { pulled: 0, maxTs: null };
     }
 
@@ -427,7 +427,7 @@ export class SyncEngine {
           maxTs = remoteTs;
         }
       } catch (err) {
-        console.error(`${TAG} Failed to write pulled record "${id}" [${mapping.table}]:`, err);
+        if (import.meta.env.DEV) console.error(`${TAG} Failed to write pulled record "${id}" [${mapping.table}]:`, err);
       }
     }
 

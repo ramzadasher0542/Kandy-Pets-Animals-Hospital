@@ -176,14 +176,14 @@ export default function AppointmentsManager({
         if (!veterinarian) setVeterinarian(fallback.name);
       }
     } catch (e) {
-      console.error('Failed to fetch vets:', e);
+      if (import.meta.env.DEV) console.error('Failed to fetch vets:', e);
     }
   }, [veterinarian]);
 
   useEffect(() => {
     fetchVets();
-    fetchClients().then(setClients).catch(console.error);
-    fetchPets().then(setPets).catch(console.error);
+    fetchClients().then(setClients).catch((e) => { if (import.meta.env.DEV) console.error(e); });
+    fetchPets().then(setPets).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, [fetchVets]);
 
   useEffect(() => {
@@ -457,7 +457,7 @@ export default function AppointmentsManager({
             });
           }
         } catch (err) {
-          console.error('[Emergency Backfill] client update-in-place failed:', err);
+          if (import.meta.env.DEV) console.error('[Emergency Backfill] client update-in-place failed:', err);
         }
 
         // Update the existing Pet in place (same id, corrected type/breed/etc).
@@ -580,7 +580,7 @@ export default function AppointmentsManager({
         }
       }
     } catch (err) {
-      console.error('[Enterprise OS] CRM Sync on check-in failed:', err);
+      if (import.meta.env.DEV) console.error('[Enterprise OS] CRM Sync on check-in failed:', err);
     }
 
     // BUG #3 FIX: Use deterministic patientId that matches queue petId format

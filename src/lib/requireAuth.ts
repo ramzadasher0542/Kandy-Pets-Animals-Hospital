@@ -231,7 +231,7 @@ async function writeAudit(row: Omit<AuthAudit, 'id' | 'timestamp' | 'created_at'
     await db.authAudit.setItem(entry.id, entry);
   } catch (err) {
     // Never let auditing break the action itself — but do surface it.
-    console.error('[requireAuth] Failed to write audit row:', err);
+    if (import.meta.env.DEV) console.error('[requireAuth] Failed to write audit row:', err);
   }
 }
 
@@ -249,7 +249,7 @@ export async function requireAuth(currentUser: User | null, action: AuthAction):
 
   if (!currentUser || currentUser.active === false) return denied;
   if (!promptFn || !checkFn) {
-    console.error('[requireAuth] Auth bridge not registered — denying by default.');
+    if (import.meta.env.DEV) console.error('[requireAuth] Auth bridge not registered — denying by default.');
     return denied;
   }
 

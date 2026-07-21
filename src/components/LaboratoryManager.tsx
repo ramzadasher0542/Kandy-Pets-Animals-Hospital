@@ -39,7 +39,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
   const [labResults, setLabResults] = useState<LabResult[]>([]);
 
   React.useEffect(() => {
-    fetchLabResults().then(setLabResults).catch(console.error);
+    fetchLabResults().then(setLabResults).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
 
   const [showResultModal, setShowResultModal] = useState(false);

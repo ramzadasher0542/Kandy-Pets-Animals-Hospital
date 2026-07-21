@@ -60,7 +60,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
       setPageInvoices(result.invoices);
       setTotalCount(result.total);
     } catch (err) {
-      console.error('[InvoicesManager] Pagination query failed:', err);
+      if (import.meta.env.DEV) console.error('[InvoicesManager] Pagination query failed:', err);
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +68,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
 
   // Load KPI stats from DB aggregate (all-time)
   const loadStats = useCallback(async () => {
-    try { setStats(await fetchInvoiceStats()); } catch (err) { console.error('[InvoicesManager] Stats failed:', err); }
+    try { setStats(await fetchInvoiceStats()); } catch (err) { if (import.meta.env.DEV) console.error('[InvoicesManager] Stats failed:', err); }
   }, []);
 
   // Reload on filter/page/search change

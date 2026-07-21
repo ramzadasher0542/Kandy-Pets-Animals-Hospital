@@ -72,7 +72,7 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   
   if (supabase) {
     const { error } = await supabase.from('inventory').upsert(item);
-    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
   }
 
   // True Delta Update - No race conditions + Sync Engine dirty stamp
@@ -92,7 +92,7 @@ export async function deleteInventoryItem(id: string): Promise<void> {
     (item as any).is_deleted = true;
     if (supabase) {
       const { error } = await supabase.from('inventory').delete().eq('id', id);
-      if (error) console.error('[DB] Supabase delete failed:', error.message);
+      if (error) if (import.meta.env.DEV) console.error('[DB] Supabase delete failed:', error.message);
     }
     await safeDbWrite(db.inventory, id, stampRecord(item));
   }
@@ -134,7 +134,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
           remainingToConsume -= consumeFromBatch;
           if (supabase) {
             const { error } = await supabase.from('inventory_batches').upsert(batch);
-            if (error) console.error('[DB] Supabase upsert failed:', error.message);
+            if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
           }
           await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
         }
@@ -146,7 +146,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
           newestBatch.quantityRemaining += qtyDelta;
           if (supabase) {
             const { error } = await supabase.from('inventory_batches').upsert(newestBatch);
-            if (error) console.error('[DB] Supabase upsert failed:', error.message);
+            if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
           }
           await safeDbWrite(db.inventoryBatches, newestBatch.id, stampRecord(newestBatch));
         }
@@ -165,7 +165,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
 
     if (supabase) {
       const { error } = await supabase.from('inventory').upsert(item);
-      if (error) console.error('[DB] Supabase upsert failed:', error.message);
+      if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
     }
 
     // BUG #7 FIX: Stamp for sync so stock changes reach Supabase
@@ -235,7 +235,7 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
   };
   if (supabase) {
     const { error } = await supabase.from('appointments').upsert(formattedApt);
-    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
   }
   await db.appointments.setItem(apt.id, stampRecord(formattedApt));
 }
@@ -269,7 +269,7 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
   };
   if (supabase) {
     const { error } = await supabase.from('medical_records').upsert(formattedRec);
-    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
   }
   await db.records.setItem(rec.id, stampRecord(formattedRec));
   
@@ -317,7 +317,7 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
 
   if (supabase) {
     const { error } = await supabase.from('invoices').upsert(formattedInv);
-    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
   }
 
   await db.invoices.setItem(inv.id, stampRecord(formattedInv));
@@ -345,7 +345,7 @@ export async function fetchNotifications(): Promise<ClientNotification[]> {
 
 export async function upsertNotification(notif: ClientNotification): Promise<void> {
   if (!notif || typeof notif !== 'object' || !notif.id) {
-    console.warn('[CeylonPets POS] Rejected malformed or empty notification payload.');
+    if (import.meta.env.DEV) console.warn('[CeylonPets POS] Rejected malformed or empty notification payload.');
     return;
   }
   await db.notifications.setItem(notif.id, stampRecord(notif));
@@ -364,7 +364,7 @@ export async function fetchAlerts(): Promise<SystemAlert[]> {
 
 export async function upsertAlert(alert: SystemAlert): Promise<void> {
   if (!alert || typeof alert !== 'object' || !alert.id) {
-    console.warn('[CeylonPets POS] Rejected malformed or empty system alert payload.');
+    if (import.meta.env.DEV) console.warn('[CeylonPets POS] Rejected malformed or empty system alert payload.');
     return;
   }
   await db.alerts.setItem(alert.id, stampRecord(alert));
@@ -568,7 +568,7 @@ export async function upsertClient(client: Client): Promise<void> {
   if (!client || !client.client_id) return;
   if (supabase) {
     const { error } = await supabase.from('clients').upsert(client);
-    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
   }
   await db.clients.setItem(client.client_id, stampRecord(client));
 }

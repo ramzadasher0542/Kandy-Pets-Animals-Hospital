@@ -177,11 +177,11 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     updatedItem.expiryDate = itemBatches[0].expiryDate;
     updatedItem.lotNumber = itemBatches[0].lotNumber;
 
-    console.log('[InventoryManager] Receiving stock. Qty:', qty, 'Old stock:', receiveStockItem.stock, 'New stock:', updatedItem.stock);
+    if (import.meta.env.DEV) console.log('[InventoryManager] Receiving stock. Qty:', qty, 'Old stock:', receiveStockItem.stock, 'New stock:', updatedItem.stock);
 
     if (onUpdateInventory) {
       await upsertInventoryBatch(batch);
-      console.log('[InventoryManager] Calling onUpdateInventory with new stock:', updatedItem.stock);
+      if (import.meta.env.DEV) console.log('[InventoryManager] Calling onUpdateInventory with new stock:', updatedItem.stock);
       await onUpdateInventory(updatedItem);
     }
 

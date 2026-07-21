@@ -87,7 +87,7 @@ export default function DashboardAnalytics({
           setGroomingLogs(g);
         }
       } catch (err) {
-        console.error('Failed to load dashboard async data:', err);
+        if (import.meta.env.DEV) console.error('Failed to load dashboard async data:', err);
       }
     }
     loadData();

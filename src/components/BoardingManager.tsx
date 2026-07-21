@@ -53,7 +53,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
 
   React.useEffect(() => {
-    fetchBoardingRecords().then(setBoardingRecords).catch(console.error);
+    fetchBoardingRecords().then(setBoardingRecords).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
 
   const calculateDailyRate = (pet: Pet | undefined, food: 'without_food' | 'with_food', litter: boolean) => {
@@ -284,7 +284,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
           emergencyBackfillRequired: false,
         });
       } catch (err) {
-        console.error('[Boarding] Failed to re-queue discharged patient:', err);
+        if (import.meta.env.DEV) console.error('[Boarding] Failed to re-queue discharged patient:', err);
       }
     }
 

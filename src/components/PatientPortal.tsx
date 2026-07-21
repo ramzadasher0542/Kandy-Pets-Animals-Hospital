@@ -66,8 +66,8 @@ export default function PatientPortal({
   const [labResults, setLabResults] = useState<LabResult[]>([]);
 
   useEffect(() => {
-    fetchVaccinations().then(setVaccinations).catch(console.error);
-    fetchLabResults().then(setLabResults).catch(console.error);
+    fetchVaccinations().then(setVaccinations).catch((e) => { if (import.meta.env.DEV) console.error(e); });
+    fetchLabResults().then(setLabResults).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
   const [showQueueOnly, setShowQueueOnly] = useState(true); 
 
