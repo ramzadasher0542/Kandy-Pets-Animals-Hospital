@@ -51,7 +51,8 @@ export async function fetchInventoryBatches(): Promise<InventoryBatch[]> {
 export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   if (!item) return;
 
-  if (!item.id) {
+  const existingItem = await db.inventory.getItem<InventoryItem>(item.id);
+  if (!existingItem) {
     let duplicateFound = false;
     await db.inventory.iterate((existing: InventoryItem) => {
       if (existing && !Array.isArray(existing) && existing.sku === item.sku) {
@@ -62,8 +63,6 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
       throw new Error('DUPLICATE_SKU: An item with this SKU already exists.');
     }
   }
-
-  if (!item.id) return;
 
   // If it's a service, wipe stock bounds logically
   if (item.category === 'lab_service' || item.category === 'service') { 
