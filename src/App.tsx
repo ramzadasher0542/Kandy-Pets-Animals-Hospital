@@ -1314,7 +1314,7 @@ function App() {
 
     // The provider/admin account is config-backed, not a db.users row.
     if (username === 'ashpoint_owner') {
-      const stored = systemConfig.masterPin || hashPin('5692');
+      const stored = systemConfig.masterPin;
       const valid = isBcryptHash(stored)
         ? await verifyCredential(credential, stored)
         : await migrateOldHash(stored, credential);
@@ -1431,7 +1431,7 @@ function App() {
     setIsVerifying(true);
     try {
       if (selectedUsername === 'ashpoint_owner') {
-        const stored = systemConfig.masterPin || hashPin('5692');
+        const stored = systemConfig.masterPin;
         const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
         if (!ok) { registerFailure(selectedUsername); return; }
 
