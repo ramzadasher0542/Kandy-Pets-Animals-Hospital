@@ -4,6 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import {defineConfig} from 'vite';
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 export default defineConfig(() => {
   return {
     plugins: [
@@ -18,7 +20,8 @@ export default defineConfig(() => {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB — covers large bundles
         },
         manifest: false, // Use existing public/manifest.json
-      })
+      }),
+      cloudflare()
     ],
     resolve: {
       alias: {
