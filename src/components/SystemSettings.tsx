@@ -11,7 +11,8 @@ import { Building2, Printer, Users, ShieldAlert, Save, Plus,
   FileText, Download, Upload, Layers, AlertTriangle, Smartphone, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
-import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
+import { fetchInventory, exportFullDatabase, restoreFullDatabase, fetchAppointments, fetchClients, fetchInvoices, fetchMedicalRecords } from '../lib/db';
+import { fetchStaffRegistry } from '../lib/auth';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 
@@ -331,6 +332,49 @@ export default function SystemSettings({
     }).join('\n');
     downloadCSV(`master_inventory_export_${new Date().toISOString().split('T')[0]}.csv`, headers + rows);
     showToast('Registry exported successfully.', 'success');
+  };
+
+  const [isExportingAll, setIsExportingAll] = useState(false);
+
+  const handleExportAllData = async () => {
+    setIsExportingAll(true);
+    try {
+      const [inventory, appointments, clients, invoices, medicalRecords, staff] = await Promise.all([
+        fetchInventory(),
+        fetchAppointments(),
+        fetchClients(),
+        fetchInvoices(),
+        fetchMedicalRecords(),
+        fetchStaffRegistry()
+      ]);
+
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        version: '1.0-pilot',
+        inventory,
+        appointments,
+        clients,
+        invoices,
+        medicalRecords,
+        staff
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kandy-pets-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Backup downloaded successfully.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to export data.', 'error');
+    } finally {
+      setIsExportingAll(false);
+    }
   };
 
   const handleDownloadBackup = async () => {
@@ -924,7 +968,22 @@ export default function SystemSettings({
           {/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
           {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database') && (
             <div className="space-y-6 animate-fade-in">
-              
+
+              {/* SECTION: Data Backup (portable JSON export) */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-rose-500" /> Data Backup</h3>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Download a complete backup of your clinic data. Do this weekly.</p>
+                </div>
+                <button
+                  onClick={handleExportAllData}
+                  disabled={isExportingAll}
+                  className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isExportingAll ? 'Generating...' : 'Export All Data'}
+                </button>
+              </div>
+
               {/* SECTION: Bulk Inventory Logistics */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
