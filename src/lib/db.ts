@@ -4,6 +4,7 @@
  */
 
 import { db, safeDbWrite, stampRecord } from './localDb';
+import { supabase } from './supabase';
 import { globalMutex } from './mutex';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import {
@@ -56,6 +57,11 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
     item.minStock = 0; 
   }
   
+  if (supabase) {
+    const { error } = await supabase.from('inventory').upsert(item);
+    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+  }
+
   // True Delta Update - No race conditions + Sync Engine dirty stamp
   await safeDbWrite(db.inventory, item.id, stampRecord(item));
 }
@@ -71,6 +77,10 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   const item = await db.inventory.getItem<InventoryItem>(id);
   if (item) {
     (item as any).is_deleted = true;
+    if (supabase) {
+      const { error } = await supabase.from('inventory').delete().eq('id', id);
+      if (error) console.error('[DB] Supabase delete failed:', error.message);
+    }
     await safeDbWrite(db.inventory, id, stampRecord(item));
   }
 }
@@ -109,6 +119,10 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
           const consumeFromBatch = Math.min(batch.quantityRemaining, remainingToConsume);
           batch.quantityRemaining -= consumeFromBatch;
           remainingToConsume -= consumeFromBatch;
+          if (supabase) {
+            const { error } = await supabase.from('inventory_batches').upsert(batch);
+            if (error) console.error('[DB] Supabase upsert failed:', error.message);
+          }
           await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
         }
       } else if (qtyDelta > 0) {
@@ -117,6 +131,10 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
         if (sortedBatches.length > 0) {
           const newestBatch = sortedBatches[0];
           newestBatch.quantityRemaining += qtyDelta;
+          if (supabase) {
+            const { error } = await supabase.from('inventory_batches').upsert(newestBatch);
+            if (error) console.error('[DB] Supabase upsert failed:', error.message);
+          }
           await safeDbWrite(db.inventoryBatches, newestBatch.id, stampRecord(newestBatch));
         }
       }
@@ -130,6 +148,11 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
         item.expiryDate = undefined;
         item.lotNumber = undefined;
       }
+    }
+
+    if (supabase) {
+      const { error } = await supabase.from('inventory').upsert(item);
+      if (error) console.error('[DB] Supabase upsert failed:', error.message);
     }
 
     // BUG #7 FIX: Stamp for sync so stock changes reach Supabase
@@ -197,6 +220,10 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
     date: formatDisplayDate(apt.date),
     time: formatDisplayTime(apt.time)
   };
+  if (supabase) {
+    const { error } = await supabase.from('appointments').upsert(formattedApt);
+    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+  }
   await db.appointments.setItem(apt.id, stampRecord(formattedApt));
 }
 
@@ -227,6 +254,10 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
     ...rec,
     visitDate: formatDisplayDate(rec.visitDate)
   };
+  if (supabase) {
+    const { error } = await supabase.from('medical_records').upsert(formattedRec);
+    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+  }
   await db.records.setItem(rec.id, stampRecord(formattedRec));
   
   if (rec.patientId) {
@@ -270,6 +301,11 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
     ...inv,
     date: formatDisplayDate(inv.date)
   };
+
+  if (supabase) {
+    const { error } = await supabase.from('invoices').upsert(formattedInv);
+    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+  }
 
   await db.invoices.setItem(inv.id, stampRecord(formattedInv));
 
@@ -517,6 +553,10 @@ export async function fetchClients(): Promise<Client[]> {
 
 export async function upsertClient(client: Client): Promise<void> {
   if (!client || !client.client_id) return;
+  if (supabase) {
+    const { error } = await supabase.from('clients').upsert(client);
+    if (error) console.error('[DB] Supabase upsert failed:', error.message);
+  }
   await db.clients.setItem(client.client_id, stampRecord(client));
 }
 
