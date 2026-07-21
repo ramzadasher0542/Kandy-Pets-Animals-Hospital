@@ -926,6 +926,7 @@ function App() {
       });
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
+      throw error;
     }
   }, []);
 

@@ -118,6 +118,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       setShowAddModal(false);
       setEditingItem(null);
       showToast(editingItem ? 'Item updated successfully.' : 'New item added to registry.', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
     } finally {
       setIsSaving(false);
     }
