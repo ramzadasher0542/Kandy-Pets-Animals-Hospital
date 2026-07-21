@@ -2,28 +2,33 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Credential layer (AUTH-1) — real bcrypt hashing + an in-memory guess limiter.
+ * Credential layer (AUTH-1) — simple in-bundle hashing + an in-memory guess
+ * limiter.
+ *
+ * NOTE: bcryptjs was removed from the frontend bundle (Phase 2). The hashing
+ * below is a non-cryptographic 32-bit hash — NOT secure for real credentials.
+ * Real server-side hashing is deferred to Phase 3.
  *
  * NOT wired into the app yet. AUTH-2 replaces App.tsx's homemade `hashPin`
  * and the `if (true) // BYPASS PIN` owner login with these helpers.
  */
-import bcrypt from 'bcryptjs';
-
-// Cost 10: ~50-100ms per hash on typical till hardware — real bcrypt work
-// factor, still fast enough that a cashier doesn't notice the login delay.
-const COST_FACTOR = 10;
 
 // ---------------------------------------------------------------------------
 // Hashing / verification
 // ---------------------------------------------------------------------------
 
-/** Hash a plaintext credential (PIN or password) with bcrypt. */
+/** Hash a plaintext credential (PIN or password). Non-cryptographic. */
 export async function hashCredential(plaintext: string): Promise<string> {
-  return bcrypt.hash(plaintext, COST_FACTOR);
+  let hash = 0;
+  for (let i = 0; i < plaintext.length; i++) {
+    hash = ((hash << 5) - hash) + plaintext.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return hash.toString(16);
 }
 
 /**
- * Verify a plaintext credential against a bcrypt hash.
+ * Verify a plaintext credential against a stored hash.
  *
  * Pass `identifier` (e.g. username) to auto-clear that identifier's failed
  * attempt counter on success — "reset the counter on a successful verify".
@@ -35,12 +40,7 @@ export async function verifyCredential(
   identifier?: string
 ): Promise<boolean> {
   if (!plaintext || !hash) return false;
-  let ok = false;
-  try {
-    ok = await bcrypt.compare(plaintext, hash);
-  } catch {
-    return false; // malformed/legacy hash — never throw at a login screen
-  }
+  const ok = (await hashCredential(plaintext)) === hash;
   if (ok && identifier) resetAttempts(identifier);
   return ok;
 }
@@ -48,16 +48,16 @@ export async function verifyCredential(
 /**
  * Synchronous verify. Only for call sites that cannot be made async yet —
  * notably App.tsx's `handleVerifyMasterPin`, which backs the existing
- * window.prompt master-PIN gates (AUTH-3 converts those). Blocks the thread
- * for ~50-100ms at cost 10; never use it in a loop or on a hot path.
+ * window.prompt master-PIN gates (AUTH-3 converts those).
  */
 export function verifyCredentialSync(plaintext: string, hash: string): boolean {
   if (!plaintext || !hash) return false;
-  try {
-    return bcrypt.compareSync(plaintext, hash);
-  } catch {
-    return false;
+  let h = 0;
+  for (let i = 0; i < plaintext.length; i++) {
+    h = ((h << 5) - h) + plaintext.charCodeAt(i);
+    h = h & h;
   }
+  return h.toString(16) === hash;
 }
 
 /**
