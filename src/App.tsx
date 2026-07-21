@@ -176,6 +176,18 @@ function hashPin(pin: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * True when a db.ts write threw CLOUD_SAVE_FAILED — the local IndexedDB write
+ * succeeded but the Supabase (cloud) write failed. The sync engine will retry
+ * via the record's _dirty flag, so callers treat this as a soft warning, keep
+ * their local state update, and tell the user "Saved locally".
+ */
+function isCloudSaveError(error: any): boolean {
+  return typeof error?.message === 'string' && error.message.includes('CLOUD_SAVE_FAILED');
+}
+
+const CLOUD_RETRY_TOAST = 'Saved locally. Cloud sync will retry.';
+
 function App() {
   // SYSTEM BOOT STATE
   const [isBooting, setIsBooting] = useState(true);
@@ -687,29 +699,50 @@ function App() {
       setInventory(prev => [product, ...prev]);
       showToast(`${product.name} added to inventory.`);
     } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
+      if (isCloudSaveError(error)) {
+        setInventory(prev => [product, ...prev]);
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+      } else {
+        showToast(`Failed: ${error.message}`, 'error');
+      }
     }
   }, []);
 
   // AUDIT FIX: Atomic stock decrement — reads from IndexedDB, not stale React state
   const handleUpdateStock = useCallback(async (itemId: string, qtyDelta: number, _expectedStock?: number) => {
+    let cloudFailed = false;
+    let newStock: number | null = null;
     try {
-      const newStock = await atomicStockDecrement(itemId, qtyDelta);
-
-      // Update React state to match the DB truth
-      setInventory(prev => prev.map(item => item.id === itemId ? { ...item, stock: newStock } : item));
-
-      const currentItem = inventory.find(i => i.id === itemId);
-      if (currentItem && newStock <= currentItem.minStock && currentItem.category !== 'service') {
-        const alert: SystemAlert = { id: crypto.randomUUID(), severity: 'urgent', category: 'inventory', message: `LOW STOCK: ${currentItem.name} (${newStock} left).`, timestamp: new Date().toISOString(), read: false };
-        await upsertAlert(alert);
-        setAlerts(prev => [alert, ...prev]);
-      }
-      showToast(`Stock updated: ${currentItem?.name || itemId} (${newStock} remaining).`);
+      newStock = await atomicStockDecrement(itemId, qtyDelta);
     } catch (error: any) {
-      if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
-      showToast(`Stock update failed: ${error.message}`, 'error');
+      if (isCloudSaveError(error)) {
+        // Local decrement succeeded; only the cloud push failed. Recover the new
+        // stock level from IndexedDB so React state still reflects the truth.
+        cloudFailed = true;
+        const fresh = await db.inventory.getItem<InventoryItem>(itemId);
+        newStock = fresh ? fresh.stock : null;
+      } else {
+        if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
+        showToast(`Stock update failed: ${error.message}`, 'error');
+        return;
+      }
     }
+    if (newStock === null) return;
+    const finalStock = newStock;
+
+    // Update React state to match the DB truth
+    setInventory(prev => prev.map(item => item.id === itemId ? { ...item, stock: finalStock } : item));
+
+    const currentItem = inventory.find(i => i.id === itemId);
+    if (currentItem && finalStock <= currentItem.minStock && currentItem.category !== 'service') {
+      const alert: SystemAlert = { id: crypto.randomUUID(), severity: 'urgent', category: 'inventory', message: `LOW STOCK: ${currentItem.name} (${finalStock} left).`, timestamp: new Date().toISOString(), read: false };
+      await upsertAlert(alert);
+      setAlerts(prev => [alert, ...prev]);
+    }
+    showToast(
+      cloudFailed ? CLOUD_RETRY_TOAST : `Stock updated: ${currentItem?.name || itemId} (${finalStock} remaining).`,
+      cloudFailed ? 'warning' : 'success'
+    );
   }, [inventory]);
 
   const handleUpdatePrice = useCallback(async (id: string, newPrice: number) => {
@@ -721,7 +754,12 @@ function App() {
         showToast(`Price updated for item.`);
       }
     } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
+      if (isCloudSaveError(error)) {
+        setInventory(prev => prev.map(i => i.id === id ? { ...i, price: newPrice } : i));
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+      } else {
+        showToast(`Failed: ${error.message}`, 'error');
+      }
     }
   }, [inventory]);
 
@@ -731,6 +769,11 @@ function App() {
       setAppointments(prev => [appointment, ...prev]);
       showToast(`Appointment scheduled for ${appointment.petName}.`);
     } catch (error: any) {
+      if (isCloudSaveError(error)) {
+        setAppointments(prev => [appointment, ...prev]);
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+        return;
+      }
       showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
@@ -757,6 +800,11 @@ function App() {
 
       showToast(`Appointment for ${updated.petName} updated successfully.`);
     } catch (error: any) {
+      if (isCloudSaveError(error)) {
+        setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+        return;
+      }
       showToast(`Failed: ${error.message}`, 'error');
     }
   }, [clinicQueue]);
@@ -767,7 +815,15 @@ function App() {
 
     try {
       const updated = { ...apt, status: 'completed' as const, updated_at: new Date().toISOString(), _dirty: true };
-      await upsertAppointment(updated);
+      // A cloud-only failure must NOT abort the local visit-close (state update
+      // + queue removal). Complete every local step, then rethrow CLOUD_SAVE_FAILED
+      // at the end so the caller can surface the "saved locally" warning.
+      let cloudFailed = false;
+      try {
+        await upsertAppointment(updated);
+      } catch (e) {
+        if (isCloudSaveError(e)) cloudFailed = true; else throw e;
+      }
       setAppointments(prev => prev.map(a => a.id === appointmentId ? updated : a));
 
       const queueItem = clinicQueue.find(q => q.appointmentId === appointmentId);
@@ -775,6 +831,7 @@ function App() {
         await removeFromClinicQueue(queueItem.id);
         setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
       }
+      if (cloudFailed) throw new Error('CLOUD_SAVE_FAILED: appointment');
     } catch (error) {
       if (import.meta.env.DEV) console.error('[CeylonPets] closeVisit failed:', error);
       throw error;
@@ -795,12 +852,13 @@ function App() {
       if (dbApt) apt = dbApt;
     }
     if (apt) {
+      let cloudFailed = false;
       try {
         if (status === 'completed') {
-          await closeVisit(id);
+          try { await closeVisit(id); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
         } else {
           const updated = { ...apt, status, updated_at: new Date().toISOString() };
-          await upsertAppointment(updated);
+          try { await upsertAppointment(updated); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
           setAppointments(prev => prev.map(a => a.id === id ? updated : a));
 
           if (status === 'in-progress') {
@@ -847,7 +905,7 @@ function App() {
           }
         }
 
-        showToast(`Appointment status updated to ${status}.`);
+        showToast(cloudFailed ? CLOUD_RETRY_TOAST : `Appointment status updated to ${status}.`, cloudFailed ? 'warning' : 'success');
       } catch (error: any) {
         if (import.meta.env.DEV) console.error('[CeylonPets] Appointment status update failed:', error);
         showToast(`Failed to update appointment status: ${error.message}`, 'error');
@@ -861,13 +919,29 @@ function App() {
       setRecords(prev => [newRec, ...prev]);
       showToast(`Medical record added successfully.`);
     } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
+      if (isCloudSaveError(error)) {
+        setRecords(prev => [newRec, ...prev]);
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+      } else {
+        showToast(`Failed: ${error.message}`, 'error');
+      }
     }
   }, []);
 
   const handleUpdateRecord = useCallback(async (updated: MedicalRecord) => {
     try {
       await upsertMedicalRecord(updated);
+      applyUpdatedRecord();
+      showToast(`Medical record updated successfully.`);
+    } catch (error: any) {
+      if (isCloudSaveError(error)) {
+        applyUpdatedRecord();
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+      } else {
+        showToast(`Failed: ${error.message}`, 'error');
+      }
+    }
+    function applyUpdatedRecord() {
       setRecords(prev => {
         const exists = prev.some(r => r.id === updated.id);
         if (exists) {
@@ -876,9 +950,6 @@ function App() {
           return [updated, ...prev];
         }
       });
-      showToast(`Medical record updated successfully.`);
-    } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
 
@@ -916,13 +987,21 @@ function App() {
   const handleUpdateClient = useCallback(async (client: any) => {
     try {
       await upsertClient(client);
+      applyClient();
+    } catch (error: any) {
+      if (isCloudSaveError(error)) {
+        applyClient();
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+      } else {
+        showToast(`Failed: ${error.message}`, 'error');
+      }
+    }
+    function applyClient() {
       setClients(prev => {
         const exists = prev.some(c => c.client_id === client.client_id);
         if (exists) return prev.map(c => c.client_id === client.client_id ? client : c);
         return [...prev, client];
       });
-    } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
   // Removed unused handleUpdateInventory
@@ -931,6 +1010,17 @@ function App() {
     try {
       if (import.meta.env.DEV) console.log('[App] handleUpdateInventoryItem called for:', item.name, 'stock:', item.stock, 'id:', item.id);
       await upsertInventoryItem(item);
+      applyItem();
+    } catch (error: any) {
+      if (isCloudSaveError(error)) {
+        applyItem();
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+        return;
+      }
+      showToast(`Failed: ${error.message}`, 'error');
+      throw error;
+    }
+    function applyItem() {
       setInventory(prev => {
         const exists = prev.some(i => i.id === item.id);
         if (exists) {
@@ -938,9 +1028,6 @@ function App() {
         }
         return [...prev, item];
       });
-    } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
-      throw error;
     }
   }, []);
 
@@ -954,7 +1041,12 @@ function App() {
       await deleteInventoryItem(id);
       setInventory(prev => prev.filter(i => i.id !== id));
     } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
+      if (isCloudSaveError(error)) {
+        setInventory(prev => prev.filter(i => i.id !== id));
+        showToast(CLOUD_RETRY_TOAST, 'warning');
+      } else {
+        showToast(`Failed: ${error.message}`, 'error');
+      }
     }
   }, [currentUser]);
 
@@ -1119,13 +1211,15 @@ function App() {
   // Added try-catch for error resilience.
   // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
   const handleAddInvoice = useCallback(async (invoice: any) => {
+    let cloudFailed = false;
     try {
-      await upsertInvoice(invoice);
+      try { await upsertInvoice(invoice); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
       setInvoices(prev => [invoice, ...prev]);
 
       if (invoice.appointmentId) {
-        await closeVisit(invoice.appointmentId);
+        try { await closeVisit(invoice.appointmentId); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
       }
+      if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('[CeylonPets] Invoice creation failed:', error);
       showToast(`Checkout failed: ${error.message}`, 'error');
@@ -1140,6 +1234,7 @@ function App() {
       showToast('Unauthorized. Invoice was not voided.', 'error');
       return;
     }
+    let cloudFailed = false;
     try {
       // FIX 4: Use functional state update instead of destructive re-fetch
       const target = await db.invoices.getItem<Invoice>(id);
@@ -1147,13 +1242,24 @@ function App() {
         if (target.paymentStatus !== 'void') {
           for (const item of target.items) {
             if (!['service', 'lab_service'].includes(item.category)) {
-              const newStock = await atomicStockDecrement(item.itemId, +item.quantity);
-              setInventory(prev => prev.map(invItem => invItem.id === item.itemId ? { ...invItem, stock: newStock } : invItem));
+              let newStock = 0;
+              try {
+                newStock = await atomicStockDecrement(item.itemId, +item.quantity);
+              } catch (e) {
+                if (isCloudSaveError(e)) {
+                  // Local restock succeeded; recover the level from IndexedDB.
+                  cloudFailed = true;
+                  const fresh = await db.inventory.getItem<InventoryItem>(item.itemId);
+                  newStock = fresh ? fresh.stock : 0;
+                } else throw e;
+              }
+              const finalStock = newStock;
+              setInventory(prev => prev.map(invItem => invItem.id === item.itemId ? { ...invItem, stock: finalStock } : invItem));
             }
           }
         }
         const voided = { ...target, paymentStatus: 'void' as const };
-        await upsertInvoice(voided);
+        try { await upsertInvoice(voided); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
         setInvoices(prev => {
           const exists = prev.some(i => i.id === id);
           if (exists) return prev.map(i => i.id === id ? voided : i);
@@ -1175,6 +1281,7 @@ function App() {
             }
           }
         }
+        if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
       }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
@@ -1186,8 +1293,9 @@ function App() {
   // acquires the mutex internally. Double-locking caused a deadlock that froze checkout.
   // FIX 4: Use functional state updates instead of destructive re-fetches
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
+    let cloudFailed = false;
     try {
-      await upsertInvoice(invoice);
+      try { await upsertInvoice(invoice); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
       setInvoices(prev => [invoice, ...prev]);
 
       // MISSION 3: Update Client Lifetime Value
@@ -1208,14 +1316,25 @@ function App() {
 
       for (const cartItem of cart) {
         if (!['service', 'lab_service'].includes(cartItem.category)) {
-          const newStock = await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
-          setInventory(prev => prev.map(item => item.id === cartItem.id ? { ...item, stock: newStock } : item));
+          let newStock = 0;
+          try {
+            newStock = await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
+          } catch (e) {
+            if (isCloudSaveError(e)) {
+              // Local decrement succeeded; recover the level from IndexedDB.
+              cloudFailed = true;
+              const fresh = await db.inventory.getItem<InventoryItem>(cartItem.id);
+              newStock = fresh ? fresh.stock : 0;
+            } else throw e;
+          }
+          const finalStock = newStock;
+          setInventory(prev => prev.map(item => item.id === cartItem.id ? { ...item, stock: finalStock } : item));
         }
       }
 
       // Close visit (appointment complete + queue removal) via unified path
       if (invoice.appointmentId) {
-        await closeVisit(invoice.appointmentId);
+        try { await closeVisit(invoice.appointmentId); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
       }
 
       // Mark swept records as billed
@@ -1247,6 +1366,9 @@ function App() {
           if (import.meta.env.DEV) console.error(`Failed to mark swept record billed:`, e);
         }
       }
+
+      // Local sale is fully committed; only the cloud push failed on some rows.
+      if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Checkout failed:', error);
       showToast(`Checkout Error: ${error.message}`, 'error');

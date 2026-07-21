@@ -70,13 +70,19 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
     item.minStock = 0; 
   }
   
+  let cloudError: any = null;
   if (supabase) {
     const { error } = await supabase.from('inventory').upsert(item);
-    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = error; }
   }
 
-  // True Delta Update - No race conditions + Sync Engine dirty stamp
+  // True Delta Update - No race conditions + Sync Engine dirty stamp.
+  // Local write ALWAYS happens (even when the cloud write failed) so data is
+  // never lost; stampRecord marks it _dirty for the sync engine to retry.
   await safeDbWrite(db.inventory, item.id, stampRecord(item));
+
+  // Surface a cloud failure to the caller ONLY after the local write succeeded.
+  if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
 }
 
 export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void> {
@@ -90,11 +96,14 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   const item = await db.inventory.getItem<InventoryItem>(id);
   if (item) {
     (item as any).is_deleted = true;
+    let cloudError: any = null;
     if (supabase) {
       const { error } = await supabase.from('inventory').delete().eq('id', id);
-      if (error) if (import.meta.env.DEV) console.error('[DB] Supabase delete failed:', error.message);
+      if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase delete failed:', error.message); cloudError = error; }
     }
+    // Local soft-delete ALWAYS happens; surface a cloud failure only afterward.
     await safeDbWrite(db.inventory, id, stampRecord(item));
+    if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
   }
 }
 
@@ -112,6 +121,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
     }
     const newStock = Math.max(0, item.stock + qtyDelta);
     item.stock = newStock;
+    let cloudError: any = null;
 
     // Fetch all batches for this item
     const batches: InventoryBatch[] = [];
@@ -134,7 +144,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
           remainingToConsume -= consumeFromBatch;
           if (supabase) {
             const { error } = await supabase.from('inventory_batches').upsert(batch);
-            if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+            if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = cloudError || error; }
           }
           await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
         }
@@ -146,7 +156,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
           newestBatch.quantityRemaining += qtyDelta;
           if (supabase) {
             const { error } = await supabase.from('inventory_batches').upsert(newestBatch);
-            if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+            if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = cloudError || error; }
           }
           await safeDbWrite(db.inventoryBatches, newestBatch.id, stampRecord(newestBatch));
         }
@@ -165,11 +175,13 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
 
     if (supabase) {
       const { error } = await supabase.from('inventory').upsert(item);
-      if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+      if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = cloudError || error; }
     }
 
-    // BUG #7 FIX: Stamp for sync so stock changes reach Supabase
+    // BUG #7 FIX: Stamp for sync so stock changes reach Supabase.
+    // Local write ALWAYS happens; surface a cloud failure only afterward.
     await safeDbWrite(db.inventory, itemId, stampRecord(item));
+    if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
     return newStock;
   } finally {
     unlock();
@@ -233,11 +245,13 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
     date: formatDisplayDate(apt.date),
     time: formatDisplayTime(apt.time)
   };
+  let cloudError: any = null;
   if (supabase) {
     const { error } = await supabase.from('appointments').upsert(formattedApt);
-    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = error; }
   }
   await db.appointments.setItem(apt.id, stampRecord(formattedApt));
+  if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
 }
 
 export async function fetchVeterinarians(): Promise<User[]> {
@@ -267,9 +281,10 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
     ...rec,
     visitDate: formatDisplayDate(rec.visitDate)
   };
+  let cloudError: any = null;
   if (supabase) {
     const { error } = await supabase.from('medical_records').upsert(formattedRec);
-    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = error; }
   }
   await db.records.setItem(rec.id, stampRecord(formattedRec));
   
@@ -283,6 +298,7 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
       }
     }
   }
+  if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
 }
 
 export async function deleteMedicalRecord(id: string): Promise<void> {
@@ -315,9 +331,10 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
     date: formatDisplayDate(inv.date)
   };
 
+  let cloudError: any = null;
   if (supabase) {
     const { error } = await supabase.from('invoices').upsert(formattedInv);
-    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = error; }
   }
 
   await db.invoices.setItem(inv.id, stampRecord(formattedInv));
@@ -330,6 +347,7 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
       await db.appointments.setItem(apt.id, stampRecord(apt));
     }
   }
+  if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
 }
 
 // ==========================================
@@ -566,11 +584,13 @@ export async function fetchClients(): Promise<Client[]> {
 
 export async function upsertClient(client: Client): Promise<void> {
   if (!client || !client.client_id) return;
+  let cloudError: any = null;
   if (supabase) {
     const { error } = await supabase.from('clients').upsert(client);
-    if (error) if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message);
+    if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = error; }
   }
   await db.clients.setItem(client.client_id, stampRecord(client));
+  if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
 }
 
 // ==========================================
