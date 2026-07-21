@@ -588,6 +588,20 @@ function App() {
   const [consentPayload, setConsentPayload] = useState<{ clientName: string, petName: string } | null>(null);
   const [idleMessage, setIdleMessage] = useState<string | null>(null);
 
+  // Sync status indicator: reflect browser online/offline state in the existing
+  // isOnline flag (also driven by the SyncEngine status callback above).
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
   const [enteredPin, setEnteredPin] = useState('');
   const [selectedUsername, setSelectedUsername] = useState('');
   const [pinError, setPinError] = useState(false);
@@ -1824,6 +1838,12 @@ function App() {
                 <div className="min-w-0 flex-1">
                   <span className="block font-bold text-gray-800 text-xs truncate leading-tight">{currentUser.name}</span>
                   <span className="block text-[10px] text-gray-400 capitalize font-bold mt-0.5 truncate">{currentUser.role} console</span>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className={`w-2 h-2 rounded-full ${SYNC_ENABLED && isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${SYNC_ENABLED && isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {!isOnline ? 'Offline' : SYNC_ENABLED ? 'Cloud Sync Active' : 'Offline'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="p-3 border-t border-gray-200 bg-gray-50/50 space-y-1">
