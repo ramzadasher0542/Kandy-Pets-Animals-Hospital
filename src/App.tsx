@@ -1315,9 +1315,11 @@ function App() {
     // The provider/admin account is config-backed, not a db.users row.
     if (username === 'ashpoint_owner') {
       const stored = systemConfig.masterPin;
-      const valid = isBcryptHash(stored)
-        ? await verifyCredential(credential, stored)
-        : await migrateOldHash(stored, credential);
+      // Try the new hash format first, then fall back to the legacy djb2 format.
+      // (The old isBcryptHash routing has been dead since Phase 2 removed bcrypt,
+      // which stranded any credential upgraded to the new format.)
+      const valid = (await verifyCredential(credential, stored))
+        || (await migrateOldHash(stored, credential));
       const user = valid
         ? ({ id: 'ashpoint_owner', name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: '' } as any)
         : null;
@@ -1329,9 +1331,9 @@ function App() {
     const stored = found?.pin || pinCache[username] || '';
     if (!found || !stored) return { valid: false, user: null };
 
-    const valid = isBcryptHash(stored)
-      ? await verifyCredential(credential, stored)
-      : await migrateOldHash(stored, credential);
+    // Same router as the provider path: new hash format first, legacy djb2 second.
+    const valid = (await verifyCredential(credential, stored))
+      || (await migrateOldHash(stored, credential));
     return { valid, user: valid ? found : null };
   }, [systemConfig, pinCache]);
 
@@ -1400,11 +1402,12 @@ function App() {
     attempt: string
   ): Promise<{ ok: boolean; upgradedHash?: string }> => {
     if (!stored || !attempt) return { ok: false };
-    if (isBcryptHash(stored)) {
-      return { ok: await verifyCredential(attempt, stored) };
+    // Try the new hash format first; already-upgraded credentials need no re-hash.
+    if (await verifyCredential(attempt, stored)) {
+      return { ok: true };
     }
-    // Legacy credential — check it, and if it matches, re-hash with bcrypt so
-    // the user silently upgrades without a manual reset.
+    // Legacy djb2 credential — if it matches, re-hash to the new format so the
+    // user silently upgrades without a manual reset.
     if (await migrateOldHash(stored, attempt)) {
       return { ok: true, upgradedHash: await hashCredential(attempt) };
     }
