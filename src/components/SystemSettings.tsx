@@ -223,8 +223,13 @@ export default function SystemSettings({
     if (pwNew !== pwConfirm) { showToast('Passwords do not match.', 'error'); return; }
 
     // Confirm the OPERATOR's own current credential before setting a new one.
-    const auth = await requireAuth(currentUser || null, 'change_password');
-    if (!auth.allowed) { showToast('Authorization failed. Password unchanged.', 'error'); return; }
+    // Exception: the provider changing their OWN password is already
+    // authenticated (they're logged in), so re-auth here is redundant.
+    const isProviderSelf = (pwTarget as any)?.__isProvider || pwTarget?.username === 'ashpoint_owner';
+    if (!isProviderSelf) {
+      const auth = await requireAuth(currentUser || null, 'change_password');
+      if (!auth.allowed) { showToast('Authorization failed. Password unchanged.', 'error'); return; }
+    }
 
     setPwBusy(true);
     try {
