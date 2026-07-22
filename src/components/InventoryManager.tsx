@@ -100,7 +100,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       category: formData.category as ItemCategory,
       price: Number(formData.price) || 0,
       cost: Number(formData.cost) || 0,
-      stock: isPhysical ? (Number(formData.stock) || 0) : 0,
+      stock: !editingItem ? 0 : (isPhysical ? (Number(formData.stock) || 0) : 0),
       minStock: isPhysical ? (Number(formData.minStock) || 0) : 0,
       unit: formData.unit || 'unit',
       location: formData.location || '',
@@ -545,11 +545,15 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
                 {isFormPhysical ? (
                   <div className="grid grid-cols-3 gap-4 animate-fade-in">
+                    {/* Stock is only editable for EXISTING items. New items start at 0
+                        and receive stock via the batch "Receive Stock" flow. */}
+                    {editingItem && (
                     <div>
                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Current Stock</label>
                       <input type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
                       <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-widest">⚠ Manual adjustment — does not create a batch. Use Receive Stock for deliveries.</p>
                     </div>
+                    )}
                     <div>
                       <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1.5">Alert Minimum</label>
                       <input type="number" value={formData.minStock} onChange={e => setFormData({...formData, minStock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-black font-mono text-rose-800 outline-none focus:border-rose-500" />
@@ -561,7 +565,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                   </div>
                 ) : null}
 
-                {['prescription', 'vaccine'].includes(formData.category) && (
+                {editingItem && ['prescription', 'vaccine'].includes(formData.category) && (
                   <div className="grid grid-cols-2 gap-4 mt-4 animate-fade-in">
                     <div>
                       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot Number</label>
