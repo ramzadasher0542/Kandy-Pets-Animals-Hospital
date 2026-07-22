@@ -160,7 +160,7 @@ import {
 } from './lib/db';
 import { globalMutex } from './lib/mutex';
 import { SyncEngine, wipeAllCloudTables } from './lib/syncEngine';
-import { SYNC_ENABLED, supabase, signInWithPassword } from './lib/supabase';
+import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
 
 function hashPin(pin: string): string {
   if (!pin) return '';
@@ -1570,7 +1570,7 @@ function App() {
       if (selectedUsername === 'ashpoint_owner') {
         // Try Supabase Auth first (provider only); fall back to local auth below.
         if (enteredPin && enteredPin.length >= 8) {
-          const { data, error } = await signInWithPassword('provider@ashpointsolutions.com', enteredPin);
+          const { data, error } = await signInWithPassword('ramzadasher0542@gmail.com', enteredPin);
           if (data?.user) {
             resetAttempts(selectedUsername);
             setCurrentUser({ id: data.user.id, name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
@@ -2026,7 +2026,8 @@ function App() {
                   Switch User
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    await signOut();
                     setCurrentUser(null);
                     setSelectedUsername('');
                     setEnteredPin('');
