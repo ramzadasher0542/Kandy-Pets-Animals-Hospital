@@ -85,9 +85,70 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
 }
 
+/**
+ * Recompute an item's stock (and soonest expiry/lot) from the sum of its batch
+ * quantities, so item.stock and batch totals never drift for batch-tracked items.
+ *
+ * HYBRID MODEL GUARD: this app also has manual/seeded stock with NO batches.
+ * If the item has zero batches, we DO NOT touch item.stock (summing zero batches
+ * would wrongly zero out a manually-stocked item) — we return its current stock
+ * unchanged. Only items that actually have batches are recomputed from them.
+ *
+ * Returns the item's resulting stock level.
+ */
+async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
+  // Sum all non-deleted batches for this item, and count them.
+  let total = 0;
+  let batchCount = 0;
+  await db.inventoryBatches.iterate((b: InventoryBatch) => {
+    if (b && !b.is_deleted && b.inventoryItemId === itemId) {
+      total += b.quantityRemaining;
+      batchCount += 1;
+    }
+  });
+
+  const item = await db.inventory.getItem<InventoryItem>(itemId);
+  if (!item) return total;
+
+  // No batches → manual-stock item; leave item.stock exactly as-is.
+  if (batchCount === 0) return item.stock;
+
+  item.stock = total;
+
+  // Point expiry/lot at the soonest-expiring active batch.
+  const activeBatches: InventoryBatch[] = [];
+  await db.inventoryBatches.iterate((b: InventoryBatch) => {
+    if (b && !b.is_deleted && b.inventoryItemId === itemId && b.quantityRemaining > 0) {
+      activeBatches.push(b);
+    }
+  });
+  activeBatches.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+  if (activeBatches.length > 0) {
+    item.expiryDate = activeBatches[0].expiryDate;
+    item.lotNumber = activeBatches[0].lotNumber;
+  } else {
+    item.expiryDate = undefined;
+    item.lotNumber = undefined;
+  }
+
+  // Save to Supabase + local. Local write ALWAYS happens; surface a cloud
+  // failure only afterward (same defer-throw pattern as the other writers).
+  let cloudError: any = null;
+  if (supabase) {
+    const { error } = await supabase.from('inventory').upsert(item);
+    if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = error; }
+  }
+  await safeDbWrite(db.inventory, itemId, stampRecord(item));
+  if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
+
+  return total;
+}
+
 export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void> {
   if (!batch || !batch.id) return;
   await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
+  // Keep item.stock in sync with the batch totals for this item.
+  await recomputeItemStockFromBatches(batch.inventoryItemId);
 }
 
 export async function deleteInventoryItem(id: string): Promise<void> {
@@ -120,7 +181,6 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
       throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
     }
     const newStock = Math.max(0, item.stock + qtyDelta);
-    item.stock = newStock;
     let cloudError: any = null;
 
     // Fetch all batches for this item
@@ -162,17 +222,15 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
         }
       }
 
-      // Recompute item expiry/lot for the soonest-expiring active batch
-      const remainingBatches = batches.filter(b => b.quantityRemaining > 0).sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-      if (remainingBatches.length > 0) {
-        item.expiryDate = remainingBatches[0].expiryDate;
-        item.lotNumber = remainingBatches[0].lotNumber;
-      } else {
-        item.expiryDate = undefined;
-        item.lotNumber = undefined;
-      }
+      // Batch-tracked item: batch totals are the source of truth. Recompute
+      // item.stock (and expiry/lot) from the now-updated batches and save it.
+      const total = await recomputeItemStockFromBatches(itemId);
+      if (cloudError) throw new Error(`CLOUD_SAVE_FAILED: ${cloudError.message}`);
+      return total;
     }
 
+    // No batches: this item uses manual stock — apply the delta directly.
+    item.stock = newStock;
     if (supabase) {
       const { error } = await supabase.from('inventory').upsert(item);
       if (error) { if (import.meta.env.DEV) console.error('[DB] Supabase upsert failed:', error.message); cloudError = cloudError || error; }
