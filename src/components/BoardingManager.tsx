@@ -5,14 +5,12 @@
 
 import React, { useState, useMemo } from 'react';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
 import {
-  Home, Search, Calendar, Activity, Info, ShieldAlert, CheckCircle2, PawPrint, X, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
+  Home, Activity, Info, CheckCircle2, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
 } from 'lucide-react';
 import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem } from '../types';
 import { showToast } from './Toast';
-import { fetchBoardingRecords, upsertBoardingRecord, fetchPets } from '../lib/db';
-import { Badge } from './ui/Badge';
+import { fetchBoardingRecords, upsertBoardingRecord } from '../lib/db';
 import PageShell from './ui/PageShell';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 

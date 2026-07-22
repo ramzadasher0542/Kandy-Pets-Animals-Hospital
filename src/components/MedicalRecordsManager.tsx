@@ -6,16 +6,15 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
 import {
   Activity, Edit2, CheckCircle2, X,
-  HeartPulse, ClipboardList, Pill, History, AlertCircle, Save, CalendarClock,
+  HeartPulse, ClipboardList, Pill, History, AlertCircle, Save,
   Stethoscope, PawPrint} from 'lucide-react';
 import PageShell from './ui/PageShell';
 import { MedicalRecord, InventoryItem, Vitals, PatientHistory, PhysicalExamination, ClinicalAssessment, Appointment, Pet, Client } from '../types';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
-import { fetchPaginatedRecords, fetchPets, fetchBoardingRecords } from '../lib/db';
+import { fetchPaginatedRecords, fetchBoardingRecords } from '../lib/db';
 
 interface RecordsProps {
   clients: Client[];

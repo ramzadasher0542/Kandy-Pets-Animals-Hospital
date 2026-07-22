@@ -6,10 +6,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
-import { 
-  Search, PawPrint, Activity, HeartPulse, TestTube, Syringe, 
-  Edit2, CheckCircle2, X, User, PenTool, Database, Clock, AlertTriangle
+import {
+  PawPrint, Activity, HeartPulse, TestTube, Syringe,
+  Edit2, CheckCircle2, User, PenTool, Database, Clock, AlertTriangle
 } from 'lucide-react';
 import { MedicalRecord, Appointment, Pet, Vaccination, LabResult, Client, PetClassification } from '../types';
 import { formatDisplayDate } from '../utils/time';

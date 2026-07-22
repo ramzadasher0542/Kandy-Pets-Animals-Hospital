@@ -4,7 +4,6 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
@@ -93,9 +92,9 @@ window.seedDemoData = seedDemoData;
 
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
-  Stethoscope, TestTube, BriefcaseMedical, Package, FileText,
-  BarChart3, Settings, LogOut, CloudLightning, Printer, Lock,
-  ChevronLeft, PenTool, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle
+  Stethoscope, TestTube, Package, FileText,
+  BarChart3, Settings, LogOut, CloudLightning, Lock,
+  ChevronLeft, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle
 } from 'lucide-react';
 
 import {
@@ -137,9 +136,8 @@ import {
   fetchPets,
   fetchClients,
   fetchBoardingRecords,
-  upsertClient, 
-  reconstituteSystemState,
-  upsertInventoryItem, 
+  upsertClient,
+  upsertInventoryItem,
   upsertAppointment, 
   upsertMedicalRecord,
   deleteMedicalRecord, 
@@ -149,16 +147,11 @@ import {
   upsertGroomingLog,
   upsertLabResult,
   upsertBoardingRecord,
-  addToClinicQueue, 
-  updateQueueItemStatus, 
-  removeFromClinicQueue, 
-  getActiveQueueItems, 
-  atomicStockDecrement, 
-  deleteInventoryItem,
-  fetchTodaysRecords, 
-  fetchTodaysInvoices
+  addToClinicQueue,
+  removeFromClinicQueue,
+  atomicStockDecrement,
+  deleteInventoryItem
 } from './lib/db';
-import { globalMutex } from './lib/mutex';
 import { SyncEngine, wipeAllCloudTables } from './lib/syncEngine';
 import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
 

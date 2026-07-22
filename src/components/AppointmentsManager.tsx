@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, ModalSection } from './ui/Modal';
 import { createPortal } from 'react-dom';
 import {
   Calendar as CalendarIcon, Clock, Plus, User, CheckCircle2,
   Activity, X, ChevronLeft, ChevronRight, List as ListIcon,
-  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, PawPrint, History, SearchCode
+  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, History, SearchCode
 } from 'lucide-react';
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client } from '../types';
 import { showToast } from './Toast';

@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Search, Syringe, ShieldCheck, User, ShieldAlert, PawPrint } from 'lucide-react';
+import { Syringe, ShieldCheck, User, PawPrint } from 'lucide-react';
 import { MedicalRecord, InventoryItem, Pet, Vaccination, ClinicQueueItem, Client } from '../types';
 import { showToast } from './Toast';
-import { fetchPets, fetchVaccinations, upsertVaccination } from '../lib/db';
+import { fetchVaccinations, upsertVaccination } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';

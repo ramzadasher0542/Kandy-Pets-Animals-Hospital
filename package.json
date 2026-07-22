@@ -12,26 +12,20 @@
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
-    "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.110.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "localforage": "^1.10.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "pdf-parse": "^2.4.5",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "swr": "^2.4.1",
-    "vite": "^6.2.3"
+    "swr": "^2.4.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",

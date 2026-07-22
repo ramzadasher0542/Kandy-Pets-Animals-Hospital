@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Wallet, TrendingUp, ArrowDownRight, ArrowUpRight, FileText, Download, Trash2,
-  Calendar, Printer, Mail, Users, Stethoscope, Clock, Percent, PieChart, Package
+  Printer, Mail, Users, Stethoscope, PieChart, Package
 } from 'lucide-react';
 import PageShell from './ui/PageShell';
 import { showToast } from './Toast';

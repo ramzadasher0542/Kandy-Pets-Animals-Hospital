@@ -5,8 +5,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
-import { Lock, Calculator, AlertTriangle, CheckCircle2, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2 } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
 import { db, stampRecord } from '../lib/localDb';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Activity, Clock, Users, AlertTriangle, PackageX, Calendar, 
-  CreditCard, ChevronRight, CheckCircle, FileText, FileSignature,
+  CreditCard, ChevronRight, CheckCircle, FileSignature,
   TrendingUp, Home
 } from 'lucide-react';
 import { 

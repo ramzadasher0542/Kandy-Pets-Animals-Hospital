@@ -5,12 +5,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
-import { Search, TestTube, User, CheckCircle2, X, ClipboardList, Database, FileText } from 'lucide-react';
+import { TestTube, User, CheckCircle2, ClipboardList, Database, FileText } from 'lucide-react';
 import { MedicalRecord, LabResult, InventoryItem, Appointment, Pet, Client, ClinicQueueItem } from '../types';
 import { showToast } from './Toast';
 import { formatDisplayDate } from '../utils/time';
-import { fetchPets, fetchLabResults, upsertLabResult } from '../lib/db';
+import { fetchLabResults, upsertLabResult } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';

@@ -3,17 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import EmptyState from './ui/EmptyState';
 import ClinicQueue from './ui/ClinicQueue';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
 import {
-  Search, UserPlus, Phone, Mail, MapPin, Calendar,
-  ArrowRight, FileText, Wallet, ShieldAlert, PawPrint, Activity,
-  Edit2, PenTool, User, X, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe, Trash2, Users, Receipt, Stethoscope} from 'lucide-react';
+  UserPlus, Phone, Mail, MapPin, Calendar,
+  ArrowRight, Wallet, ShieldAlert, PawPrint, Activity,
+  Edit2, PenTool, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe, Trash2, Users, Receipt, Stethoscope} from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification, Pet, Vaccination, LabResult } from '../types';
-import { fetchClients, fetchPets, fetchVaccinations, fetchLabResults, upsertPet } from '../lib/db';
+import { upsertPet } from '../lib/db';
 import { db } from '../lib/localDb';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';

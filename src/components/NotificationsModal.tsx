@@ -8,15 +8,12 @@ import {
   Bell, 
   Mail, 
   MessageSquare, 
-  Send, 
-  Trash2, 
-  Check, 
-  AlertOctagon, 
-  AlertTriangle, 
+  Send,
+  AlertOctagon,
+  AlertTriangle,
   Info,
   CalendarCheck,
-  CheckCircle2,
-  Bookmark
+  CheckCircle2
 } from 'lucide-react';
 import { ClientNotification, SystemAlert } from '../types';
 

@@ -5,10 +5,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
-import { Building2, Printer, Users, ShieldAlert, Save, Plus, 
-  Trash2, Database, X, Lock, CheckCircle2, User,
-  FileText, Download, Upload, Layers, AlertTriangle, Smartphone, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
+import { Building2, Printer, Users, ShieldAlert, Save, Plus,
+  Trash2, Database, Lock, CheckCircle2, User,
+  FileText, Download, Upload, Layers, AlertTriangle, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase, fetchAppointments, fetchClients, fetchInvoices, fetchMedicalRecords } from '../lib/db';

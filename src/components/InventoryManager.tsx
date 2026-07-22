@@ -6,14 +6,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
 import {
   Plus, Edit2, Trash2, AlertTriangle,
-  Package, Activity, X, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
+  Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
 } from 'lucide-react';
 import { InventoryItem, ItemCategory, InventoryBatch } from '../types';
 import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch } from '../lib/db';
-import { db } from '../lib/localDb';
 import { showToast } from './Toast';
 import PageShell from './ui/PageShell';
 

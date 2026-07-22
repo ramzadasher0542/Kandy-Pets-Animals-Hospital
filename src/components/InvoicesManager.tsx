@@ -6,18 +6,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
-import { 
-  Search, FileText, Printer, ShieldAlert, X, DollarSign, 
-  Calendar, CheckCircle2, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight,
+import {
+  FileText, Printer, ShieldAlert, X, DollarSign,
+  CheckCircle2, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight,
   Receipt,
 } from 'lucide-react';
 import { formatDisplayDate } from '../utils/time';
 import { showToast } from './Toast';
 import { fetchPaginatedInvoices, fetchInvoiceStats } from '../lib/db';
 import { Badge } from './ui/Badge';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
 import PageShell from './ui/PageShell';
 
 interface InvoicesProps {

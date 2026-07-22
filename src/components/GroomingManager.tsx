@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { PawPrint, CheckSquare, FileText, CheckCircle2, AlertTriangle, Scissors, Search, Activity, User } from 'lucide-react';
+import { PawPrint, CheckSquare, FileText, CheckCircle2, AlertTriangle, Scissors, Activity, User } from 'lucide-react';
 import { GroomingLog, MedicalRecord, Pet, InventoryItem, ClinicQueueItem, Client } from '../types';
 import { showToast } from './Toast';
-import { fetchPets, fetchGroomingLogs, upsertGroomingLog } from '../lib/db';
+import { fetchGroomingLogs, upsertGroomingLog } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';

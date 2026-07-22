@@ -6,10 +6,9 @@
 import React, { useState, useMemo } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { createPortal } from 'react-dom';
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, CreditCard,
-  User, Calendar as CalendarIcon, FileText, ChevronRight, Activity, Receipt, Package,
+  User, FileText, ChevronRight, Activity, Receipt, Package,
   PenTool, CheckCircle2, Lock
 } from 'lucide-react';
 import PageShell from './ui/PageShell';
@@ -17,7 +16,7 @@ import { requireAuth } from '../lib/requireAuth';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem, User as UserType } from '../types';
-import { fetchInvoices, upsertInvoice, fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
+import { fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
