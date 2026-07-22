@@ -45,6 +45,22 @@ if (!SYNC_ENABLED) {
 }
 
 // ---------------------------------------------------------------------------
+// Auth helpers (Phase C1) — Supabase Auth as primary login, local as fallback.
+// ---------------------------------------------------------------------------
+
+/** Sign in against Supabase Auth. Returns a null-user result when unconfigured. */
+export async function signInWithPassword(email: string, password: string) {
+  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
+  return supabase.auth.signInWithPassword({ email, password });
+}
+
+/** Sign out of the Supabase Auth session (no-op when unconfigured). */
+export async function signOut() {
+  if (!supabase) return;
+  await supabase.auth.signOut();
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 export const DB_TABLES = {

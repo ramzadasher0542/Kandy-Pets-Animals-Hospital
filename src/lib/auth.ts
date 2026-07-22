@@ -1,6 +1,23 @@
 import { User } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 import { db } from './localDb';
+import { supabase } from './supabase';
+
+// ---------------------------------------------------------------------------
+// Supabase Auth (Phase C1)
+// ---------------------------------------------------------------------------
+
+/** The current Supabase Auth user, or null when unauthenticated/unconfigured. */
+export async function getSupabaseUser() {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data?.user ?? null;
+}
+
+/** True when there is an active Supabase Auth session. */
+export async function isSupabaseAuthenticated(): Promise<boolean> {
+  return (await getSupabaseUser()) !== null;
+}
 
 export async function fetchStaffRegistry(): Promise<User[]> {
   const users: User[] = [];

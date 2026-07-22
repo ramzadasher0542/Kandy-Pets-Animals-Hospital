@@ -160,7 +160,7 @@ import {
 } from './lib/db';
 import { globalMutex } from './lib/mutex';
 import { SyncEngine, wipeAllCloudTables } from './lib/syncEngine';
-import { SYNC_ENABLED } from './lib/supabase';
+import { SYNC_ENABLED, supabase, signInWithPassword } from './lib/supabase';
 
 function hashPin(pin: string): string {
   if (!pin) return '';
@@ -663,6 +663,18 @@ function App() {
   useEffect(() => {
     setPolicyOverrides((systemConfig as any).actionPolicies);
   }, [systemConfig]);
+
+  // Phase C1: reflect Supabase Auth state changes. A remote/expired session
+  // sign-out drops the local provider session too.
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Owner / provider-admin sign in with a full alphanumeric password; till roles
   // (cashier, vet, groomer) keep the fast 4-digit numeric PIN.
@@ -1556,6 +1568,19 @@ function App() {
     setIsVerifying(true);
     try {
       if (selectedUsername === 'ashpoint_owner') {
+        // Try Supabase Auth first (provider only); fall back to local auth below.
+        if (enteredPin && enteredPin.length >= 8) {
+          const { data, error } = await signInWithPassword('provider@ashpointsolutions.com', enteredPin);
+          if (data?.user) {
+            resetAttempts(selectedUsername);
+            setCurrentUser({ id: data.user.id, name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
+            setActiveView('settings');
+            setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
+            return;
+          }
+          if (import.meta.env.DEV && error) console.info('[Auth] Supabase sign-in failed, falling back to local:', error.message);
+        }
+
         const stored = systemConfig.masterPin;
         const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
         if (!ok) { registerFailure(selectedUsername); return; }
