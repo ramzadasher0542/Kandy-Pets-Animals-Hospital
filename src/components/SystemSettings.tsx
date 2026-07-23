@@ -12,6 +12,7 @@ import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase, fetchAppointments, fetchClients, fetchInvoices, fetchMedicalRecords } from '../lib/db';
 import { fetchStaffRegistry } from '../lib/auth';
+import { signInWithPassword } from '../lib/supabase';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 
@@ -100,50 +101,36 @@ export default function SystemSettings({
   autoOpenProviderPassword, onAutoOpenHandled, defaultPasswordActive
 }: SettingsProps) {
 
-  const [showPurgeModal, setShowPurgeModal] = useState(false);
-  const [purgePin, setPurgePin] = useState('');
   const [showCloudWipeModal, setShowCloudWipeModal] = useState(false);
-  const [cloudWipePin, setCloudWipePin] = useState('');
-  const [cloudWipeConfirmText, setCloudWipeConfirmText] = useState('');
+  const [cloudWipePassword, setCloudWipePassword] = useState('');
   const [cloudWipeBusy, setCloudWipeBusy] = useState(false);
 
+  // ERASE-FIX: identity is verified against Supabase Auth (the provider's real
+  // cloud password) rather than the local masterPin / requireAuth. A correct
+  // sign-in is the sole gate before the irreversible cloud + local wipe.
   const handleConfirmCloudWipe = async () => {
     if (defaultPasswordActive) {
       showToast('Change the default provider password before wiping the cloud.', 'error');
       return;
     }
-    if (cloudWipeConfirmText !== 'DELETE') {
-      showToast('Type DELETE exactly to confirm. Nothing was erased.', 'error');
-      return;
-    }
-    const auth = await requireAuth(currentUser || null, 'wipe_cloud_database');
-    if (!auth.allowed) {
-      showToast('Authorization failed. Nothing was erased.', 'error');
+    if (!cloudWipePassword) {
+      showToast('Enter the provider password to confirm.', 'error');
       return;
     }
     setCloudWipeBusy(true);
     try {
+      const { data, error } = await signInWithPassword('ramzadasher0542@gmail.com', cloudWipePassword);
+      if (error || !data?.user) {
+        showToast('Incorrect password. Erase cancelled.', 'error');
+        return;
+      }
       if (onWipeCloudAndPurge) await onWipeCloudAndPurge();
     } finally {
       setCloudWipeBusy(false);
+      setCloudWipePassword('');
     }
   };
 
-  const handleConfirmPurge = async () => {
-    if (defaultPasswordActive) {
-      showToast('Change the default provider password before erasing data.', 'error');
-      return;
-    }
-    const auth = await requireAuth(currentUser || null, 'erase_local_database');
-    if (!auth.allowed) {
-      showToast('Authorization failed. Database was NOT erased.', 'error');
-      return;
-    }
-    setShowPurgeModal(false);
-    setPurgePin('');
-    onPurgeDatabases();
-  };
-  
   const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
   const [hasChanges, setHasChanges] = useState(false);
@@ -1020,85 +1007,33 @@ export default function SystemSettings({
                   <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Actions executed in this sector are irreversible. Bypassing these safety interlocks will result in permanent deletion of the IndexedDB vault and local system configurations.</p>
                   
                   <div className="space-y-4">
-                    <div className="bg-white border border-rose-100 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                    <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
-                        <h4 className="text-sm font-black text-slate-800 flex items-center gap-2"><Database className="w-4 h-4 text-rose-500" /> Erase Entire Database</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Permanently deletes every record and all configuration. Requires your admin password.</p>
+                        <h4 className="text-sm font-black text-rose-900 flex items-center gap-2"><Database className="w-4 h-4 text-rose-600" /> Erase Cloud + Local</h4>
+                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Permanently deletes every record from both this device and the Supabase cloud backup — affects every device synced to this project. Cannot be undone. Requires the provider's Supabase password.</p>
                       </div>
-                      <button onClick={() => { setPurgePin(''); setShowPurgeModal(true); }} className="px-6 py-3 bg-rose-600 hover:bg-rose-800 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
-                        Erase Everything
+                      <button onClick={() => { setCloudWipePassword(''); setShowCloudWipeModal(true); }} className="px-6 py-3 bg-rose-800 hover:bg-rose-950 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
+                        Erase Cloud + Local
                       </button>
                     </div>
-
-                    {cloudSyncEnabled && (
-                      <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-                        <div>
-                          <h4 className="text-sm font-black text-rose-900 flex items-center gap-2"><Database className="w-4 h-4 text-rose-600" /> Erase Cloud Database Too</h4>
-                          <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Also deletes every record from the Supabase cloud backup — affects every device synced to this project. Cannot be undone.</p>
-                        </div>
-                        <button onClick={() => { setCloudWipePin(''); setCloudWipeConfirmText(''); setShowCloudWipeModal(true); }} className="px-6 py-3 bg-rose-800 hover:bg-rose-950 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
-                          Erase Cloud + Local
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Password-gated total wipe */}
-              <Modal
-                open={showPurgeModal}
-                onClose={() => { setShowPurgeModal(false); setPurgePin(''); }}
-                title="Erase Entire Database"
-                icon={<ShieldAlert className="w-5 h-5 text-rose-600" />}
-                size="sm"
-                footer={
-                  <div className="flex gap-3 justify-end">
-                    <button onClick={() => { setShowPurgeModal(false); setPurgePin(''); }} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors">Cancel</button>
-                    <button
-                      onClick={handleConfirmPurge}
-                      disabled={!purgePin}
-                      className={`px-5 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors ${purgePin ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-                    >
-                      Permanently Delete Everything
-                    </button>
-                  </div>
-                }
-              >
-                <div className="p-6 space-y-4">
-                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3">
-                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                    <p className="text-xs font-bold text-rose-700 leading-relaxed">This permanently deletes <span className="font-black">all data</span> — clients, pets, appointments, invoices, inventory, staff, charts, and system configuration. This cannot be undone.</p>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Enter Admin Password (Login PIN)</label>
-                    <input
-                      type="password"
-                      value={purgePin}
-                      onChange={e => setPurgePin(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && purgePin) handleConfirmPurge(); }}
-                      placeholder="••••"
-                      autoFocus
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
-                    />
-                  </div>
-                </div>
-              </Modal>
-
-              {/* Cloud + local wipe — requires typing DELETE plus admin password */}
+              {/* Cloud + local wipe — verified against the provider's Supabase password */}
               <Modal
                 open={showCloudWipeModal}
-                onClose={() => { if (!cloudWipeBusy) { setShowCloudWipeModal(false); setCloudWipePin(''); setCloudWipeConfirmText(''); } }}
-                title="Erase Cloud Database Too"
+                onClose={() => { if (!cloudWipeBusy) { setShowCloudWipeModal(false); setCloudWipePassword(''); } }}
+                title="Erase Cloud + Local"
                 icon={<ShieldAlert className="w-5 h-5 text-rose-700" />}
                 size="sm"
                 footer={
                   <div className="flex gap-3 justify-end">
-                    <button onClick={() => { setShowCloudWipeModal(false); setCloudWipePin(''); setCloudWipeConfirmText(''); }} disabled={cloudWipeBusy} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors disabled:opacity-50">Cancel</button>
+                    <button onClick={() => { setShowCloudWipeModal(false); setCloudWipePassword(''); }} disabled={cloudWipeBusy} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors disabled:opacity-50">Cancel</button>
                     <button
                       onClick={handleConfirmCloudWipe}
-                      disabled={cloudWipeConfirmText !== 'DELETE' || !cloudWipePin || cloudWipeBusy}
-                      className={`px-5 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors ${cloudWipeConfirmText === 'DELETE' && cloudWipePin && !cloudWipeBusy ? 'bg-rose-800 hover:bg-rose-950 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                      disabled={!cloudWipePassword || cloudWipeBusy}
+                      className={`px-5 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors ${cloudWipePassword && !cloudWipeBusy ? 'bg-rose-800 hover:bg-rose-950 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
                     >
                       {cloudWipeBusy ? 'Erasing…' : 'Permanently Erase Cloud + Local'}
                     </button>
@@ -1108,27 +1043,17 @@ export default function SystemSettings({
                 <div className="p-6 space-y-4">
                   <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3">
                     <AlertTriangle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
-                    <p className="text-xs font-bold text-rose-800 leading-relaxed">This deletes <span className="font-black">every row in the Supabase cloud database</span> — not just this browser. Any other device or staff member synced to this project loses their data too. There is no undo.</p>
+                    <p className="text-xs font-bold text-rose-800 leading-relaxed">This deletes <span className="font-black">every row in the Supabase cloud database</span> and all local data on this device. Any other device or staff member synced to this project loses their data too. There is no undo.</p>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Type <span className="font-mono text-rose-700">DELETE</span> to confirm</label>
-                    <input
-                      type="text"
-                      value={cloudWipeConfirmText}
-                      onChange={e => setCloudWipeConfirmText(e.target.value)}
-                      placeholder="DELETE"
-                      autoFocus
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Enter Admin Password (Login PIN)</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Enter the provider's Supabase password</label>
                     <input
                       type="password"
-                      value={cloudWipePin}
-                      onChange={e => setCloudWipePin(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && cloudWipeConfirmText === 'DELETE' && cloudWipePin) handleConfirmCloudWipe(); }}
-                      placeholder="••••"
+                      value={cloudWipePassword}
+                      onChange={e => setCloudWipePassword(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && cloudWipePassword && !cloudWipeBusy) handleConfirmCloudWipe(); }}
+                      placeholder="••••••••"
+                      autoFocus
                       className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
                     />
                   </div>
