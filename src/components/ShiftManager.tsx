@@ -150,19 +150,6 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
 
     localStorage.setItem('ceylon_active_shift_id', newShift.id);
 
-    const newAdj: CashAdjustment = {
-      id: `CASH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-      type: 'IN',
-      amount: floatAmount,
-      category: 'Starting Float',
-      reason: 'Register opened with starting float',
-      date: new Date().toISOString(),
-      createdBy: currentUser.name,
-      shiftId: newShift.id
-    };
-    await db.cashAdjustments.setItem(newAdj.id, stampRecord(newAdj));
-    setAdjustments(prev => [newAdj, ...prev]);
-
     const activeShiftState: ActiveShift = {
       id: newShift.id,
       openedAt: newShift.startTime,
