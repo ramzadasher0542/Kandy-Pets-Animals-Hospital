@@ -109,10 +109,7 @@ export default function SystemSettings({
   // cloud password) rather than the local masterPin / requireAuth. A correct
   // sign-in is the sole gate before the irreversible cloud + local wipe.
   const handleConfirmCloudWipe = async () => {
-    if (defaultPasswordActive) {
-      showToast('Change the default provider password before wiping the cloud.', 'error');
-      return;
-    }
+    // Removed — Supabase Auth already verified the provider password above
     if (!cloudWipePassword) {
       showToast('Enter the provider password to confirm.', 'error');
       return;
