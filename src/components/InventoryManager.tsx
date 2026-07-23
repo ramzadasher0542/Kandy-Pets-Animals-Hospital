@@ -416,6 +416,16 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                             {isLow && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
                             {expiryStatus === 'expired' && <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
                             {expiryStatus === 'soon' && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
+                            {item.stock === 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setReceiveStockItem(item)}
+                                className="mt-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest flex items-center gap-1 underline decoration-dotted cursor-pointer"
+                                title="Add stock via Receive Stock — creates a batch with lot number and expiry date"
+                              >
+                                <Package className="w-2.5 h-2.5" /> Receive Stock
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
