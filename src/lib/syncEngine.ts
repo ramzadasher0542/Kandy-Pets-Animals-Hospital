@@ -62,15 +62,12 @@ const STORE_MAPPINGS: StoreMapping[] = [
  */
 export async function wipeAllCloudTables(): Promise<{ table: string; error: string }[]> {
   if (!SYNC_ENABLED || !supabase) return [];
-  const failures: { table: string; error: string }[] = [];
-  for (const mapping of STORE_MAPPINGS) {
-    const { error } = await supabase.from(mapping.table).delete().not(mapping.idField, 'is', null);
-    if (error) {
-      if (import.meta.env.DEV) console.error(`${TAG} Cloud wipe failed [${mapping.table}]:`, error.message);
-      failures.push({ table: mapping.table, error: error.message });
-    }
+  const { error } = await supabase.rpc('wipe_all_tables');
+  if (error) {
+    if (import.meta.env.DEV) console.error(`${TAG} Cloud wipe failed:`, error.message);
+    return [{ table: 'all', error: error.message }];
   }
-  return failures;
+  return [];
 }
 
 // ---------------------------------------------------------------------------
