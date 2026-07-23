@@ -89,16 +89,14 @@ interface SettingsProps {
   cloudSyncEnabled?: boolean;
   onVerifyMasterPin?: (pin: string) => boolean;
   onChangePassword?: (target: any, newPassword: string) => Promise<void>;
-  // SECURE-1: banner deep-link opens the provider-password modal; and the
-  // default-password state blocks high-risk destructive actions.
+  // SECURE-1: banner deep-link opens the provider-password modal.
   autoOpenProviderPassword?: boolean;
   onAutoOpenHandled?: () => void;
-  defaultPasswordActive?: boolean;
 }
 
 export default function SystemSettings({
   config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser, onChangePassword,
-  autoOpenProviderPassword, onAutoOpenHandled, defaultPasswordActive
+  autoOpenProviderPassword, onAutoOpenHandled
 }: SettingsProps) {
 
   const [showCloudWipeModal, setShowCloudWipeModal] = useState(false);

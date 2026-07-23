@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
 
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
@@ -252,16 +252,9 @@ function App() {
     masterPin: hashPin('5692')
   } as SystemConfig);
 
-  // SECURE-1: banner deep-link flag + "default password still in use" detector.
-  // True whether masterPin is the shipped legacy default OR its bcrypt upgrade —
-  // i.e. whenever '5692' would still authenticate as provider.
+  // SECURE-1: banner deep-link flag — used to jump Settings straight to the
+  // provider password modal when requested.
   const [autoOpenProviderPw, setAutoOpenProviderPw] = useState(false);
-  const isDefaultProviderPassword = useMemo(() => {
-    const mp = systemConfig.masterPin;
-    if (!mp) return true;
-    if (mp === hashPin('5692')) return true;
-    try { return verifyCredentialSync('5692', mp); } catch { return false; }
-  }, [systemConfig.masterPin]);
 
   /**
    * HOTFIX: verify a master-PIN attempt against the stored credential in EITHER
@@ -1795,7 +1788,6 @@ function App() {
             onVerifyMasterPin={handleVerifyMasterPin}
             autoOpenProviderPassword={autoOpenProviderPw}
             onAutoOpenHandled={() => setAutoOpenProviderPw(false)}
-            defaultPasswordActive={isDefaultProviderPassword}
           />
         );
       }
@@ -2039,24 +2031,6 @@ function App() {
 
             {/* MAIN CANVAS */}
             <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
-              {currentUser?.role === 'provider' && isDefaultProviderPassword && (
-                <div data-testid="default-password-banner" className="shrink-0 bg-rose-600 text-white px-6 py-3 flex items-center justify-between gap-4 shadow-md">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <AlertTriangle className="w-5 h-5 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-black leading-tight">DEFAULT PASSWORD IN USE — change it now</p>
-                      <p className="text-[11px] font-bold text-rose-100 leading-tight">This deployment still accepts the shipped default provider password. Anyone can log in as root until you change it.</p>
-                    </div>
-                  </div>
-                  <button
-                    data-testid="btn-banner-change-password"
-                    onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); setAutoOpenProviderPw(true); }}
-                    className="shrink-0 px-4 py-2 bg-white text-rose-700 font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-rose-50 transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    Change Password Now
-                  </button>
-                </div>
-              )}
               <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs justify-between">
                 <div className="flex items-center gap-4">
                   {historyStack.length > 1 && (
