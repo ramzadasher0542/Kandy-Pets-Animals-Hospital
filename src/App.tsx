@@ -5,6 +5,8 @@
 
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
 
+const PROVIDER_EMAIL = 'ramzadasher0542@gmail.com';
+
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
 
@@ -1556,7 +1558,7 @@ function App() {
       if (selectedUsername === 'ashpoint_owner') {
         // Try Supabase Auth first (provider only); fall back to local auth below.
         if (enteredPin && enteredPin.length >= 8) {
-          const { data, error } = await signInWithPassword('ramzadasher0542@gmail.com', enteredPin);
+          const { data, error } = await signInWithPassword(PROVIDER_EMAIL, enteredPin);
           if (data?.user) {
             resetAttempts(selectedUsername);
             setCurrentUser({ id: data.user.id, name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });

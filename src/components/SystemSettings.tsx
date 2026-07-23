@@ -16,6 +16,8 @@ import { signInWithPassword } from '../lib/supabase';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 
+const PROVIDER_EMAIL = 'ramzadasher0542@gmail.com';
+
 export interface SystemConfig {
   appName: string;
   resellerName: string;
@@ -114,7 +116,7 @@ export default function SystemSettings({
     }
     setCloudWipeBusy(true);
     try {
-      const { data, error } = await signInWithPassword('ramzadasher0542@gmail.com', cloudWipePassword);
+      const { data, error } = await signInWithPassword(PROVIDER_EMAIL, cloudWipePassword);
       if (error || !data?.user) {
         showToast('Incorrect password. Erase cancelled.', 'error');
         return;
