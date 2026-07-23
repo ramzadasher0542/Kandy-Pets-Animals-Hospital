@@ -23,6 +23,10 @@ const at = (dayOffset: number, hour = 9, min = 0) => {
 const stamp = { created_at: iso(now), updated_at: iso(now) };
 
 export async function seedDemoData(): Promise<boolean> {
+  // NUCLEAR-ERASE kill switch: once the provider performs a full erase, this
+  // device must never repopulate demo data again, even on a fresh boot.
+  if (localStorage.getItem('NEVER_SEED') === 'true') return false;
+
   const existing = await db.clients.length();
   if (existing > 0) return false; // vault already has data — leave it alone
 

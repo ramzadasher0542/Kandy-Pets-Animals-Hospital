@@ -152,9 +152,10 @@ import {
   addToClinicQueue,
   removeFromClinicQueue,
   atomicStockDecrement,
-  deleteInventoryItem
+  deleteInventoryItem,
+  nuclearWipeLocal
 } from './lib/db';
-import { SyncEngine, wipeAllCloudTables } from './lib/syncEngine';
+import { SyncEngine, wipeAllCloudTables, stopSync } from './lib/syncEngine';
 import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
 
 function hashPin(pin: string): string {
@@ -1412,15 +1413,28 @@ function App() {
   // failed — never silently claim a clean wipe.
   const handleWipeCloudAndPurge = useCallback(async () => {
     try {
+      // 1. Kill the sync engine FIRST so no in-flight push/pull can resurrect
+      //    data we are about to delete.
+      stopSync();
+      // 2. Wipe every real synced cloud table (all 23 via STORE_MAPPINGS),
+      //    reporting any table that failed instead of claiming a clean wipe.
       const failures = await wipeAllCloudTables();
       if (failures.length > 0) {
         showToast(`Cloud wipe partially failed on: ${failures.map(f => f.table).join(', ')}. Local data will still be purged.`, 'error');
       }
-      await handlePurgeDatabases();
+      // 3. Nuke every local store + reset config to defaults.
+      await nuclearWipeLocal();
+      // 4. Clear web storage, then set flags so boot never reseeds demo data.
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem('NEVER_SEED', 'true');
+      localStorage.setItem('kp_purged', '1');
+      // 5. Nuclear reload into an empty, zero-record vault.
+      window.location.reload();
     } catch (error: any) {
       showToast(`Cloud wipe failed: ${error.message}`, 'error');
     }
-  }, [handlePurgeDatabases]);
+  }, []);
 
   // Single shared implementation — see verifyMasterPin above. Kept as a named
   // prop-facing wrapper for the panels that receive onVerifyMasterPin.

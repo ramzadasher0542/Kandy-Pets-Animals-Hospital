@@ -65,7 +65,10 @@ export async function wipeAllCloudTables(): Promise<{ table: string; error: stri
   const failures: { table: string; error: string }[] = [];
   for (const mapping of STORE_MAPPINGS) {
     const { error } = await supabase.from(mapping.table).delete().not(mapping.idField, 'is', null);
-    if (error) failures.push({ table: mapping.table, error: error.message });
+    if (error) {
+      if (import.meta.env.DEV) console.error(`${TAG} Cloud wipe failed [${mapping.table}]:`, error.message);
+      failures.push({ table: mapping.table, error: error.message });
+    }
   }
   return failures;
 }
@@ -451,6 +454,17 @@ export function getSyncEngine(opts?: {
     _instance = new SyncEngine(opts);
   }
   return _instance;
+}
+
+/**
+ * Hard-stop the singleton sync engine: clears the initial-delay timer, the
+ * periodic interval, the realtime subscription, and the online/offline
+ * listeners (all handled by SyncEngine.stop()). Safe no-op if the engine was
+ * never started. Call this FIRST in a nuclear erase so no in-flight cycle can
+ * re-push or re-pull data that is about to be wiped.
+ */
+export function stopSync(): void {
+  _instance?.stop();
 }
 
 export default getSyncEngine;

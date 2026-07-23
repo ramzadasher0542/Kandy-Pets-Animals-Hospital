@@ -715,6 +715,27 @@ export async function masterSystemPurge(): Promise<void> {
   localStorage.removeItem('ceylon_active_shift_id');
 }
 
+/**
+ * NUCLEAR-ERASE: clear EVERY localforage store — all clinic data plus the
+ * `system` store that holds SystemConfig — so nothing survives locally. Config
+ * is "reset to minimal defaults" by emptying db.system: on the next boot the
+ * app re-applies its built-in default SystemConfig (App.tsx useState) because
+ * there is no stored config to hydrate from.
+ *
+ * Unlike masterSystemPurge (which clears a fixed subset), this iterates every
+ * store on `db`, so newly-added stores are covered automatically. Pairs with
+ * wipeAllCloudTables() for the cloud side and the NEVER_SEED flag to block any
+ * demo reseed.
+ */
+export async function nuclearWipeLocal(): Promise<void> {
+  await Promise.all(
+    Object.values(db).map((store: any) =>
+      store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
+    )
+  );
+  localStorage.removeItem('ceylon_active_shift_id');
+}
+
 export async function reconstituteSystemState(payload: any): Promise<void> {
   if (!payload || !payload.collections) {
     throw new Error("Invalid backup payload. Ensure this file is a valid CeylonPets JSON export.");
