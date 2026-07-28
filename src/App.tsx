@@ -155,6 +155,7 @@ import {
   deleteInventoryItem,
   deleteClient,
   deletePet,
+  addRevenueToActiveShift,
   nuclearWipeLocal
 } from './lib/db';
 import { SyncEngine, wipeAllCloudTables, stopSync } from './lib/syncEngine';
@@ -1286,6 +1287,24 @@ function App() {
     try {
       try { await upsertInvoice(invoice); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
       setInvoices(prev => [invoice, ...prev]);
+
+      // Attach this sale's revenue to the open shift (Supabase). Paid sales only.
+      // Non-fatal: the invoice is already committed, so a shift-attach failure
+      // must not void the sale — surface it as a cloud-retry warning instead.
+      if (invoice.paymentStatus === 'paid') {
+        try {
+          if (invoice.paymentMethod === 'split' && invoice.splitPayments) {
+            for (const sp of invoice.splitPayments) {
+              await addRevenueToActiveShift(sp.method, Math.round(sp.amount * 100));
+            }
+          } else if (invoice.paymentMethod) {
+            await addRevenueToActiveShift(invoice.paymentMethod, Math.round(invoice.sales_total * 100));
+          }
+        } catch (e) {
+          cloudFailed = true;
+          if (import.meta.env.DEV) console.error('[CeylonPets] Shift revenue attach failed:', e);
+        }
+      }
 
       // MISSION 3: Update Client Lifetime Value
       if (invoice.patientId && invoice.patientId !== 'RETAIL') {

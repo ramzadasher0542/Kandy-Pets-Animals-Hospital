@@ -8,8 +8,8 @@ import { Modal } from './ui/Modal';
 import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2 } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
-import { db, stampRecord } from '../lib/localDb';
-import { fetchActiveShiftDetails } from '../lib/db';
+import { fetchActiveShiftDetails, addCashAdjustment, closeShift } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
@@ -146,6 +146,13 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       is_deleted: false,
     };
 
+    // Persist the shift to Supabase so any device can find the open shift.
+    // Use insert (not openShift()) so the id we built stays consistent with the
+    // localStorage cache, setActiveShift, and the shiftId stamped onto invoices.
+    if (!supabase) { showToast('No internet connection. Cannot open shift.', 'error'); return; }
+    const { error } = await supabase.from('shifts').insert(newShift);
+    if (error) { showToast(`Failed to open shift: ${error.message}`, 'error'); return; }
+
     localStorage.setItem('ceylon_active_shift_id', newShift.id);
 
     const activeShiftState: ActiveShift = {
@@ -160,7 +167,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     showToast('Register opened and active shift started.', 'success');
   };
 
-  const handleCloseShift = () => {
+  const handleCloseShift = async () => {
     if (!activeShift) return;
     if (actualClosingInput === '') { showToast('Please enter the actual counted drawer cash.', 'error'); return; }
 
@@ -176,6 +183,21 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       discrepancy: drawerMath.discrepancy,
       status: Math.abs(drawerMath.discrepancy) < 0.01 ? 'balanced' : 'discrepancy'
     };
+
+    // Close the shift in Supabase (rupees → integer cents to match the columns).
+    const notes = log.status === 'balanced' ? 'Balanced' : `Discrepancy Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)}`;
+    try {
+      await closeShift(
+        activeShift.id,
+        Math.round((parseFloat(actualClosingInput) || 0) * 100),
+        Math.round(drawerMath.expectedCash * 100),
+        Math.round(drawerMath.discrepancy * 100),
+        notes
+      );
+    } catch (e: any) {
+      showToast(`Failed to close shift: ${e.message}`, 'error');
+      return;
+    }
 
     onSaveShift(log);
     setLastClosedShift(log);
@@ -203,13 +225,18 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     }
 
     const newAdj: CashAdjustment = {
-      id: `CASH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      id: crypto.randomUUID(),
       type: adjType, amount: amt, category: adjCategory, reason: adjReason,
       date: new Date().toISOString(), createdBy: currentUser.name,
       shiftId: activeShift.id
     };
 
-    await db.cashAdjustments.setItem(newAdj.id, stampRecord(newAdj));
+    try {
+      await addCashAdjustment(newAdj);
+    } catch (e: any) {
+      showToast(`Failed to save adjustment: ${e.message}`, 'error');
+      return;
+    }
     setAdjustments(prev => [newAdj, ...prev]);
     setShowAdjModal(false); setAdjAmount(''); setAdjReason('');
     showToast(`Drawer ${adjType === 'IN' ? 'cash added' : 'cash removed'}: Rs. ${amt.toFixed(2)}`, 'success');
