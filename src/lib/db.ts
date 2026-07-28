@@ -50,26 +50,26 @@ export async function fetchInventoryBatches(): Promise<InventoryBatch[]> {
 export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   if (!item) return;
 
-  const existingItem = await db.inventory.getItem<InventoryItem>(item.id);
-  if (!existingItem) {
-    let duplicateFound = false;
-    await db.inventory.iterate((existing: InventoryItem) => {
-      if (existing && !Array.isArray(existing) && existing.sku === item.sku) {
-        duplicateFound = true;
-      }
-    });
-    if (duplicateFound) {
-      throw new Error('DUPLICATE_SKU: An item with this SKU already exists.');
-    }
+  if (!supabase) throw new Error('No internet connection');
+
+  // SKU duplicate check against Supabase (excludes this item, so edits pass).
+  if (item.sku) {
+    const { data: skuData, error: skuError } = await supabase
+      .from('inventory')
+      .select('id')
+      .eq('sku', item.sku)
+      .neq('id', item.id)
+      .maybeSingle();
+    if (skuError) throw skuError;
+    if (skuData) throw new Error('DUPLICATE_SKU: An item with this SKU already exists.');
   }
 
   // If it's a service, wipe stock bounds logically
-  if (item.category === 'lab_service' || item.category === 'service') { 
-    item.stock = 0; 
-    item.minStock = 0; 
+  if (item.category === 'lab_service' || item.category === 'service') {
+    item.stock = 0;
+    item.minStock = 0;
   }
-  
-  if (!supabase) throw new Error('No internet connection');
+
   const { error } = await supabase.from('inventory').upsert(item);
   if (error) throw error;
 }
@@ -158,14 +158,19 @@ export async function deleteInventoryItem(id: string): Promise<void> {
 export async function atomicStockDecrement(itemId: string, qtyDelta: number): Promise<number> {
   const unlock = await globalMutex.lock();
   try {
-    const item = await db.inventory.getItem<InventoryItem>(itemId);
-    if (!item) {
-      throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
-    }
+    if (!supabase) throw new Error('No internet connection');
+    const { data: itemData, error: itemError } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('id', itemId)
+      .maybeSingle();
+    if (itemError) throw itemError;
+    if (!itemData) throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
+    const item = itemData as InventoryItem;
+
     const newStock = Math.max(0, item.stock + qtyDelta);
 
     // Fetch all batches for this item from Supabase
-    if (!supabase) throw new Error('No internet connection');
     const { data: batchData, error: batchError } = await supabase
       .from('inventory_batches')
       .select('*')
