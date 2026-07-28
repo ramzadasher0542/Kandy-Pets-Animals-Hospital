@@ -9,6 +9,7 @@ import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, 
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
 import { db, stampRecord } from '../lib/localDb';
+import { fetchActiveShiftDetails } from '../lib/db';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
@@ -49,15 +50,12 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const [adjReason, setAdjReason] = useState('');
   const [adjustments, setAdjustments] = useState<CashAdjustment[]>([]);
 
-  // Load adjustments for current shift
+  // Load adjustments for the current shift from Supabase (visible on any device).
   useEffect(() => {
     if (!activeShift) { setAdjustments([]); return; }
     const load = async () => {
-      const adjs: CashAdjustment[] = [];
-      await db.cashAdjustments.iterate((val: CashAdjustment) => {
-        if (val && val.shiftId === activeShift.id) adjs.push(val);
-      });
-      setAdjustments(adjs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      const { adjustments: adjs } = await fetchActiveShiftDetails();
+      setAdjustments((adjs as CashAdjustment[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     };
     load();
   }, [activeShift]);

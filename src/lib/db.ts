@@ -471,6 +471,11 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
     });
   }
 
+  // Payment method breakdown (cash / card / bank) for the Z-report.
+  const cashTotal = (invoiceRows || []).filter((i: any) => i.paymentMethod === 'cash').reduce((s: number, i: any) => s + (i.sales_total || 0), 0);
+  const cardTotal = (invoiceRows || []).filter((i: any) => i.paymentMethod === 'card').reduce((s: number, i: any) => s + (i.sales_total || 0), 0);
+  const bankTotal = (invoiceRows || []).filter((i: any) => i.paymentMethod === 'bank_transfer').reduce((s: number, i: any) => s + (i.sales_total || 0), 0);
+
   return {
     gross_sales: grossSales,
     total_cogs: totalCogs,
@@ -483,6 +488,11 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
       { category: 'vaccine', total: vaccineRevenue },
       { category: 'prescription', total: prescriptionRevenue },
       { category: 'retail', total: retailRevenue }
+    ],
+    payment_breakdown: [
+      { method: 'cash', total: cashTotal },
+      { method: 'card', total: cardTotal },
+      { method: 'bank_transfer', total: bankTotal }
     ]
   };
 }
@@ -497,19 +507,40 @@ export async function fetchLowStockCount(): Promise<number> {
   return count;
 }
 
-// LocalStorage is ONLY permitted for this single scalar reference ID
 export async function fetchActiveShiftId(): Promise<string | null> {
-  return localStorage.getItem('ceylon_active_shift_id') || null;
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('shifts')
+    .select('id')
+    .eq('isOpen', true)
+    .order('startTime', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) { console.error('[DB]', error.message); return null; }
+  if (data?.id) {
+    localStorage.setItem('ceylon_active_shift_id', data.id);
+    return data.id;
+  }
+  return null;
 }
 
-export async function fetchActiveShiftDetails(): Promise<Shift | null> {
-  const activeId = localStorage.getItem('ceylon_active_shift_id');
-  if (!activeId) return null;
-  if (!supabase) return null;
-  const { data, error } = await supabase.from('shifts').select('*').eq('id', activeId).maybeSingle();
-  if (error) { console.error('[DB]', error.message); return null; }
-  const shift = data as Shift | null;
-  return (shift && shift.isOpen) ? shift : null;
+export async function fetchActiveShiftDetails(): Promise<{ shift: Shift | null; adjustments: any[] }> {
+  const activeId = await fetchActiveShiftId();
+  if (!activeId || !supabase) return { shift: null, adjustments: [] };
+  const { data: shiftData, error: shiftError } = await supabase.from('shifts').select('*').eq('id', activeId).maybeSingle();
+  if (shiftError) { console.error('[DB]', shiftError.message); return { shift: null, adjustments: [] }; }
+  const shift = shiftData as Shift | null;
+  if (!shift || !shift.isOpen) return { shift: null, adjustments: [] };
+  const { data: adjData, error: adjError } = await supabase.from('cash_adjustments').select('*').eq('shiftId', activeId);
+  if (adjError) console.error('[DB]', adjError.message);
+  return { shift, adjustments: adjData || [] };
+}
+
+export async function fetchCashAdjustments(shiftId: string): Promise<any[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('cash_adjustments').select('*').eq('shiftId', shiftId);
+  if (error) { console.error('[DB]', error.message); return []; }
+  return data || [];
 }
 
 /**
@@ -588,7 +619,7 @@ export async function closeShift(
 }
 
 export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {
-  const activeId = localStorage.getItem('ceylon_active_shift_id');
+  const activeId = await fetchActiveShiftId();
   if (!activeId) return;
   if (!supabase) throw new Error('No internet connection');
   const unlock = await globalMutex.lock();
