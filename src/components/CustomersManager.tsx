@@ -205,9 +205,12 @@ export default function CustomersManager({
       const deterministicPatientId = `${targetPetName}_${normalizedPhone}`;
       const existingPet = pets.find(p => p.id === deterministicPatientId);
 
+      // Pets are separate table rows linked by the clientId foreign key — never
+      // stored as a nested array on the client.
       if (existingPet) {
         const updatedPet: Pet = {
           ...existingPet,
+          clientId: finalClient.client_id,
           name: newPetData.petName.trim(),
           petType: newPetData.petType as any,
           breed: newPetData.breed || 'Mixed breed',
@@ -217,16 +220,10 @@ export default function CustomersManager({
         };
         await upsertPet(updatedPet);
         if (onUpdatePet) onUpdatePet(updatedPet.id, updatedPet.name, updatedPet);
-        
-        // Ensure client is linked to pet
-        if (!finalClient.petIds?.includes(deterministicPatientId)) {
-          finalClient.petIds = [...(finalClient.petIds || []), deterministicPatientId];
-          if (onUpdateClient) await onUpdateClient(finalClient);
-        }
       } else {
         const newPet: Pet = {
           id: deterministicPatientId,
-          clientId: deterministicClientId,
+          clientId: finalClient.client_id,
           name: newPetData.petName.trim(),
           petType: newPetData.petType as any,
           breed: newPetData.breed || 'Mixed breed',
@@ -237,9 +234,6 @@ export default function CustomersManager({
         };
         await upsertPet(newPet);
         if (onUpdatePet) onUpdatePet(newPet.id, newPet.name, newPet);
-        
-        finalClient.petIds = [...(finalClient.petIds || []), deterministicPatientId];
-        if (onUpdateClient) await onUpdateClient(finalClient);
       }
     }
     

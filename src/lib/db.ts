@@ -613,6 +613,23 @@ export async function upsertClient(client: Client): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Soft delete a client and CASCADE the soft delete to all of their pets.
+ * Never .delete() — invoices and medical records must survive untouched.
+ */
+export async function deleteClient(id: string): Promise<void> {
+  if (!id) return;
+  if (!supabase) throw new Error('No internet connection');
+
+  // Step 1: Soft delete all pets of this client
+  const { error: petError } = await supabase.from('pets').update({ is_deleted: true }).eq('clientId', id);
+  if (petError) throw petError;
+
+  // Step 2: Soft delete the client
+  const { error } = await supabase.from('clients').update({ is_deleted: true }).eq('client_id', id);
+  if (error) throw error;
+}
+
 // ==========================================
 // SYSTEM MAINTENANCE
 // ==========================================
@@ -1073,10 +1090,15 @@ export async function upsertPet(pet: Pet): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * Soft delete only — never .delete(). A hard delete is rejected by the FKs from
+ * vaccinations / medical_records / lab_results / grooming_logs / boarding_records,
+ * and would destroy clinical history. Flipping is_deleted preserves all of it.
+ */
 export async function deletePet(id: string): Promise<void> {
   if (!id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('pets').delete().eq('id', id);
+  const { error } = await supabase.from('pets').update({ is_deleted: true }).eq('id', id);
   if (error) throw error;
 }
 

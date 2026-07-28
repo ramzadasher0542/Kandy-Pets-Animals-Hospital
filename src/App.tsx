@@ -153,6 +153,8 @@ import {
   removeFromClinicQueue,
   atomicStockDecrement,
   deleteInventoryItem,
+  deleteClient,
+  deletePet,
   nuclearWipeLocal
 } from './lib/db';
 import { SyncEngine, wipeAllCloudTables, stopSync } from './lib/syncEngine';
@@ -1142,17 +1144,9 @@ function App() {
   ) => {
     try {
       const now = new Date().toISOString();
-      // Cascade: soft-delete every pet belonging to this client.
-      const clientPets: import('./types').Pet[] = [];
-      await db.pets.iterate((p: any) => {
-        if (p && !Array.isArray(p) && !p.is_deleted && (p.clientId === client.client_id || client.petIds?.includes(p.id))) {
-          clientPets.push(p);
-        }
-      });
-      for (const p of clientPets) {
-        await db.pets.setItem(p.id, stampRecord({ ...p, is_deleted: true }));
-      }
-      await db.clients.setItem(client.client_id, stampRecord({ ...client, is_deleted: true }));
+      // Soft-delete the client and CASCADE to all their pets, in Supabase.
+      // Invoices and medical records are deliberately left untouched.
+      await deleteClient(client.client_id);
 
       await writeDeletionAudit({
         id: crypto.randomUUID(),
@@ -1168,7 +1162,7 @@ function App() {
         is_deleted: false
       });
 
-      setPets(prev => prev.filter(p => !clientPets.some(cp => cp.id === p.id)));
+      setPets(prev => prev.filter(p => p.clientId !== client.client_id));
       setClients(prev => prev.filter(c => c.client_id !== client.client_id));
       showToast('Client deleted. Audit logged.', 'success');
     } catch (error: any) {
@@ -1182,7 +1176,8 @@ function App() {
   ) => {
     try {
       const now = new Date().toISOString();
-      await db.pets.setItem(pet.id, stampRecord({ ...pet, is_deleted: true }));
+      // Soft-delete in Supabase; medical records and invoices are preserved.
+      await deletePet(pet.id);
 
       await writeDeletionAudit({
         id: crypto.randomUUID(),
