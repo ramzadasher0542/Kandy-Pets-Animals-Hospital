@@ -41,11 +41,10 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
 }
 
 export async function fetchInventoryBatches(): Promise<InventoryBatch[]> {
-  const batches: InventoryBatch[] = [];
-  await db.inventoryBatches.iterate((value: InventoryBatch) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) batches.push(value);
-  });
-  return batches;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('inventory_batches').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || []).filter((b: any) => !b.is_deleted);
 }
 
 export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
@@ -87,43 +86,41 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
  * Returns the item's resulting stock level.
  */
 async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
-  // Sum all non-deleted batches for this item, and count them.
-  let total = 0;
-  let batchCount = 0;
-  await db.inventoryBatches.iterate((b: InventoryBatch) => {
-    if (b && !b.is_deleted && b.inventoryItemId === itemId) {
-      total += b.quantityRemaining;
-      batchCount += 1;
-    }
-  });
+  if (!supabase) throw new Error('No internet connection');
+  const { data: batchData, error: batchError } = await supabase
+    .from('inventory_batches')
+    .select('*')
+    .eq('inventoryItemId', itemId);
+  if (batchError) throw batchError;
+  const batches = (batchData || []).filter((b: any) => !b.is_deleted);
 
-  const item = await db.inventory.getItem<InventoryItem>(itemId);
-  if (!item) return total;
+  // Sum all non-deleted batches for this item.
+  const total = batches.reduce((sum: number, b: any) => sum + b.quantityRemaining, 0);
 
   // No batches → manual-stock item; leave item.stock exactly as-is.
-  if (batchCount === 0) return item.stock;
-
-  item.stock = total;
-
-  // Point expiry/lot at the soonest-expiring active batch.
-  const activeBatches: InventoryBatch[] = [];
-  await db.inventoryBatches.iterate((b: InventoryBatch) => {
-    if (b && !b.is_deleted && b.inventoryItemId === itemId && b.quantityRemaining > 0) {
-      activeBatches.push(b);
-    }
-  });
-  activeBatches.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-  if (activeBatches.length > 0) {
-    item.expiryDate = activeBatches[0].expiryDate;
-    item.lotNumber = activeBatches[0].lotNumber;
-  } else {
-    item.expiryDate = undefined;
-    item.lotNumber = undefined;
+  if (batches.length === 0) {
+    const { data: itemData, error: itemError } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('id', itemId)
+      .maybeSingle();
+    if (itemError) throw itemError;
+    if (!itemData) return total;
+    return (itemData as any).stock;
   }
 
+  // Point expiry/lot at the soonest-expiring active batch.
+  const activeBatches = batches
+    .filter((b: any) => b.quantityRemaining > 0)
+    .sort((a: any, b: any) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+  const expiryDate = activeBatches.length > 0 ? activeBatches[0].expiryDate : null;
+  const lotNumber = activeBatches.length > 0 ? activeBatches[0].lotNumber : null;
+
   // Save to Supabase.
-  if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('inventory').upsert(item);
+  const { error } = await supabase
+    .from('inventory')
+    .update({ stock: total, expiryDate, lotNumber })
+    .eq('id', itemId);
   if (error) throw error;
 
   return total;
@@ -131,7 +128,9 @@ async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
 
 export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void> {
   if (!batch || !batch.id) return;
-  await safeDbWrite(db.inventoryBatches, batch.id, stampRecord(batch));
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('inventory_batches').upsert(batch);
+  if (error) throw error;
   // Keep item.stock in sync with the batch totals for this item.
   await recomputeItemStockFromBatches(batch.inventoryItemId);
 }
@@ -141,6 +140,10 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   if (!supabase) throw new Error('No internet connection');
   const { error } = await supabase.from('inventory').delete().eq('id', id);
   if (error) throw error;
+
+  // Clean up related batches. Never throw — the item delete already succeeded.
+  const { error: batchError } = await supabase.from('inventory_batches').delete().eq('inventoryItemId', id);
+  if (batchError) console.error('[DB] Batch cleanup failed:', batchError.message);
 }
 
 /**
@@ -157,13 +160,14 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
     }
     const newStock = Math.max(0, item.stock + qtyDelta);
 
-    // Fetch all batches for this item
-    const batches: InventoryBatch[] = [];
-    await db.inventoryBatches.iterate((b: InventoryBatch) => {
-      if (b && !b.is_deleted && b.inventoryItemId === itemId) {
-        batches.push(b);
-      }
-    });
+    // Fetch all batches for this item from Supabase
+    if (!supabase) throw new Error('No internet connection');
+    const { data: batchData, error: batchError } = await supabase
+      .from('inventory_batches')
+      .select('*')
+      .eq('inventoryItemId', itemId);
+    if (batchError) throw batchError;
+    const batches = ((batchData || []) as InventoryBatch[]).filter((b: any) => !b.is_deleted);
 
     if (batches.length > 0) {
       if (qtyDelta < 0) {
