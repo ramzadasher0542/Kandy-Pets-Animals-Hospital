@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { db, safeDbWrite, stampRecord } from './localDb';
+import { db, stampRecord } from './localDb';
 import { supabase } from './supabase';
 import { globalMutex } from './mutex';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
@@ -439,26 +439,32 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
   let prescriptionRevenue = 0;
   let retailRevenue = 0;
 
-  // Stream invoices natively from DB without loading full arrays
-  await db.invoices.iterate((inv: Invoice) => {
-    if (inv && !Array.isArray(inv) && inv.shiftId === shiftId && inv.paymentStatus === 'paid') {
-      grossSales += Math.round(inv.sales_total || 0);
-      totalCogs += Math.round(inv.cogs || 0);
-      
-      // AUDIT FIX: 5-category breakdown instead of 2
-      inv.items?.forEach(item => {
-        const itemPrice = item.unitPrice || 0;
-        const itemQty = item.quantity || 0;
-        const computedTotal = Math.round(itemPrice * itemQty);
+  // Read this shift's paid invoices from Supabase.
+  if (!supabase) return null;
+  const { data: invoiceRows, error: invoiceError } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('shiftId', shiftId)
+    .eq('paymentStatus', 'paid');
+  if (invoiceError) { console.error('[DB]', invoiceError.message); return null; }
 
-        if (item.category === 'service') clinicalRevenue += computedTotal;
-        else if (item.category === 'lab_service') labRevenue += computedTotal;
-        else if (item.category === 'vaccine') vaccineRevenue += computedTotal;
-        else if (item.category === 'prescription') prescriptionRevenue += computedTotal;
-        else retailRevenue += computedTotal;
-      });
-    }
-  });
+  for (const inv of ((invoiceRows || []) as Invoice[])) {
+    grossSales += Math.round(inv.sales_total || 0);
+    totalCogs += Math.round(inv.cogs || 0);
+
+    // AUDIT FIX: 5-category breakdown instead of 2
+    inv.items?.forEach(item => {
+      const itemPrice = item.unitPrice || 0;
+      const itemQty = item.quantity || 0;
+      const computedTotal = Math.round(itemPrice * itemQty);
+
+      if (item.category === 'service') clinicalRevenue += computedTotal;
+      else if (item.category === 'lab_service') labRevenue += computedTotal;
+      else if (item.category === 'vaccine') vaccineRevenue += computedTotal;
+      else if (item.category === 'prescription') prescriptionRevenue += computedTotal;
+      else retailRevenue += computedTotal;
+    });
+  }
 
   return {
     gross_sales: grossSales,
@@ -494,8 +500,32 @@ export async function fetchActiveShiftId(): Promise<string | null> {
 export async function fetchActiveShiftDetails(): Promise<Shift | null> {
   const activeId = localStorage.getItem('ceylon_active_shift_id');
   if (!activeId) return null;
-  const shift = await db.shifts.getItem<Shift>(activeId);
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('shifts').select('*').eq('id', activeId).maybeSingle();
+  if (error) { console.error('[DB]', error.message); return null; }
+  const shift = data as Shift | null;
   return (shift && shift.isOpen) ? shift : null;
+}
+
+/**
+ * Cash drawer adjustment (IN/OUT). Shape mirrors the CashAdjustment interface
+ * declared in ShiftManager/ReportsManager — it is not exported from types.ts,
+ * so the parameter is typed structurally here rather than inventing a new type.
+ */
+export async function addCashAdjustment(adj: {
+  id: string;
+  type: 'IN' | 'OUT';
+  amount: number;
+  category: string;
+  reason: string;
+  date: string;
+  createdBy: string;
+  shiftId?: string;
+}): Promise<void> {
+  if (!adj || !adj.id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('cash_adjustments').insert(adj);
+  if (error) throw error;
 }
 
 export async function openShift(openedBy: string, openingFloatCents: number): Promise<string | null> {
@@ -519,7 +549,10 @@ export async function openShift(openedBy: string, openingFloatCents: number): Pr
     is_deleted: false
   };
 
-  await db.shifts.setItem(newShiftId, newShift);
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('shifts').insert(newShift);
+  if (error) throw error;
+
   localStorage.setItem('ceylon_active_shift_id', newShiftId);
   return newShiftId;
 }
@@ -531,38 +564,40 @@ export async function closeShift(
   discrepancyCents: number, 
   notes: string
 ): Promise<void> {
-  const shift = await db.shifts.getItem<Shift>(shiftId);
-  
-  if (shift) {
-    const now = new Date().toISOString();
-    const updatedShift = {
-      ...shift,
-      endTime: now,
-      expectedCashCents: Math.round(expectedCashCents),
-      actualCashCents: Math.round(actualCashCents),
-      discrepancyCents: Math.round(discrepancyCents),
-      notes: notes || 'Shift closed',
-      isOpen: false,
-      actual_cash: Math.round(actualCashCents) / 100, // FIXED: ensure integer before division
-      discrepancy_reason: notes || '',
-      updated_at: now
-    };
-    await db.shifts.setItem(shiftId, updatedShift);
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('shifts').update({
+    endTime: now,
+    expectedCashCents: Math.round(expectedCashCents),
+    actualCashCents: Math.round(actualCashCents),
+    discrepancyCents: Math.round(discrepancyCents),
+    notes: notes || 'Shift closed',
+    isOpen: false,
+    actual_cash: Math.round(actualCashCents) / 100, // FIXED: ensure integer before division
+    discrepancy_reason: notes || '',
+    updated_at: now
+  }).eq('id', shiftId);
+  if (error) throw error;
+
   localStorage.removeItem('ceylon_active_shift_id');
 }
 
 export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {
   const activeId = localStorage.getItem('ceylon_active_shift_id');
   if (!activeId) return;
+  if (!supabase) throw new Error('No internet connection');
   const unlock = await globalMutex.lock();
   try {
-    const shift = await db.shifts.getItem<Shift>(activeId); // FIXED: type-safe instead of <any>
+    const { data, error: readError } = await supabase.from('shifts').select('*').eq('id', activeId).maybeSingle();
+    if (readError) throw readError;
+    const shift = data as Shift | null;
     if (shift && shift.isOpen) {
-      if (method === 'cash') shift.cashCollectedCents = (shift.cashCollectedCents || 0) + Math.round(amountCents);
-      if (method === 'card') shift.cardCollectedCents = (shift.cardCollectedCents || 0) + Math.round(amountCents);
-      if (method === 'bank_transfer') shift.bankTransferCollectedCents = (shift.bankTransferCollectedCents || 0) + Math.round(amountCents);
-      await safeDbWrite(db.shifts, activeId, shift);
+      const update: any = { updated_at: new Date().toISOString() };
+      if (method === 'cash') update.cashCollectedCents = (shift.cashCollectedCents || 0) + Math.round(amountCents);
+      if (method === 'card') update.cardCollectedCents = (shift.cardCollectedCents || 0) + Math.round(amountCents);
+      if (method === 'bank_transfer') update.bankTransferCollectedCents = (shift.bankTransferCollectedCents || 0) + Math.round(amountCents);
+      const { error } = await supabase.from('shifts').update(update).eq('id', activeId);
+      if (error) throw error;
     }
   } finally {
     unlock();
