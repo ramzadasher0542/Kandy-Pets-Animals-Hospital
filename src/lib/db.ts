@@ -384,18 +384,19 @@ export async function upsertNotification(notif: ClientNotification): Promise<voi
     if (import.meta.env.DEV) console.warn('[CeylonPets POS] Rejected malformed or empty notification payload.');
     return;
   }
-  await db.notifications.setItem(notif.id, stampRecord(notif));
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('notifications').upsert(notif);
+  if (error) throw error;
 }
 
 // ==========================================
 // ALERTS
 // ==========================================
 export async function fetchAlerts(): Promise<SystemAlert[]> {
-  const alerts: SystemAlert[] = [];
-  await db.alerts.iterate((value: SystemAlert) => {
-    if (value && !Array.isArray(value)) alerts.push(value);
-  });
-  return alerts;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('system_alerts').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || []).filter((a: any) => !a.is_deleted);
 }
 
 export async function upsertAlert(alert: SystemAlert): Promise<void> {
@@ -403,7 +404,9 @@ export async function upsertAlert(alert: SystemAlert): Promise<void> {
     if (import.meta.env.DEV) console.warn('[CeylonPets POS] Rejected malformed or empty system alert payload.');
     return;
   }
-  await db.alerts.setItem(alert.id, stampRecord(alert));
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('system_alerts').upsert(alert);
+  if (error) throw error;
 }
 
 // ==========================================
@@ -1065,27 +1068,16 @@ export async function fetchPets(): Promise<Pet[]> {
 
 export async function upsertPet(pet: Pet): Promise<void> {
   if (!pet || !pet.id) return;
-  await db.pets.setItem(pet.id, stampRecord(pet));
-  
-  if (pet.clientId) {
-    const client = await db.clients.getItem<Client>(pet.clientId);
-    if (client) {
-      if (!client.petIds) client.petIds = [];
-      if (!client.petIds.includes(pet.id)) {
-        client.petIds.push(pet.id);
-        await db.clients.setItem(pet.clientId, stampRecord(client));
-      }
-    }
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('pets').upsert(pet);
+  if (error) throw error;
 }
 
 export async function deletePet(id: string): Promise<void> {
   if (!id) return;
-  const item = await db.pets.getItem<Pet>(id);
-  if (item) {
-    (item as any).is_deleted = true;
-    await db.pets.setItem(id, stampRecord(item));
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('pets').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // VACCINATIONS
@@ -1099,18 +1091,9 @@ export async function fetchVaccinations(): Promise<Vaccination[]> {
 
 export async function upsertVaccination(vaccine: Vaccination): Promise<void> {
   if (!vaccine || !vaccine.id) return;
-  await db.vaccinations.setItem(vaccine.id, stampRecord(vaccine));
-  
-  if (vaccine.petId) {
-    const pet = await db.pets.getItem<Pet>(vaccine.petId);
-    if (pet) {
-      if (!pet.vaccineIds) pet.vaccineIds = [];
-      if (!pet.vaccineIds.includes(vaccine.id)) {
-        pet.vaccineIds.push(vaccine.id);
-        await db.pets.setItem(vaccine.petId, stampRecord(pet));
-      }
-    }
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('vaccinations').upsert(vaccine);
+  if (error) throw error;
 }
 
 // LAB RESULTS
