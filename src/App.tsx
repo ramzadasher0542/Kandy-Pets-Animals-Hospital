@@ -1045,6 +1045,7 @@ function App() {
       } else {
         showToast(`Failed: ${error.message}`, 'error');
       }
+      throw error; // Re-throw so callers know the delete failed.
     }
   }, []);
 
