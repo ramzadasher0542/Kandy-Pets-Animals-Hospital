@@ -346,16 +346,22 @@ export default function CustomersManager({
 
   const openDeleteClient = async (client: Client, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!window.confirm('Delete this client and all their pets? Invoices and medical records will be preserved.')) return;
+
+    // History is still computed AFTER the confirm so the deletion audit row stays truthful.
     const petIds = new Set<string>();
     await db.pets.iterate((p: any) => { if (p && !Array.isArray(p) && (p.clientId === client.client_id || client.petIds?.includes(p.id))) petIds.add(p.id); });
     const counts = await computeHistory(petIds, normalizePhone(client.primary_phone || ''));
     const summary = buildHistorySummary(counts);
-    setDeleteOverride(false);
-    setDeleteTarget({ type: 'client', client, hadHistory: summary.length > 0, historySummary: summary });
+
+    if (onDeleteClient) await onDeleteClient(client, { hadHistory: summary.length > 0, historySummary: summary, overrideConfirmed: summary.length > 0 });
+    if (selectedClientId === client.client_id) { setSelectedClientId(null); setSelectedPetId(null); }
   };
 
   const openDeletePet = async (pet: Pet, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!window.confirm('Delete this pet? Medical records and invoices will be preserved.')) return;
+
     const client = clients.find(c => c.client_id === pet.clientId);
     const counts = await computeHistory(new Set<string>([pet.id]), client ? normalizePhone(client.primary_phone || '') : '');
     // Appointments have no petId; for a single pet don't attribute the client's whole
@@ -367,8 +373,9 @@ export default function CustomersManager({
     }
     counts.appointments = petAppointments;
     const summary = buildHistorySummary(counts);
-    setDeleteOverride(false);
-    setDeleteTarget({ type: 'pet', pet, hadHistory: summary.length > 0, historySummary: summary });
+
+    if (onDeletePet) await onDeletePet(pet, { hadHistory: summary.length > 0, historySummary: summary, overrideConfirmed: summary.length > 0 });
+    if (selectedPetId === pet.id) setSelectedPetId(null);
   };
 
   const confirmDelete = async () => {
@@ -512,7 +519,7 @@ export default function CustomersManager({
                             data-testid={`btn-delete-pet-${pet.patientId}`}
                             onClick={(e) => openDeletePet(pet, e)}
                             title="Delete pet"
-                            className="p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -907,7 +914,7 @@ export default function CustomersManager({
                             data-testid={`btn-delete-client-${c.client_id}`}
                             onClick={(e) => openDeleteClient(c, e)}
                             title="Delete client"
-                            className="p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
