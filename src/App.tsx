@@ -575,7 +575,7 @@ function App() {
       return;
     }
     const engine = new SyncEngine({ onStatusChange: (online) => setIsOnline(online) });
-    engine.start();
+    if (false) engine.start();
     syncEngineRef.current = engine;
     return () => { engine.stop(); };
   }, []);
