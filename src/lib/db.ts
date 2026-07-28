@@ -33,11 +33,11 @@ import {
 // INVENTORY (DELTA UPDATES)
 // ==========================================
 export async function fetchInventory(): Promise<InventoryItem[]> {
-  const items: InventoryItem[] = [];
-  await db.inventory.iterate((value: InventoryItem) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
-  });
-  return items;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('inventory').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const items = (data || []) as InventoryItem[];
+  return items.filter(i => !(i as any).is_deleted);
 }
 
 export async function fetchInventoryBatches(): Promise<InventoryBatch[]> {
@@ -250,13 +250,13 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
 // APPOINTMENTS
 // ==========================================
 export async function fetchAppointments(): Promise<Appointment[]> {
-  const items: Appointment[] = [];
-  await db.appointments.iterate((value: Appointment) => {
-    if (value && !Array.isArray(value) && (value.status === 'booked' || value.status === 'in-progress')) {
-      items.push(value);
-    }
-  });
-  return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('appointments').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const items = (data || []) as Appointment[];
+  return items
+    .filter(value => value.status === 'booked' || value.status === 'in-progress')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export async function fetchHistoricalAppointmentsArchive(
@@ -326,11 +326,13 @@ export async function fetchVeterinarians(): Promise<User[]> {
 // MEDICAL RECORDS
 // ==========================================
 export async function fetchMedicalRecords(): Promise<MedicalRecord[]> {
-  const records: MedicalRecord[] = [];
-  await db.records.iterate((value: MedicalRecord) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) records.push(value);
-  });
-  return records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('medical_records').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const records = (data || []) as MedicalRecord[];
+  return records
+    .filter(value => !(value as any).is_deleted)
+    .sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 }
 
 export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
@@ -374,11 +376,11 @@ export async function deleteMedicalRecord(id: string): Promise<void> {
 // INVOICES & AUTOMATION
 // ==========================================
 export async function fetchInvoices(): Promise<Invoice[]> {
-  const invoices: Invoice[] = [];
-  await db.invoices.iterate((value: Invoice) => {
-    // FIXED: Include ALL invoices (including voided) — let consumers handle filtering
-    if (value && !Array.isArray(value)) invoices.push(value);
-  });
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('invoices').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  // FIXED: Include ALL invoices (including voided) — let consumers handle filtering
+  const invoices = (data || []) as Invoice[];
   return invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
@@ -412,10 +414,10 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
 // NOTIFICATIONS
 // ==========================================
 export async function fetchNotifications(): Promise<ClientNotification[]> {
-  const notifs: ClientNotification[] = [];
-  await db.notifications.iterate((value: ClientNotification) => {
-    if (value && !Array.isArray(value)) notifs.push(value);
-  });
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('notifications').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const notifs = (data || []) as ClientNotification[];
   return notifs;
 }
 
@@ -610,15 +612,18 @@ export async function addRevenueToActiveShift(method: PaymentMethod, amountCents
 // CLIENTS
 // ==========================================
 export async function fetchClients(): Promise<Client[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('clients').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
   const clients: Client[] = [];
   let hasWalkIn = false;
 
-  await db.clients.iterate((value: Client) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) {
+  for (const value of (data || []) as Client[]) {
+    if (!(value as any).is_deleted) {
       clients.push(value);
       if (value.client_id === 'walk_in_retail') hasWalkIn = true;
     }
-  });
+  }
 
   if (!hasWalkIn) {
     const walkInClient: Client = {
@@ -1097,11 +1102,11 @@ export async function fetchInvoiceStats(): Promise<{ total: number; revenue: num
 
 // PETS
 export async function fetchPets(): Promise<Pet[]> {
-  const items: Pet[] = [];
-  await db.pets.iterate((value: Pet) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
-  });
-  return items;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('pets').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const items = (data || []) as Pet[];
+  return items.filter(value => !(value as any).is_deleted);
 }
 
 export async function upsertPet(pet: Pet): Promise<void> {
@@ -1131,11 +1136,11 @@ export async function deletePet(id: string): Promise<void> {
 
 // VACCINATIONS
 export async function fetchVaccinations(): Promise<Vaccination[]> {
-  const items: Vaccination[] = [];
-  await db.vaccinations.iterate((value: Vaccination) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
-  });
-  return items;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('vaccinations').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const items = (data || []) as Vaccination[];
+  return items.filter(value => !(value as any).is_deleted);
 }
 
 export async function upsertVaccination(vaccine: Vaccination): Promise<void> {
@@ -1181,11 +1186,11 @@ export async function upsertLabResult(result: LabResult): Promise<void> {
 
 // GROOMING LOGS
 export async function fetchGroomingLogs(): Promise<GroomingLog[]> {
-  const items: GroomingLog[] = [];
-  await db.groomingLogs.iterate((value: GroomingLog) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
-  });
-  return items;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('grooming_logs').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const items = (data || []) as GroomingLog[];
+  return items.filter(value => !(value as any).is_deleted);
 }
 
 export async function upsertGroomingLog(log: GroomingLog): Promise<void> {
@@ -1206,11 +1211,11 @@ export async function upsertGroomingLog(log: GroomingLog): Promise<void> {
 
 // BOARDING RECORDS
 export async function fetchBoardingRecords(): Promise<BoardingRecord[]> {
-  const items: BoardingRecord[] = [];
-  await db.boardingRecords.iterate((value: BoardingRecord) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
-  });
-  return items;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('boarding_records').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const items = (data || []) as BoardingRecord[];
+  return items.filter(value => !(value as any).is_deleted);
 }
 
 export async function upsertBoardingRecord(record: BoardingRecord): Promise<void> {
