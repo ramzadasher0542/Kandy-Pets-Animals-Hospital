@@ -775,38 +775,39 @@ export async function reconstituteSystemState(payload: any): Promise<void> {
 // THE LIVING FLOOR: Clinic Queue State Machine
 // ==========================================
 export async function fetchClinicQueue(): Promise<ClinicQueueItem[]> {
-  const queue: ClinicQueueItem[] = [];
-  await db.clinicQueue.iterate((value: ClinicQueueItem) => {
-    // BUG #6 FIX: Filter out soft-deleted queue items
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) queue.push(value);
-  });
-  return queue.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('clinic_queue').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const queue = (data || []) as ClinicQueueItem[];
+  // BUG #6 FIX: Filter out soft-deleted queue items
+  return queue
+    .filter(value => !(value as any).is_deleted)
+    .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
 }
 
 export async function addToClinicQueue(item: ClinicQueueItem): Promise<void> {
   if (!item || !item.id) return;
-  // BUG #5 FIX: Stamp for sync so queue items reach Supabase
-  await db.clinicQueue.setItem(item.id, stampRecord(item));
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('clinic_queue').insert(item);
+  if (error) throw error;
 }
 
 export async function updateQueueItemStatus(id: string, status: 'scheduled' | 'active' | 'completed'): Promise<void> {
-  const item = await db.clinicQueue.getItem<ClinicQueueItem>(id);
-  if (item) {
-    item.status = status;
-    // BUG #5 FIX: Stamp for sync
-    await db.clinicQueue.setItem(id, stampRecord(item));
-  }
+  if (!id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('clinic_queue').update({ status }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function removeFromClinicQueue(id: string): Promise<void> {
   if (!id) return;
-  // BUG #6 FIX: Soft-delete instead of hard-delete so sync engine can push deletion
-  const item = await db.clinicQueue.getItem<ClinicQueueItem>(id);
-  if (item) {
-    (item as any).is_deleted = true;
-    (item as any).status = 'completed';
-    await db.clinicQueue.setItem(id, stampRecord(item));
-  }
+  if (!supabase) throw new Error('No internet connection');
+  // BUG #6 FIX: Soft-delete instead of hard-delete so history is preserved
+  const { error } = await supabase
+    .from('clinic_queue')
+    .update({ is_deleted: true, status: 'completed' })
+    .eq('id', id);
+  if (error) throw error;
 }
 
 export async function getActiveQueueItems(): Promise<ClinicQueueItem[]> {

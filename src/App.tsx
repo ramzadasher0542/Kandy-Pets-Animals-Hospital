@@ -415,11 +415,6 @@ function App() {
           const hShifts: any[] = [];
           await db.shiftReconciliations.iterate((value: any) => { if (value) hShifts.push(value); });
 
-          const hQueue: any[] = [];
-          await db.clinicQueue.iterate((value: any) => {
-            if (value && !value.is_deleted) hQueue.push(value);
-          });
-
           const hStaffProfiles: any[] = [];
           await db.staffProfiles.iterate((value: any) => {
             if (value && !value.is_deleted) hStaffProfiles.push(value);
@@ -462,7 +457,7 @@ function App() {
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
-            setClinicQueue(hQueue.sort((a, b) => {
+            setClinicQueue((Array.isArray(queue) ? [...queue] : []).sort((a: any, b: any) => {
               const pA = a.priority ?? 2;
               const pB = b.priority ?? 2;
               if (pA !== pB) return pA - pB;
