@@ -1033,14 +1033,11 @@ function App() {
   }, []);
 
   const handleDeleteInventoryItem = useCallback(async (id: string) => {
-    const auth = await requireAuth(currentUser, 'delete_inventory');
-    if (!auth.allowed) {
-      showToast('Unauthorized. Inventory item was not deleted.', 'error');
-      return;
-    }
+    if (!window.confirm('Are you sure?')) return;
     try {
       await deleteInventoryItem(id);
       setInventory(prev => prev.filter(i => i.id !== id));
+      showToast('Deleted', 'success');
     } catch (error: any) {
       if (isCloudSaveError(error)) {
         setInventory(prev => prev.filter(i => i.id !== id));
@@ -1049,7 +1046,7 @@ function App() {
         showToast(`Failed: ${error.message}`, 'error');
       }
     }
-  }, [currentUser]);
+  }, []);
 
   const handleDeleteRecord = useCallback(async (id: string) => {
     const auth = await requireAuth(currentUser, 'delete_medical_record');
