@@ -779,55 +779,14 @@ export async function fetchFullSystemState(): Promise<any> {
   return state;
 }
 
-/**
- * Delete EVERY row from EVERY cloud table, children before parents so the FK
- * constraints hold. Replaces the wipe_all_tables() RPC, which referenced 11
- * tables that do not exist and therefore aborted before deleting anything.
- *
- * Predicate note: the PK is NOT NULL on every table, so `not(pk, 'is', null)`
- * matches all rows. Do NOT use `neq(pk, '')` — 15 of these PKs are `uuid`, and
- * Postgres rejects '' with `22P02 invalid input syntax for type uuid`.
- *
- * Errors are logged per-table and never thrown: a partial cloud failure must
- * still let the local clear proceed.
- */
-const CLOUD_WIPE_ORDER: Array<[table: string, pk: string]> = [
-  // Children first
-  ['cash_adjustments', 'id'],
-  ['invoices', 'id'],
-  ['clinic_queue', 'id'],
-  ['appointments', 'id'],
-  ['medical_records', 'id'],
-  ['vaccinations', 'id'],
-  ['lab_results', 'id'],
-  ['grooming_logs', 'id'],
-  ['boarding_records', 'id'],
-  ['inventory_batches', 'id'],
-  // Parents last
-  ['pets', 'id'],
-  ['clients', 'client_id'],
-  ['inventory', 'id'],
-  ['shift_reconciliations', 'id'],
-  ['shifts', 'id'],
-  ['notifications', 'id'],
-  ['system_alerts', 'id'],
-  ['users', 'id']
-];
-
-async function wipeAllCloudRows(): Promise<void> {
-  if (!supabase) return;
-  for (const [table, pk] of CLOUD_WIPE_ORDER) {
+export async function masterSystemPurge(): Promise<void> {
+  if (supabase) {
     try {
-      const { error } = await supabase.from(table).delete().not(pk, 'is', null);
-      if (error) console.error(`[DB] Cloud wipe failed on ${table}:`, error.message);
+      await supabase.rpc('wipe_all_tables');
     } catch (e: any) {
-      console.error(`[DB] Cloud wipe error on ${table}:`, e.message);
+      console.error('[DB] wipe_all_tables RPC failed:', e.message);
     }
   }
-}
-
-export async function masterSystemPurge(): Promise<void> {
-  await wipeAllCloudRows();
   await Promise.all([
     db.inventory.clear(),
     db.appointments.clear(),
@@ -858,7 +817,13 @@ export async function masterSystemPurge(): Promise<void> {
  * demo reseed.
  */
 export async function nuclearWipeLocal(): Promise<void> {
-  await wipeAllCloudRows();
+  if (supabase) {
+    try {
+      await supabase.rpc('wipe_all_tables');
+    } catch (e: any) {
+      console.error('[DB] wipe_all_tables RPC failed:', e.message);
+    }
+  }
   await Promise.all(
     Object.values(db).map((store: any) =>
       store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()

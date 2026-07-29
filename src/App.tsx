@@ -1427,8 +1427,8 @@ function App() {
       //    data we are about to delete.
       stopSync();
       // 2. Nuke the cloud AND every local store + reset config to defaults.
-      //    The cloud wipe (manual FK-safe delete chain) now lives in db.ts so
-      //    every caller of nuclearWipeLocal/masterSystemPurge erases both sides.
+      //    The cloud wipe (wipe_all_tables RPC) now lives in db.ts so every
+      //    caller of nuclearWipeLocal/masterSystemPurge erases both sides.
       await nuclearWipeLocal();
       // 3. Clear web storage, then set flags so boot never reseeds demo data.
       localStorage.clear();
