@@ -331,13 +331,9 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
 
 export async function deleteMedicalRecord(id: string): Promise<void> {
   if (!id) return;
-  // FIXED: Soft delete instead of hard delete for data integrity
-  const rec = await db.records.getItem<MedicalRecord>(id);
-  if (rec) {
-    (rec as any).is_deleted = true;
-    // BUG #8 FIX: Stamp for sync so deletion reaches Supabase
-    await db.records.setItem(id, stampRecord(rec));
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('medical_records').update({ is_deleted: true }).eq('id', id);
+  if (error) throw error;
 }
 
 // ==========================================
@@ -364,12 +360,8 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
   if (error) throw error;
 
   // Cross-module cascade: Auto-complete appointment
-  if (inv.appointmentId) {
-    const apt = await db.appointments.getItem<Appointment>(inv.appointmentId);
-    if (apt) {
-      apt.status = 'completed';
-      await db.appointments.setItem(apt.id, stampRecord(apt));
-    }
+  if (inv.appointmentId && supabase) {
+    await supabase.from('appointments').update({ status: 'completed' }).eq('id', inv.appointmentId);
   }
 }
 
