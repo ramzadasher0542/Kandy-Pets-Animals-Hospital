@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { db, stampRecord } from './localDb';
+import { db } from './localDb';
 import { supabase } from './supabase';
 import { globalMutex } from './mutex';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
@@ -414,7 +414,8 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
 
   // Cross-module cascade: Auto-complete appointment
   if (inv.appointmentId && supabase) {
-    await supabase.from('appointments').update({ status: 'completed' }).eq('id', inv.appointmentId);
+    const newStatus = inv.paymentStatus === 'void' ? 'booked' : 'completed';
+    await supabase.from('appointments').update({ status: newStatus }).eq('id', inv.appointmentId);
   }
 }
 
