@@ -701,23 +701,8 @@ export async function deleteClient(id: string): Promise<void> {
 // SYSTEM MAINTENANCE
 // ==========================================
 export async function fetchFullSystemState(): Promise<any> {
-  // FIXED: Include ALL collections in backup (was missing shifts, clients, clinicQueue)
-  const shifts: Shift[] = [];
-  await db.shifts.iterate((value: Shift) => { if (value && !Array.isArray(value)) shifts.push(value); });
-  const clients: Client[] = [];
-  await db.clients.iterate((value: Client) => { if (value && !Array.isArray(value)) clients.push(value); });
-  const queue: ClinicQueueItem[] = [];
-  await db.clinicQueue.iterate((value: ClinicQueueItem) => { if (value && !Array.isArray(value)) queue.push(value); });
-  const pets: Pet[] = [];
-  await db.pets.iterate((value: Pet) => { if (value && !Array.isArray(value)) pets.push(value); });
-  const vaccinations: Vaccination[] = [];
-  await db.vaccinations.iterate((value: Vaccination) => { if (value && !Array.isArray(value)) vaccinations.push(value); });
-  const labResults: LabResult[] = [];
-  await db.labResults.iterate((value: LabResult) => { if (value && !Array.isArray(value)) labResults.push(value); });
-  const groomingLogs: GroomingLog[] = [];
-  await db.groomingLogs.iterate((value: GroomingLog) => { if (value && !Array.isArray(value)) groomingLogs.push(value); });
-  const boardingRecords: BoardingRecord[] = [];
-  await db.boardingRecords.iterate((value: BoardingRecord) => { if (value && !Array.isArray(value)) boardingRecords.push(value); });
+  // FIXED: Read ALL collections from Supabase (was reading empty local IndexedDB)
+  const shifts = supabase ? ((await supabase.from('shifts').select('*')).data || []) : [];
 
   const state: any = {
     app: 'CeylonPets',
@@ -729,15 +714,15 @@ export async function fetchFullSystemState(): Promise<any> {
       records: await fetchMedicalRecords(),
       invoices: await fetchInvoices(),
       pos_shifts: shifts,
-      clients: clients,
-      clinicQueue: queue,
+      clients: await fetchClients(),
+      clinicQueue: await fetchClinicQueue(),
       system_alerts: await fetchAlerts(),
       notifications: await fetchNotifications(),
-      pets,
-      vaccinations,
-      labResults,
-      groomingLogs,
-      boardingRecords
+      pets: await fetchPets(),
+      vaccinations: await fetchVaccinations(),
+      labResults: await fetchLabResults(),
+      groomingLogs: await fetchGroomingLogs(),
+      boardingRecords: await fetchBoardingRecords()
     }
   };
   return state;
@@ -901,39 +886,28 @@ export async function getQueueItemsByService(serviceType: string): Promise<Clini
 export async function exportFullDatabase(): Promise<string> {
   const unlock = await globalMutex.lock();
   try {
+    // FIXED: Read cloud collections from Supabase (was reading empty local IndexedDB).
+    // `system` (SystemConfig) has no cloud table and stays local.
+    const shifts = supabase ? ((await supabase.from('shifts').select('*')).data || []) : [];
     const data: any = {
-      clients: [],
-      inventory: [],
-      appointments: [],
-      medicalRecords: [],
-      invoices: [],
-      shifts: [],
-      alerts: [],
-      notifications: [],
-      clinicQueue: [],
+      clients: await fetchClients(),
+      inventory: await fetchInventory(),
+      appointments: await fetchAppointments(),
+      medicalRecords: await fetchMedicalRecords(),
+      invoices: await fetchInvoices(),
+      shifts,
+      alerts: await fetchAlerts(),
+      notifications: await fetchNotifications(),
+      clinicQueue: await fetchClinicQueue(),
       system: [],
-      pets: [],
-      vaccinations: [],
-      labResults: [],
-      groomingLogs: [],
-      boardingRecords: []
+      pets: await fetchPets(),
+      vaccinations: await fetchVaccinations(),
+      labResults: await fetchLabResults(),
+      groomingLogs: await fetchGroomingLogs(),
+      boardingRecords: await fetchBoardingRecords()
     };
 
-    await db.clients.iterate((value: any, key: string) => { data.clients.push(value); });
-    await db.inventory.iterate((value: any, key: string) => { data.inventory.push(value); });
-    await db.appointments.iterate((value: any, key: string) => { data.appointments.push(value); });
-    await db.records.iterate((value: any, key: string) => { data.medicalRecords.push(value); });
-    await db.invoices.iterate((value: any, key: string) => { data.invoices.push(value); });
-    await db.shifts.iterate((value: any, key: string) => { data.shifts.push(value); });
-    await db.alerts.iterate((value: any, key: string) => { data.alerts.push(value); });
-    await db.notifications.iterate((value: any, key: string) => { data.notifications.push(value); });
-    await db.clinicQueue.iterate((value: any, key: string) => { data.clinicQueue.push(value); });
     await db.system.iterate((value: any, key: string) => { data.system.push({ key, value }); });
-    await db.pets.iterate((value: any, key: string) => { data.pets.push(value); });
-    await db.vaccinations.iterate((value: any, key: string) => { data.vaccinations.push(value); });
-    await db.labResults.iterate((value: any, key: string) => { data.labResults.push(value); });
-    await db.groomingLogs.iterate((value: any, key: string) => { data.groomingLogs.push(value); });
-    await db.boardingRecords.iterate((value: any, key: string) => { data.boardingRecords.push(value); });
 
     return JSON.stringify(data);
   } finally {
