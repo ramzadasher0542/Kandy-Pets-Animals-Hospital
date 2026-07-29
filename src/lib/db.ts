@@ -231,7 +231,7 @@ export async function fetchAppointments(): Promise<Appointment[]> {
   if (error) { console.error('[DB]', error.message); return []; }
   const items = (data || []) as Appointment[];
   return items
-    .filter(value => value.status === 'booked' || value.status === 'in-progress')
+    .filter(value => !(value as any).is_deleted)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
@@ -240,13 +240,15 @@ export async function fetchHistoricalAppointmentsArchive(
   limit = 50,
   search?: string
 ): Promise<{ appointments: Appointment[]; count: number }> {
-  let filtered: Appointment[] = [];
-  
-  await db.appointments.iterate((a: Appointment) => {
-    if (a && !Array.isArray(a) && (a.status === 'completed' || a.status === 'cancelled')) {
-      filtered.push(a);
-    }
-  });
+  if (!supabase) return { appointments: [], count: 0 };
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*')
+    .in('status', ['completed', 'cancelled']);
+  if (error) { console.error('[DB]', error.message); return { appointments: [], count: 0 }; }
+
+  let filtered: Appointment[] = ((data || []) as Appointment[])
+    .filter(a => !(a as any).is_deleted);
 
   if (search && search.trim() !== '') {
     const term = search.trim().toLowerCase();
@@ -285,12 +287,11 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
 }
 
 export async function fetchVeterinarians(): Promise<User[]> {
-  const users: User[] = [];
-  await db.users.iterate((value: User) => {
-    if (value && !Array.isArray(value) && (value.role === 'veterinarian' || value.role === 'admin')) {
-      users.push(value);
-    }
-  });
+  // No staff_users table exists in the cloud yet; return a generic fallback
+  // that mirrors the app's own "Attending Doctor" placeholder.
+  const users: User[] = [
+    { id: 'fallback-vet', name: 'Attending Doctor', username: 'attending', role: 'veterinarian', avatarColor: '' },
+  ];
   return users.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -490,12 +491,15 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
 }
 
 export async function fetchLowStockCount(): Promise<number> {
+  if (!supabase) return 0;
+  const { data, error } = await supabase.from('inventory').select('*');
+  if (error) { console.error('[DB]', error.message); return 0; }
   let count = 0;
-  await db.inventory.iterate((item: InventoryItem) => {
-    if (item && !Array.isArray(item) && item.category !== 'service' && item.category !== 'lab_service' && item.stock <= item.minStock) {
+  for (const item of ((data || []) as InventoryItem[])) {
+    if (!(item as any).is_deleted && item.category !== 'service' && item.category !== 'lab_service' && item.stock <= item.minStock) {
       count++;
     }
-  });
+  }
   return count;
 }
 
@@ -1024,16 +1028,12 @@ export async function restoreFullDatabase(jsonData: string): Promise<void> {
  * Prevents loading thousands of historical records into React memory.
  */
 export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
+  if (!supabase) return [];
   const today = formatDisplayDate(new Date());
-  const records: MedicalRecord[] = [];
-  await db.records.iterate((value: MedicalRecord) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) {
-      // Include today's records
-      if (value.visitDate === today) {
-        records.push(value);
-      }
-    }
-  });
+  const { data, error } = await supabase.from('medical_records').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const records = ((data || []) as MedicalRecord[])
+    .filter(value => !(value as any).is_deleted && value.visitDate === today);
   return records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 }
 
@@ -1042,13 +1042,11 @@ export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
  * Prevents loading thousands of historical invoices into React memory.
  */
 export async function fetchTodaysInvoices(): Promise<Invoice[]> {
+  if (!supabase) return [];
   const today = formatDisplayDate(new Date());
-  const invoices: Invoice[] = [];
-  await db.invoices.iterate((value: Invoice) => {
-    if (value && !Array.isArray(value) && value.date === today) {
-      invoices.push(value);
-    }
-  });
+  const { data, error } = await supabase.from('invoices').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  const invoices = ((data || []) as Invoice[]).filter(value => value.date === today);
   return invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
@@ -1062,12 +1060,10 @@ export async function fetchPaginatedInvoices(
   search?: string,
   statusFilter?: string
 ): Promise<{ invoices: Invoice[]; total: number }> {
-  let filtered: Invoice[] = [];
-  await db.invoices.iterate((value: Invoice) => {
-    if (value && !Array.isArray(value)) {
-      filtered.push(value);
-    }
-  });
+  if (!supabase) return { invoices: [], total: 0 };
+  const { data, error } = await supabase.from('invoices').select('*');
+  if (error) { console.error('[DB]', error.message); return { invoices: [], total: 0 }; }
+  let filtered: Invoice[] = (data || []) as Invoice[];
 
   if (statusFilter && statusFilter !== 'All') {
     filtered = filtered.filter(i => i.paymentStatus === statusFilter);
@@ -1096,12 +1092,11 @@ export async function fetchPaginatedRecords(
   limit = 50,
   search?: string
 ): Promise<{ records: MedicalRecord[]; total: number }> {
-  let filtered: MedicalRecord[] = [];
-  await db.records.iterate((value: MedicalRecord) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) {
-      filtered.push(value);
-    }
-  });
+  if (!supabase) return { records: [], total: 0 };
+  const { data, error } = await supabase.from('medical_records').select('*');
+  if (error) { console.error('[DB]', error.message); return { records: [], total: 0 }; }
+  let filtered: MedicalRecord[] = ((data || []) as MedicalRecord[])
+    .filter(value => !(value as any).is_deleted);
 
   if (search && search.trim()) {
     const q = search.trim().toLowerCase();
@@ -1123,14 +1118,15 @@ export async function fetchPaginatedRecords(
  * Used by InvoicesManager for all-time statistics without loading full arrays.
  */
 export async function fetchInvoiceStats(): Promise<{ total: number; revenue: number; voided: number }> {
+  if (!supabase) return { total: 0, revenue: 0, voided: 0 };
+  const { data, error } = await supabase.from('invoices').select('*');
+  if (error) { console.error('[DB]', error.message); return { total: 0, revenue: 0, voided: 0 }; }
   let total = 0, revenue = 0, voided = 0;
-  await db.invoices.iterate((inv: Invoice) => {
-    if (inv && !Array.isArray(inv)) {
-      total++;
-      if (inv.paymentStatus === 'paid') revenue += inv.sales_total || 0;
-      if (inv.paymentStatus === 'void') voided++;
-    }
-  });
+  for (const inv of ((data || []) as Invoice[])) {
+    total++;
+    if (inv.paymentStatus === 'paid') revenue += inv.sales_total || 0;
+    if (inv.paymentStatus === 'void') voided++;
+  }
   return { total, revenue: Math.round(revenue * 100) / 100, voided };
 }
 
