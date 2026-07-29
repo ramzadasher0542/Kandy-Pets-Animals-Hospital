@@ -1180,27 +1180,17 @@ export async function upsertVaccination(vaccine: Vaccination): Promise<void> {
 
 // LAB RESULTS
 export async function fetchLabResults(): Promise<LabResult[]> {
-  const items: LabResult[] = [];
-  await db.labResults.iterate((value: LabResult) => {
-    if (value && !Array.isArray(value) && !(value as any).is_deleted) items.push(value);
-  });
-  return items;
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('lab_results').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || []).filter((r: any) => !r.is_deleted);
 }
 
 export async function upsertLabResult(result: LabResult): Promise<void> {
   if (!result || !result.id) return;
-  await db.labResults.setItem(result.id, stampRecord(result));
-  
-  if (result.petId) {
-    const pet = await db.pets.getItem<Pet>(result.petId);
-    if (pet) {
-      if (!pet.labIds) pet.labIds = [];
-      if (!pet.labIds.includes(result.id)) {
-        pet.labIds.push(result.id);
-        await db.pets.setItem(result.petId, stampRecord(pet));
-      }
-    }
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('lab_results').upsert(result);
+  if (error) throw error;
 }
 
 // GROOMING LOGS
@@ -1214,18 +1204,9 @@ export async function fetchGroomingLogs(): Promise<GroomingLog[]> {
 
 export async function upsertGroomingLog(log: GroomingLog): Promise<void> {
   if (!log || !log.id) return;
-  await db.groomingLogs.setItem(log.id, stampRecord(log));
-  
-  if (log.petId) {
-    const pet = await db.pets.getItem<Pet>(log.petId);
-    if (pet) {
-      if (!pet.groomingIds) pet.groomingIds = [];
-      if (!pet.groomingIds.includes(log.id)) {
-        pet.groomingIds.push(log.id);
-        await db.pets.setItem(log.petId, stampRecord(pet));
-      }
-    }
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('grooming_logs').upsert(log);
+  if (error) throw error;
 }
 
 // BOARDING RECORDS
@@ -1239,16 +1220,7 @@ export async function fetchBoardingRecords(): Promise<BoardingRecord[]> {
 
 export async function upsertBoardingRecord(record: BoardingRecord): Promise<void> {
   if (!record || !record.id) return;
-  await db.boardingRecords.setItem(record.id, stampRecord(record));
-  
-  if (record.petId) {
-    const pet = await db.pets.getItem<Pet>(record.petId);
-    if (pet) {
-      if (!pet.boardingIds) pet.boardingIds = [];
-      if (!pet.boardingIds.includes(record.id)) {
-        pet.boardingIds.push(record.id);
-        await db.pets.setItem(record.petId, stampRecord(pet));
-      }
-    }
-  }
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('boarding_records').upsert(record);
+  if (error) throw error;
 }
