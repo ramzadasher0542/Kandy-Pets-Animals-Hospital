@@ -945,12 +945,13 @@ export async function reconstituteSystemState(payload: any): Promise<void> {
 // ==========================================
 export async function fetchClinicQueue(): Promise<ClinicQueueItem[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('clinic_queue').select('*');
+  const { data, error } = await supabase
+    .from('clinic_queue')
+    .select('*')
+    .eq('is_deleted', false);
   if (error) { console.error('[DB]', error.message); return []; }
-  const queue = (data || []) as ClinicQueueItem[];
-  // BUG #6 FIX: Filter out soft-deleted queue items
-  return queue
-    .filter(value => !(value as any).is_deleted)
+  // BUG #6 FIX: soft-deleted rows are now excluded server-side.
+  return ((data || []) as ClinicQueueItem[])
     .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
 }
 

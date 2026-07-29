@@ -16,7 +16,7 @@ import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import PhoneInput from './PhoneInput';
 import { db } from '../lib/localDb';
-import { fetchPets, fetchClients, upsertPet } from '../lib/db';
+import { fetchPets, fetchClients, upsertPet, fetchHistoricalAppointmentsArchive } from '../lib/db';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
 
@@ -671,6 +671,23 @@ export default function AppointmentsManager({
   const futureListApts = listFilteredApts.filter(a => new Date(a.date) > new Date(todayStr));
   const pastListApts = listFilteredApts.filter(a => new Date(a.date) < new Date(todayStr));
 
+  // ARCHIVE: served straight from Supabase with server-side paging + search, so
+  // it is not capped by the 30-day window the boot sequence loads into props.
+  const [archiveAppointments, setArchiveAppointments] = useState<Appointment[]>([]);
+  const [archiveCount, setArchiveCount] = useState(0);
+  const [archivePage, setArchivePage] = useState(0);
+  const ARCHIVE_LIMIT = 50;
+
+  useEffect(() => {
+    if (!showArchive) return;
+    const load = async () => {
+      const { appointments, count } = await fetchHistoricalAppointmentsArchive(archivePage, ARCHIVE_LIMIT, searchQuery);
+      setArchiveAppointments(appointments);
+      setArchiveCount(count);
+    };
+    load();
+  }, [showArchive, archivePage, searchQuery]);
+
   const todaysStats = allAppointments.filter(a => a.date === todayStr);
   const todayVolume = todaysStats.length;
   const awaitingTriage = todaysStats.filter(a => a.status === 'booked').length;
@@ -990,17 +1007,40 @@ export default function AppointmentsManager({
         {showArchive && (
           <section className="animate-fade-in opacity-75 grayscale hover:grayscale-0 transition-all">
             <h3 className="text-sm font-black text-slate-600 mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
-              <span className="bg-slate-400 w-2 h-6 rounded-full"></span> PAST / ARCHIVED ({pastListApts.length})
+              <span className="bg-slate-400 w-2 h-6 rounded-full"></span> PAST / ARCHIVED ({archiveCount})
             </h3>
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <table className="w-full text-left text-xs border-collapse">
                 <tbody className="divide-y divide-slate-100">
-                  {pastListApts.length === 0 ? (
+                  {archiveAppointments.length === 0 ? (
                     <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-bold">No past appointments found.</td></tr>
-                  ) : pastListApts.map(renderAptRow)}
+                  ) : archiveAppointments.map(renderAptRow)}
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {archiveCount > ARCHIVE_LIMIT && (
+              <div className="flex justify-between items-center mt-4 px-2">
+                <button
+                  disabled={archivePage === 0}
+                  onClick={() => setArchivePage(p => Math.max(0, p - 1))}
+                  className="px-3 py-1 text-xs font-bold rounded-lg border disabled:opacity-40"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-slate-500">
+                  Page {archivePage + 1} of {Math.ceil(archiveCount / ARCHIVE_LIMIT)}
+                </span>
+                <button
+                  disabled={(archivePage + 1) * ARCHIVE_LIMIT >= archiveCount}
+                  onClick={() => setArchivePage(p => p + 1)}
+                  className="px-3 py-1 text-xs font-bold rounded-lg border disabled:opacity-40"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </section>
         )}
 
