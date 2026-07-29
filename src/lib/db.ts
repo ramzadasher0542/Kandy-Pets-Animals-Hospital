@@ -251,37 +251,28 @@ export async function fetchHistoricalAppointmentsArchive(
   search?: string
 ): Promise<{ appointments: Appointment[]; count: number }> {
   if (!supabase) return { appointments: [], count: 0 };
-  const { data, error } = await supabase
-    .from('appointments')
-    .select('*')
-    .in('status', ['completed', 'cancelled', 'no-show']);
-  if (error) { console.error('[DB]', error.message); return { appointments: [], count: 0 }; }
 
-  let filtered: Appointment[] = ((data || []) as Appointment[])
-    .filter(a => !(a as any).is_deleted);
+  let query = supabase
+    .from('appointments')
+    .select('*', { count: 'exact' })
+    .in('status', ['completed', 'cancelled', 'no-show'])
+    .eq('is_deleted', false)
+    .order('date', { ascending: false })
+    .range(page * limit, (page + 1) * limit - 1);
 
   if (search && search.trim() !== '') {
-    const term = search.trim().toLowerCase();
+    const term = search.trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(term)) {
-      filtered = filtered.filter(a => a.date === term);
+      query = query.eq('date', term);
     } else {
-      filtered = filtered.filter(a => 
-        a.petName.toLowerCase().includes(term) || 
-        a.ownerName.toLowerCase().includes(term)
-      );
+      query = query.or(`petName.ilike.%${term}%,ownerName.ilike.%${term}%`);
     }
   }
 
-  filtered.sort((a, b) => {
-    const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
-    if (dateDiff !== 0) return dateDiff;
-    return b.time.localeCompare(a.time);
-  });
+  const { data, error, count } = await query;
+  if (error) { console.error('[DB]', error.message); return { appointments: [], count: 0 }; }
 
-  const count = filtered.length;
-  const start = page * limit;
-  const end = start + limit;
-  return { appointments: filtered.slice(start, end), count };
+  return { appointments: (data || []) as Appointment[], count: count || 0 };
 }
 
 export async function upsertAppointment(apt: Appointment): Promise<void> {
@@ -993,20 +984,26 @@ export async function removeFromClinicQueue(
 
 export async function getActiveQueueItems(): Promise<ClinicQueueItem[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('clinic_queue').select('*');
+  const { data, error } = await supabase
+    .from('clinic_queue')
+    .select('*')
+    .eq('is_deleted', false)
+    .eq('status', 'active')
+    .order('checkInTime', { ascending: false });
   if (error) { console.error('[DB]', error.message); return []; }
-  return (data || [])
-    .filter((q: any) => !q.is_deleted && q.status === 'active')
-    .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+  return (data || []) as ClinicQueueItem[];
 }
 
 export async function getQueueItemsByService(serviceType: string): Promise<ClinicQueueItem[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('clinic_queue').select('*');
+  const { data, error } = await supabase
+    .from('clinic_queue')
+    .select('*')
+    .eq('is_deleted', false)
+    .eq('serviceType', serviceType)
+    .order('checkInTime', { ascending: false });
   if (error) { console.error('[DB]', error.message); return []; }
-  return (data || [])
-    .filter((q: any) => !q.is_deleted && q.serviceType === serviceType)
-    .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+  return (data || []) as ClinicQueueItem[];
 }
 
 // ==========================================
