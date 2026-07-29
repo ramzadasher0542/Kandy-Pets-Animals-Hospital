@@ -23,6 +23,8 @@ import PageShell from './ui/PageShell';
 interface AppointmentsProps {
   appointments: Appointment[];
   records: MedicalRecord[];
+  /** Supabase-backed staff registry; the attending-vet list is derived from it. */
+  users?: AppUser[];
   isOnline?: boolean;
   onAddAppointment: (appointment: Appointment) => void;
   onUpdateStatus: (id: string, status: AppointmentStatus) => void;
@@ -67,8 +69,8 @@ const getNextAptNumber = (apts: Appointment[]) => {
   return `APT-${max + 1}`;
 };
 
-export default function AppointmentsManager({ 
-  appointments, records, isOnline, onAddAppointment, onUpdateStatus,
+export default function AppointmentsManager({
+  appointments, records, users, isOnline, onAddAppointment, onUpdateStatus,
   onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent, onUpdateClient, onUpdatePet
 }: AppointmentsProps) {
   
@@ -144,41 +146,23 @@ export default function AppointmentsManager({
     setAllAppointments(sorted);
   }, [appointments]);
 
+  // Attending vets are derived from the Supabase-backed `users` registry that
+  // App passes down — no local IndexedDB lookup. Falls back to a single generic
+  // entry so the dropdown is never empty and appointments stay bookable.
   const fetchVets = useCallback(async () => {
-    try {
-      const byName = new Map<string, { name: string; id: string }>();
+    const vets = (users || [])
+      .filter(u => u.role === 'veterinarian' && u.active !== false)
+      .map(u => ({ name: u.name, id: u.id }));
 
-      // Primary source: anyone in Staff & Payroll whose role reads as a
-      // practitioner (vet / doctor / surgeon / physician). No manual re-entry —
-      // add a doctor once in Staff and they appear here automatically.
-      await db.staffProfiles.iterate((p: any) => {
-        if (p && !p.is_deleted && p.active !== false) {
-          const role = `${p.position || ''} ${p.department || ''}`.toLowerCase();
-          if (/vet|doctor|surgeon|physician/.test(role) && p.fullName) {
-            byName.set(p.fullName, { name: p.fullName, id: p.id });
-          }
-        }
-      });
-
-      // Also include legacy login accounts with a clinical role.
-      const users = await db.users.getItem<AppUser[]>('users_list') || [];
-      users
-        .filter(u => u.role === 'veterinarian' || u.role === 'admin')
-        .forEach(v => { if (v.name && !byName.has(v.name)) byName.set(v.name, { name: v.name, id: v.id }); });
-
-      const vets = Array.from(byName.values());
-      if (vets.length > 0) {
-        setLiveVets(vets);
-        if (!veterinarian) setVeterinarian(vets[0].name);
-      } else {
-        const fallback = { name: 'Attending Doctor', id: 'fallback' };
-        setLiveVets([fallback]);
-        if (!veterinarian) setVeterinarian(fallback.name);
-      }
-    } catch (e) {
-      if (import.meta.env.DEV) console.error('Failed to fetch vets:', e);
+    if (vets.length > 0) {
+      setLiveVets(vets);
+      if (!veterinarian) setVeterinarian(vets[0].name);
+    } else {
+      const fallback = { name: 'Attending Doctor', id: 'fallback' };
+      setLiveVets([fallback]);
+      if (!veterinarian) setVeterinarian(fallback.name);
     }
-  }, [veterinarian]);
+  }, [users, veterinarian]);
 
   useEffect(() => {
     fetchVets();

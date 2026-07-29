@@ -156,9 +156,12 @@ import {
   deleteClient,
   deletePet,
   addRevenueToActiveShift,
-  nuclearWipeLocal
+  nuclearWipeLocal,
+  fetchUsers,
+  upsertUser,
+  deleteUser
 } from './lib/db';
-import { SyncEngine, wipeAllCloudTables, stopSync } from './lib/syncEngine';
+import { SyncEngine, stopSync } from './lib/syncEngine';
 import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
 
 function hashPin(pin: string): string {
@@ -442,8 +445,8 @@ function App() {
           const hNotifications = await fetchNotifications();
           const hAlerts = await fetchAlerts();
 
-          const hUsers: any[] = [];
-          await db.users.iterate((value: any) => { if (value) hUsers.push(value); });
+          // Staff login accounts now live in Supabase `users`, not IndexedDB.
+          const hUsers: any[] = await fetchUsers();
 
           const hActiveShift = await db.system.getItem('active_shift') || null;
           const hConfig = await db.system.getItem('config');
@@ -1415,28 +1418,24 @@ function App() {
   }, []);
 
   // Deletes the cloud copy on Supabase FIRST (irreversible, affects every device
-  // sharing this project), then runs the same local purge. If the cloud delete
-  // partially fails, we still purge locally but report exactly which tables
-  // failed — never silently claim a clean wipe.
+  // sharing this project), then runs the same local purge. Both halves now live
+  // in nuclearWipeLocal(); a failed cloud wipe is logged to the console there and
+  // does NOT abort the local purge.
   const handleWipeCloudAndPurge = useCallback(async () => {
     try {
       // 1. Kill the sync engine FIRST so no in-flight push/pull can resurrect
       //    data we are about to delete.
       stopSync();
-      // 2. Wipe every real synced cloud table (all 23 via STORE_MAPPINGS),
-      //    reporting any table that failed instead of claiming a clean wipe.
-      const failures = await wipeAllCloudTables();
-      if (failures.length > 0) {
-        showToast(`Cloud wipe partially failed on: ${failures.map(f => f.table).join(', ')}. Local data will still be purged.`, 'error');
-      }
-      // 3. Nuke every local store + reset config to defaults.
+      // 2. Nuke the cloud AND every local store + reset config to defaults.
+      //    The cloud wipe (wipe_all_tables RPC) now lives in db.ts so every
+      //    caller of nuclearWipeLocal/masterSystemPurge erases both sides.
       await nuclearWipeLocal();
-      // 4. Clear web storage, then set flags so boot never reseeds demo data.
+      // 3. Clear web storage, then set flags so boot never reseeds demo data.
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem('NEVER_SEED', 'true');
       localStorage.setItem('kp_purged', '1');
-      // 5. Nuclear reload into an empty, zero-record vault.
+      // 4. Nuclear reload into an empty, zero-record vault.
       window.location.reload();
     } catch (error: any) {
       showToast(`Cloud wipe failed: ${error.message}`, 'error');
@@ -1469,8 +1468,10 @@ function App() {
       return { valid, user };
     }
 
-    let found: any = null;
-    await db.users.iterate((u: any) => { if (u && !u.is_deleted && u.username === username && u.active !== false) found = u; });
+    // Staff accounts live in Supabase `users` (fetchUsers already excludes
+    // soft-deleted rows). pinCache remains the offline/legacy fallback.
+    const registry = await fetchUsers();
+    const found: any = registry.find(u => u.username === username && u.active !== false) || null;
     const stored = found?.pin || pinCache[username] || '';
     if (!found || !stored) return { valid: false, user: null };
 
@@ -1612,9 +1613,7 @@ function App() {
       if (!foundUser || !ok) { registerFailure(selectedUsername); return; }
 
       if (upgradedHash) {
-        const persisted = await db.users.getItem<any>(foundUser.id);
-        const updated = { ...(persisted || foundUser), pin: upgradedHash };
-        await db.users.setItem(foundUser.id, updated);
+        await upsertUser({ ...foundUser, pin: upgradedHash });
         setUsers(prev => prev.map(u => u.id === foundUser.id ? { ...u, pin: upgradedHash } : u));
         setPinCache(prev => ({ ...prev, [selectedUsername]: upgradedHash }));
       }
@@ -1720,7 +1719,7 @@ function App() {
           />
         );
       }
-      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
+      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} users={users} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
       case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} onDischargeToQueue={async (item) => { await addToClinicQueue(item); setClinicQueue(prev => prev.some(q => q.id === item.id) ? prev : [item, ...prev]); }} />;
       case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} systemConfig={systemConfig} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
@@ -1732,7 +1731,7 @@ function App() {
       case 'reports':
         return <ReportsManager onVerifyMasterPin={handleVerifyMasterPin} currentUser={currentUser} config={systemConfig} />;
       case 'staff': 
-        return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await db.users.setItem(user.id, user); setUsers(prev => { const next = [...prev]; const idx = next.findIndex(u => u.id === user.id); if (idx >= 0) next[idx] = user; else next.push(user); return next; }); }} />;
+        return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
         const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
@@ -1750,7 +1749,7 @@ function App() {
             }}
             users={users.map(({ pin, ...safeU }) => safeU)}
             onForceCloudSync={async () => { if (syncEngineRef.current) await syncEngineRef.current.forceSync(); }}
-            onRefreshUsers={async () => { }}
+            onRefreshUsers={async () => { setUsers(await fetchUsers()); }}
             onAddUser={async (user) => {
               // AUTH-4 FIX: new accounts previously stored their PIN in PLAINTEXT,
               // which no verifier accepts — so every account made here could never
@@ -1760,8 +1759,13 @@ function App() {
               const raw = pin || pinCache[user.username];
               const hashed = raw ? await hashCredential(String(raw)) : undefined;
               const userToSave = { ...safeUser, pin: hashed };
-              await db.users.setItem(userToSave.id, userToSave);
-              setUsers(prev => [...prev, userToSave]);
+              try {
+                await upsertUser(userToSave);
+              } catch (e: any) {
+                showToast(`Failed to add user: ${e.message}`, 'error');
+                return;
+              }
+              setUsers(await fetchUsers());
               showToast(`User ${safeUser.name} added successfully.`);
             }}
             onRemoveUser={async (id) => {
@@ -1773,8 +1777,13 @@ function App() {
                   return next;
                 });
               }
-              await db.users.removeItem(id);
-              setUsers(prev => prev.filter(u => u.id !== id));
+              try {
+                await deleteUser(id);
+              } catch (e: any) {
+                showToast(`Failed to remove user: ${e.message}`, 'error');
+                return;
+              }
+              setUsers(await fetchUsers());
             }}
             inventory={inventory}
             invoices={invoices}
@@ -1798,9 +1807,8 @@ function App() {
                 await db.system.setItem('config', next);
                 setSystemConfig(next);
               } else {
-                const persisted = await db.users.getItem<any>(target.id);
-                const updated = { ...(persisted || target), pin: hashed };
-                await db.users.setItem(target.id, updated);
+                const persisted = users.find(u => u.id === target.id);
+                await upsertUser({ ...(persisted || target), pin: hashed });
                 setUsers(prev => prev.map(u => u.id === target.id ? { ...u, pin: hashed } : u));
                 setPinCache(prev => ({ ...prev, [target.username]: hashed }));
               }

@@ -286,13 +286,75 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
   if (error) throw error;
 }
 
+// ==========================================
+// USERS (staff login accounts)
+// ==========================================
+
+/**
+ * Supabase `users` uses snake_case `avatar_color`; the app's User type uses
+ * `avatarColor`. Map in both directions — never leak the raw column name.
+ */
+export async function fetchUsers(): Promise<User[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('users').select('*').eq('is_deleted', false);
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || []).map((u: any) => ({
+    id: u.id,
+    name: u.name,
+    username: u.username,
+    role: u.role,
+    avatarColor: u.avatar_color || '',
+    pin: u.pin,
+    active: u.active ?? true
+  }));
+}
+
+export async function upsertUser(user: User): Promise<void> {
+  if (!user || !user.id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const payload = {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    role: user.role,
+    pin: user.pin,
+    avatar_color: user.avatarColor,
+    active: user.active ?? true,
+    is_deleted: false
+  };
+  const { error } = await supabase.from('users').upsert(payload);
+  if (error) throw error;
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  if (!id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('users').update({ is_deleted: true }).eq('id', id);
+  if (error) throw error;
+}
+
 export async function fetchVeterinarians(): Promise<User[]> {
-  // No staff_users table exists in the cloud yet; return a generic fallback
-  // that mirrors the app's own "Attending Doctor" placeholder.
-  const users: User[] = [
-    { id: 'fallback-vet', name: 'Attending Doctor', username: 'attending', role: 'veterinarian', avatarColor: '' },
-  ];
-  return users.sort((a, b) => a.name.localeCompare(b.name));
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('role', 'veterinarian')
+    .eq('active', true)
+    .eq('is_deleted', false);
+  if (error) { console.error('[DB]', error.message); return []; }
+  const vets = (data || []).map((u: any) => ({
+    id: u.id,
+    name: u.name,
+    username: u.username,
+    role: u.role,
+    avatarColor: u.avatar_color || '',
+    pin: u.pin,
+    active: u.active ?? true
+  }));
+  if (vets.length === 0) {
+    return [{ id: 'fallback-vet', name: 'Attending Doctor', username: 'attending', role: 'veterinarian', avatarColor: '', active: true }];
+  }
+  return vets.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ==========================================
@@ -317,17 +379,6 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
   if (!supabase) throw new Error('No internet connection');
   const { error } = await supabase.from('medical_records').upsert(formattedRec);
   if (error) throw error;
-
-  if (rec.patientId) {
-    const pet = await db.pets.getItem<Pet>(rec.patientId);
-    if (pet) {
-      if (!pet.recordIds) pet.recordIds = [];
-      if (!pet.recordIds.includes(rec.id)) {
-        pet.recordIds.push(rec.id);
-        await db.pets.setItem(rec.patientId, stampRecord(pet));
-      }
-    }
-  }
 }
 
 export async function deleteMedicalRecord(id: string): Promise<void> {
@@ -653,7 +704,7 @@ export async function fetchClients(): Promise<Client[]> {
     }
   }
 
-  if (!hasWalkIn) {
+  if (!hasWalkIn && supabase) {
     const walkInClient: Client = {
       client_id: 'walk_in_retail',
       full_name: 'Walk-In / Retail Customer',
@@ -667,7 +718,7 @@ export async function fetchClients(): Promise<Client[]> {
       lifetime_value: 0,
       administrative_notes: 'Permanent default account for anonymous over-the-counter retail sales.'
     };
-    await db.clients.setItem('walk_in_retail', stampRecord(walkInClient));
+    await supabase.from('clients').upsert(walkInClient);
     clients.unshift(walkInClient);
   }
   return clients;
@@ -729,6 +780,15 @@ export async function fetchFullSystemState(): Promise<any> {
 }
 
 export async function masterSystemPurge(): Promise<void> {
+  if (supabase) {
+    try {
+      const { error } = await supabase.rpc('wipe_all_tables');
+      if (error) console.error('[DB] wipe_all_tables RPC failed:', error.message);
+    } catch (e: any) {
+      console.error('[DB] wipe_all_tables RPC failed:', e.message);
+      // Fallback: manual delete in FK-safe order if RPC fails
+    }
+  }
   await Promise.all([
     db.inventory.clear(),
     db.appointments.clear(),
@@ -759,6 +819,15 @@ export async function masterSystemPurge(): Promise<void> {
  * demo reseed.
  */
 export async function nuclearWipeLocal(): Promise<void> {
+  if (supabase) {
+    try {
+      const { error } = await supabase.rpc('wipe_all_tables');
+      if (error) console.error('[DB] wipe_all_tables RPC failed:', error.message);
+    } catch (e: any) {
+      console.error('[DB] wipe_all_tables RPC failed:', e.message);
+      // Fallback: manual delete in FK-safe order if RPC fails
+    }
+  }
   await Promise.all(
     Object.values(db).map((store: any) =>
       store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
@@ -768,6 +837,8 @@ export async function nuclearWipeLocal(): Promise<void> {
 }
 
 export async function reconstituteSystemState(payload: any): Promise<void> {
+  console.warn('[SYSTEM] Restore is disabled. All data lives in Supabase cloud.');
+  return;
   if (!payload || !payload.collections) {
     throw new Error("Invalid backup payload. Ensure this file is a valid CeylonPets JSON export.");
   }
@@ -916,6 +987,8 @@ export async function exportFullDatabase(): Promise<string> {
 }
 
 export async function restoreFullDatabase(jsonData: string): Promise<void> {
+  console.warn('[SYSTEM] Restore is disabled. All data lives in Supabase cloud.');
+  return;
   const data = JSON.parse(jsonData);
   const unlock = await globalMutex.lock();
   try {
