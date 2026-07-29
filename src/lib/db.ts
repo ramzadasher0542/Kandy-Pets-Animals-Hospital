@@ -244,7 +244,7 @@ export async function fetchHistoricalAppointmentsArchive(
   const { data, error } = await supabase
     .from('appointments')
     .select('*')
-    .in('status', ['completed', 'cancelled']);
+    .in('status', ['completed', 'cancelled', 'no-show']);
   if (error) { console.error('[DB]', error.message); return { appointments: [], count: 0 }; }
 
   let filtered: Appointment[] = ((data || []) as Appointment[])
@@ -502,16 +502,18 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
     totalCogs += Math.round(inv.cogs || 0);
 
     // AUDIT FIX: 5-category breakdown instead of 2
-    inv.items?.forEach(item => {
-      const itemPrice = item.unitPrice || 0;
-      const itemQty = item.quantity || 0;
-      const computedTotal = Math.round(itemPrice * itemQty);
+    // Distribute invoice discount proportionally across categories
+    const itemSubtotal = (inv.items || []).reduce((s, item) => s + (item.totalPrice || 0), 0);
+    const discountRatio = itemSubtotal > 0 ? (inv.sales_total || 0) / itemSubtotal : 1;
 
-      if (item.category === 'service') clinicalRevenue += computedTotal;
-      else if (item.category === 'lab_service') labRevenue += computedTotal;
-      else if (item.category === 'vaccine') vaccineRevenue += computedTotal;
-      else if (item.category === 'prescription') prescriptionRevenue += computedTotal;
-      else retailRevenue += computedTotal;
+    inv.items?.forEach(item => {
+      const adjustedTotal = Math.round((item.totalPrice || 0) * discountRatio);
+
+      if (item.category === 'service') clinicalRevenue += adjustedTotal;
+      else if (item.category === 'lab_service') labRevenue += adjustedTotal;
+      else if (item.category === 'vaccine') vaccineRevenue += adjustedTotal;
+      else if (item.category === 'prescription') prescriptionRevenue += adjustedTotal;
+      else retailRevenue += adjustedTotal;
     });
   }
 

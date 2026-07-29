@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import {
   Calendar as CalendarIcon, Clock, Plus, User, CheckCircle2,
   Activity, X, ChevronLeft, ChevronRight, List as ListIcon,
-  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, History, SearchCode
+  Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, History, SearchCode, UserX
 } from 'lucide-react';
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client } from '../types';
 import { showToast } from './Toast';
@@ -627,6 +627,12 @@ export default function AppointmentsManager({
     setSelectedPopoverApt(null);
   };
 
+  const handleNoShowApt = async (apt: Appointment) => {
+    if (apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'no-show') return;
+    await onUpdateStatus(apt.id, 'no-show');
+    setSelectedPopoverApt(null);
+  };
+
   // ---------------------------------------------------------
   // FILTERING & DERIVATIONS
   // ---------------------------------------------------------
@@ -649,7 +655,8 @@ export default function AppointmentsManager({
     if (statusFilter === 'Pending') return apt.status === 'booked';
     if (statusFilter === 'Confirmed') return apt.status === 'in-progress';
     if (statusFilter === 'Completed') return apt.status === 'completed';
-    if (statusFilter === 'Cancelled' || statusFilter === 'No show') return apt.status === 'cancelled';
+    if (statusFilter === 'Cancelled') return apt.status === 'cancelled';
+    if (statusFilter === 'No show') return apt.status === 'no-show';
     return true;
   });
 
@@ -682,6 +689,7 @@ export default function AppointmentsManager({
     if (s === 'in-progress') return <Badge tone="sky" className="flex items-center gap-1 w-max"><Activity className="h-3 w-3 animate-pulse" /> In Treatment</Badge>;
     if (s === 'completed') return <Badge tone="emerald">Completed</Badge>;
     if (s === 'cancelled') return <Badge tone="rose">Cancelled</Badge>;
+    if (s === 'no-show') return <Badge tone="amber">No Show</Badge>;
     return <Badge tone="slate">{status}</Badge>;
   };
 
@@ -1184,11 +1192,16 @@ export default function AppointmentsManager({
                 </button>
               )}
               
-              {!['completed', 'cancelled'].includes(selectedPopoverApt.status) ? (
+              {!['completed', 'cancelled', 'no-show'].includes(selectedPopoverApt.status) ? (
                 <>
                   <button onClick={() => handleEditClick(selectedPopoverApt)} className="w-full py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-bold rounded-xl text-[10px] uppercase tracking-wide flex justify-center items-center gap-2 cursor-pointer transition-colors">
                     <Edit2 className="h-4 w-4" /> Edit Details
                   </button>
+                  {(selectedPopoverApt.status === 'booked' || selectedPopoverApt.status === 'in-progress') && (
+                    <button onClick={() => handleNoShowApt(selectedPopoverApt)} className="w-full py-2 bg-white text-amber-600 hover:bg-amber-50 border border-slate-200 font-bold rounded-xl text-[10px] uppercase tracking-wide flex justify-center items-center gap-2 cursor-pointer transition-colors">
+                      <UserX className="h-4 w-4" /> Mark No-Show
+                    </button>
+                  )}
                   <button onClick={() => handleCancelApt(selectedPopoverApt)} className="w-full py-2 bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 font-bold rounded-xl text-[10px] uppercase tracking-wide flex justify-center items-center gap-2 cursor-pointer transition-colors">
                     <Trash2 className="h-4 w-4" /> Cancel Appointment
                   </button>

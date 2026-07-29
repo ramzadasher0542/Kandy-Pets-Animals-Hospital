@@ -49,7 +49,7 @@ export interface InventoryBatch {
   _dirty: boolean;
 }
 
-export type AppointmentStatus = 'booked' | 'in-progress' | 'completed' | 'cancelled';
+export type AppointmentStatus = 'booked' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
 export type QueueStatus = 'scheduled' | 'active' | 'completed';
 export type PetClassification = 'Canine' | 'Feline' | 'Avian' | 'Reptile' | 'Small Mammal' | 'Exotic' | 'Other';
 
