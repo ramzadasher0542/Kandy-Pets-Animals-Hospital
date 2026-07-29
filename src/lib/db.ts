@@ -779,14 +779,67 @@ export async function fetchFullSystemState(): Promise<any> {
   return state;
 }
 
-export async function masterSystemPurge(): Promise<void> {
+export async function masterSystemPurge(): Promise<string[]> {
+  const logs: string[] = [];
   if (supabase) {
-    try {
-      await supabase.rpc('wipe_all_tables');
-    } catch (e: any) {
-      console.error('[DB] wipe_all_tables RPC failed:', e.message);
+    // PRIMARY PATH: explicit per-table deletes, children before parents.
+    // The dummy-UUID predicate matches every real row and — unlike neq(pk, '')
+    // — is valid uuid syntax, so Postgres never raises 22P02.
+    const tables: [string, string, string][] = [
+      ['cash_adjustments', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['invoices', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['clinic_queue', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['appointments', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['medical_records', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['vaccinations', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['lab_results', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['grooming_logs', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['boarding_records', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['inventory_batches', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['pets', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['clients', 'client_id', ''],
+      ['inventory', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['shift_reconciliations', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['shifts', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['notifications', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['system_alerts', 'id', '00000000-0000-0000-0000-000000000000'],
+      ['users', 'id', '00000000-0000-0000-0000-000000000000'],
+    ];
+    for (const [table, pk, dummy] of tables) {
+      try {
+        // .select() is required for `data` to come back — without it supabase-js
+        // returns data:null and every row count would falsely log as 0.
+        const { data, error } = await supabase.from(table).delete().neq(pk, dummy).select();
+        if (error) {
+          logs.push(`FAIL ${table}: ${error.message}`);
+          console.error(`[ERASE] ${table}: ${error.message}`);
+        } else {
+          logs.push(`OK ${table}: ${(data || []).length} rows`);
+          console.log(`[ERASE] ${table}: cleared`);
+        }
+      } catch (e: any) {
+        logs.push(`ERR ${table}: ${e.message}`);
+        console.error(`[ERASE] ${table}: ${e.message}`);
+      }
     }
+    // BACKSTOP: same deletes server-side in one transaction, catching any table
+    // missing from the list above. Only logged when it fails, so the OK count
+    // stays a clean n/18.
+    try {
+      const { error } = await supabase.rpc('wipe_all_tables');
+      if (error) {
+        logs.push(`FAIL rpc wipe_all_tables: ${error.message}`);
+        console.error('[ERASE] rpc wipe_all_tables:', error.message);
+      }
+    } catch (e: any) {
+      logs.push(`ERR rpc wipe_all_tables: ${e.message}`);
+      console.error('[ERASE] rpc wipe_all_tables:', e.message);
+    }
+  } else {
+    logs.push('FAIL: no supabase connection');
   }
+
+  // Local clear
   await Promise.all([
     db.inventory.clear(),
     db.appointments.clear(),
@@ -802,34 +855,29 @@ export async function masterSystemPurge(): Promise<void> {
     db.boardingRecords.clear()
   ]);
   localStorage.removeItem('ceylon_active_shift_id');
+  return logs;
 }
 
 /**
- * NUCLEAR-ERASE: clear EVERY localforage store — all clinic data plus the
- * `system` store that holds SystemConfig — so nothing survives locally. Config
- * is "reset to minimal defaults" by emptying db.system: on the next boot the
- * app re-applies its built-in default SystemConfig (App.tsx useState) because
- * there is no stored config to hydrate from.
+ * NUCLEAR-ERASE: same cloud + local wipe as masterSystemPurge, plus a sweep of
+ * EVERY remaining localforage store — including the `system` store that holds
+ * SystemConfig — so nothing survives locally. Config is "reset to minimal
+ * defaults" by emptying db.system: on the next boot the app re-applies its
+ * built-in default SystemConfig (App.tsx useState) because there is no stored
+ * config to hydrate from. Iterating every store also covers newly-added ones
+ * automatically. Pairs with the NEVER_SEED flag to block any demo reseed.
  *
- * Unlike masterSystemPurge (which clears a fixed subset), this iterates every
- * store on `db`, so newly-added stores are covered automatically. Pairs with
- * wipeAllCloudTables() for the cloud side and the NEVER_SEED flag to block any
- * demo reseed.
+ * Returns masterSystemPurge's per-table log so callers can report real results.
  */
-export async function nuclearWipeLocal(): Promise<void> {
-  if (supabase) {
-    try {
-      await supabase.rpc('wipe_all_tables');
-    } catch (e: any) {
-      console.error('[DB] wipe_all_tables RPC failed:', e.message);
-    }
-  }
+export async function nuclearWipeLocal(): Promise<string[]> {
+  const logs = await masterSystemPurge(); // same cloud + local wipe
   await Promise.all(
     Object.values(db).map((store: any) =>
       store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
     )
   );
   localStorage.removeItem('ceylon_active_shift_id');
+  return logs;
 }
 
 export async function reconstituteSystemState(payload: any): Promise<void> {

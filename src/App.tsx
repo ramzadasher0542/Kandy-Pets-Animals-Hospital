@@ -1427,15 +1427,20 @@ function App() {
       //    data we are about to delete.
       stopSync();
       // 2. Nuke the cloud AND every local store + reset config to defaults.
-      //    The cloud wipe (wipe_all_tables RPC) now lives in db.ts so every
-      //    caller of nuclearWipeLocal/masterSystemPurge erases both sides.
-      await nuclearWipeLocal();
+      //    db.ts deletes each cloud table explicitly and returns a per-table
+      //    log, so a partial failure is visible instead of silent.
+      const wipeLog = await nuclearWipeLocal();
+      console.log('[WIPE RESULT]', wipeLog);
+      showToast(`Wiped ${wipeLog.filter(l => l.startsWith('OK')).length}/18 tables. Check console for details.`, 'success');
       // 3. Clear web storage, then set flags so boot never reseeds demo data.
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem('NEVER_SEED', 'true');
       localStorage.setItem('kp_purged', '1');
-      // 4. Nuclear reload into an empty, zero-record vault.
+      // 4. Hold long enough for the toast to actually be read — an immediate
+      //    reload would destroy it in the same tick, defeating the point.
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      // 5. Nuclear reload into an empty, zero-record vault.
       window.location.reload();
     } catch (error: any) {
       showToast(`Cloud wipe failed: ${error.message}`, 'error');
