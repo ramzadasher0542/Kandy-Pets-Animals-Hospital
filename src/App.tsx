@@ -407,7 +407,7 @@ function App() {
         // Boot: load operational data (today's records/invoices via fetchTodays*)
         try {
           const [appts, recs, inv, invs, metrics, queue, fetchedPets, fetchedClients, fetchedBoardingRecords] = await Promise.all([
-            fetchAppointments(),
+            fetchAppointments(30),
             fetchTodaysRecords(),
             fetchInventory(),
             fetchTodaysInvoices(),

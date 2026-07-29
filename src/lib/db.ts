@@ -225,14 +225,24 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
 // ==========================================
 // APPOINTMENTS
 // ==========================================
-export async function fetchAppointments(): Promise<Appointment[]> {
+export async function fetchAppointments(days?: number): Promise<Appointment[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('appointments').select('*');
+  let query = supabase.from('appointments').select('*');
+  if (days && days > 0) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = formatDisplayDate(cutoff);
+    query = query.gte('date', cutoffStr);
+  }
+  const { data, error } = await query;
   if (error) { console.error('[DB]', error.message); return []; }
-  const items = (data || []) as Appointment[];
-  return items
-    .filter(value => !(value as any).is_deleted)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return (data || [])
+    .filter((value: any) => !value.is_deleted)
+    .sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.time}`).getTime();
+      const dateB = new Date(`${b.date}T${b.time}`).getTime();
+      return dateB - dateA;
+    });
 }
 
 export async function fetchHistoricalAppointmentsArchive(

@@ -9,7 +9,9 @@ import {
   ClinicQueueItem, ScheduleEntry, TimeEntry, StaffProfile,
   BoardingRecord, GroomingLog
 } from '../types';
-import { db } from '../lib/localDb';
+import { supabase } from '../lib/supabase';
+import { fetchBoardingRecords, fetchGroomingLogs } from '../lib/db';
+import { formatDisplayDate } from '../utils/time';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 
@@ -53,46 +55,78 @@ export default function DashboardAnalytics({
   const [vaultBalance, setVaultBalance] = useState<number>(0);
   const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
   const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
+  const [weekInvoices, setWeekInvoices] = useState<Invoice[]>([]);
 
   useEffect(() => {
     let isMounted = true;
-    async function loadData() {
+    const loadDashboard = async () => {
       try {
+        // Cash adjustments from Supabase (IndexedDB is empty after the migration)
+        let cIn = 0, cOut = 0;
+        if (supabase) {
+          const { data: adjData } = await supabase.from('cash_adjustments').select('*');
+          (adjData || []).forEach((a: any) => {
+            if (a.type === 'IN') cIn += Number(a.amount || 0);
+            else cOut += Number(a.amount || 0);
+          });
+        }
+
+        // Boarding records + grooming logs from Supabase. Full arrays are kept
+        // (not just counts) because the alert panel below scans them for
+        // boarding-charge overages and missing grooming consent signatures.
+        const boarding = await fetchBoardingRecords();
+        const grooming = await fetchGroomingLogs();
+
+        // Today's cash sales from the invoices prop (parent loads today only).
+        const today = formatDisplayDate(new Date());
         let cSales = 0;
-        invoices.filter(i => i.paymentStatus === 'paid').forEach(inv => {
-          const total = inv.sales_total || 0;
-          const method = (inv.paymentMethod || '').toLowerCase();
-          if (method === 'cash') cSales += total;
-          else if (method === 'split' && inv.splitPayments) {
-            const cashSplit = inv.splitPayments.find((p: any) => p.method === 'cash');
-            if (cashSplit) cSales += (cashSplit.amount || 0);
-          }
-        });
-        
-        let cIn = 0; let cOut = 0;
-        await db.cashAdjustments.iterate((a: any) => { 
-          if (a.type === 'IN') cIn += a.amount; 
-          else cOut += a.amount; 
-        });
-        
-        const b: BoardingRecord[] = [];
-        await db.boardingRecords.iterate((r: any) => b.push(r));
-        
-        const g: GroomingLog[] = [];
-        await db.groomingLogs.iterate((r: any) => g.push(r));
-        
+        invoices
+          .filter(inv => inv.date === today && inv.paymentStatus === 'paid')
+          .forEach(inv => {
+            const method = (inv.paymentMethod || '').toLowerCase();
+            if (method === 'cash') cSales += inv.sales_total || 0;
+            else if (method === 'split' && inv.splitPayments) {
+              const cashSplit = inv.splitPayments.find((p: any) => p.method === 'cash');
+              if (cashSplit) cSales += (cashSplit.amount || 0);
+            }
+          });
+
         if (isMounted) {
           setVaultBalance(cSales + cIn - cOut);
-          setBoardingRecords(b);
-          setGroomingLogs(g);
+          setBoardingRecords(boarding);
+          setGroomingLogs(grooming);
         }
-      } catch (err) {
-        if (import.meta.env.DEV) console.error('Failed to load dashboard async data:', err);
+      } catch (e) {
+        console.error('Dashboard load failed:', e);
       }
-    }
-    loadData();
+    };
+    loadDashboard();
     return () => { isMounted = false; };
   }, [invoices]);
+
+  // 7-day revenue chart fetches its own window — the invoices prop only holds
+  // today's rows since the boot sequence moved to fetchTodaysInvoices().
+  useEffect(() => {
+    let isMounted = true;
+    const loadWeek = async () => {
+      if (!supabase) return;
+      const dates: string[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        dates.push(formatDisplayDate(d));
+      }
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .in('date', dates)
+        .eq('paymentStatus', 'paid');
+      if (error) console.error('[DB]', error.message);
+      if (isMounted) setWeekInvoices((data || []) as Invoice[]);
+    };
+    loadWeek();
+    return () => { isMounted = false; };
+  }, []);
 
   // 1. TOP ROW STATS
   const patientsInBuilding = clinicQueue.filter(q => q.status !== 'completed').length;
@@ -208,7 +242,7 @@ export default function DashboardAnalytics({
       d.setDate(d.getDate() - i);
       const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       
-      const dayRevs = invoices
+      const dayRevs = weekInvoices
         .filter(inv => inv.date?.startsWith(dStr) && inv.paymentStatus === 'paid')
         .reduce((sum, inv) => sum + (inv.sales_total || 0), 0);
         
@@ -220,7 +254,7 @@ export default function DashboardAnalytics({
     }
     const maxVal = Math.max(...days.map(d => d.value), 1);
     return { days, maxVal };
-  }, [invoices]);
+  }, [weekInvoices]);
 
   const formatCurrency = (val: number) => 'Rs. ' + new Intl.NumberFormat('en-LK', { maximumFractionDigits: 0 }).format(val || 0);
 
