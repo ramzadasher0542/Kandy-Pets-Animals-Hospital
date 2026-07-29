@@ -878,23 +878,21 @@ export async function removeFromClinicQueue(id: string): Promise<void> {
 }
 
 export async function getActiveQueueItems(): Promise<ClinicQueueItem[]> {
-  const queue: ClinicQueueItem[] = [];
-  await db.clinicQueue.iterate((value: ClinicQueueItem) => {
-    if (value && !Array.isArray(value) && value.status === 'active' && !(value as any).is_deleted) {
-      queue.push(value);
-    }
-  });
-  return queue.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('clinic_queue').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || [])
+    .filter((q: any) => !q.is_deleted && q.status === 'active')
+    .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
 }
 
 export async function getQueueItemsByService(serviceType: string): Promise<ClinicQueueItem[]> {
-  const queue: ClinicQueueItem[] = [];
-  await db.clinicQueue.iterate((value: ClinicQueueItem) => {
-    if (value && !Array.isArray(value) && value.serviceType === serviceType) {
-      queue.push(value);
-    }
-  });
-  return queue.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('clinic_queue').select('*');
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || [])
+    .filter((q: any) => !q.is_deleted && q.serviceType === serviceType)
+    .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
 }
 
 // ==========================================
