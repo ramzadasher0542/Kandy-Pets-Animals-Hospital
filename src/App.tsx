@@ -127,10 +127,12 @@ import ShiftManager from './components/ShiftManager';
 import StaffManager from './components/StaffManager';
 
 import { 
-  fetchAppointments, 
-  fetchMedicalRecords, 
-  fetchInventory, 
-  fetchInvoices, 
+  fetchAppointments,
+  fetchMedicalRecords,
+  fetchInventory,
+  fetchInvoices,
+  fetchTodaysRecords,
+  fetchTodaysInvoices,
   fetchShiftMetrics,
   fetchNotifications,
   fetchAlerts,
@@ -402,13 +404,13 @@ function App() {
         }
 
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
-        // MISSION 2: Only load today's operational data — not the full history
+        // Boot: load operational data (today's records/invoices via fetchTodays*)
         try {
           const [appts, recs, inv, invs, metrics, queue, fetchedPets, fetchedClients, fetchedBoardingRecords] = await Promise.all([
             fetchAppointments(),
-            fetchMedicalRecords(),
+            fetchTodaysRecords(),
             fetchInventory(),
-            fetchInvoices(),
+            fetchTodaysInvoices(),
             fetchShiftMetrics(),
             fetchClinicQueue(),
             fetchPets(),
@@ -830,7 +832,7 @@ function App() {
 
       const queueItem = clinicQueue.find(q => q.appointmentId === appointmentId);
       if (queueItem) {
-        await removeFromClinicQueue(queueItem.id);
+        await removeFromClinicQueue(queueItem.id, 'completed');
         setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
       }
       if (cloudFailed) throw new Error('CLOUD_SAVE_FAILED: appointment');
@@ -902,7 +904,7 @@ function App() {
           if (status === 'cancelled') {
             const queueItem = clinicQueue.find(q => q.appointmentId === apt.id);
             if (queueItem) {
-              await removeFromClinicQueue(queueItem.id);
+              await removeFromClinicQueue(queueItem.id, 'cancelled');
               setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
             }
           }

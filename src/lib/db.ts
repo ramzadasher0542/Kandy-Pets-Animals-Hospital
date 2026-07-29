@@ -545,15 +545,14 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
 
 export async function fetchLowStockCount(): Promise<number> {
   if (!supabase) return 0;
-  const { data, error } = await supabase.from('inventory').select('*');
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('*')
+    .lte('stock', 20)
+    .neq('category', 'service')
+    .neq('category', 'lab_service');
   if (error) { console.error('[DB]', error.message); return 0; }
-  let count = 0;
-  for (const item of ((data || []) as InventoryItem[])) {
-    if (!(item as any).is_deleted && item.category !== 'service' && item.category !== 'lab_service' && item.stock <= item.minStock) {
-      count++;
-    }
-  }
-  return count;
+  return (data || []).filter((item: any) => !item.is_deleted && item.stock <= item.minStock).length;
 }
 
 export async function fetchActiveShiftId(): Promise<string | null> {
@@ -968,13 +967,16 @@ export async function updateQueueItemStatus(id: string, status: 'scheduled' | 'a
   if (error) throw error;
 }
 
-export async function removeFromClinicQueue(id: string): Promise<void> {
+export async function removeFromClinicQueue(
+  id: string,
+  finalStatus: 'completed' | 'cancelled' = 'completed'
+): Promise<void> {
   if (!id) return;
   if (!supabase) throw new Error('No internet connection');
   // BUG #6 FIX: Soft-delete instead of hard-delete so history is preserved
   const { error } = await supabase
     .from('clinic_queue')
-    .update({ is_deleted: true, status: 'completed' })
+    .update({ is_deleted: true, status: finalStatus })
     .eq('id', id);
   if (error) throw error;
 }
@@ -1115,35 +1117,37 @@ export async function restoreFullDatabase(jsonData: string): Promise<void> {
 // ==========================================
 
 /**
- * Boot-optimized: Returns only today's medical records + active boarding.
- * Prevents loading thousands of historical records into React memory.
+ * Returns today's medical records from Supabase using server-side date filter.
  */
 export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
   if (!supabase) return [];
   const today = formatDisplayDate(new Date());
-  const { data, error } = await supabase.from('medical_records').select('*');
+  const { data, error } = await supabase
+    .from('medical_records')
+    .select('*')
+    .eq('visitDate', today)
+    .eq('is_deleted', false);
   if (error) { console.error('[DB]', error.message); return []; }
-  const records = ((data || []) as MedicalRecord[])
-    .filter(value => !(value as any).is_deleted && value.visitDate === today);
-  return records.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+  return (data || []).sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 }
 
 /**
- * Boot-optimized: Returns only today's invoices.
- * Prevents loading thousands of historical invoices into React memory.
+ * Returns today's invoices from Supabase using server-side date filter.
  */
 export async function fetchTodaysInvoices(): Promise<Invoice[]> {
   if (!supabase) return [];
   const today = formatDisplayDate(new Date());
-  const { data, error } = await supabase.from('invoices').select('*');
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('date', today);
   if (error) { console.error('[DB]', error.message); return []; }
-  const invoices = ((data || []) as Invoice[]).filter(value => value.date === today);
-  return invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return (data || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 /**
  * On-demand paginated invoice query for InvoicesManager.
- * Streams through IndexedDB with optional search and status filter.
+ * Server-side paginated invoice query with search and status filter.
  */
 export async function fetchPaginatedInvoices(
   page = 0,
@@ -1152,27 +1156,21 @@ export async function fetchPaginatedInvoices(
   statusFilter?: string
 ): Promise<{ invoices: Invoice[]; total: number }> {
   if (!supabase) return { invoices: [], total: 0 };
-  const { data, error } = await supabase.from('invoices').select('*');
-  if (error) { console.error('[DB]', error.message); return { invoices: [], total: 0 }; }
-  let filtered: Invoice[] = (data || []) as Invoice[];
+  let query = supabase.from('invoices').select('*', { count: 'exact' });
 
   if (statusFilter && statusFilter !== 'All') {
-    filtered = filtered.filter(i => i.paymentStatus === statusFilter);
+    query = query.eq('paymentStatus', statusFilter);
   }
-
   if (search && search.trim()) {
-    const q = search.trim().toLowerCase();
-    filtered = filtered.filter(inv =>
-      (inv.id || '').toLowerCase().includes(q) ||
-      (inv.ownerName || '').toLowerCase().includes(q) ||
-      (inv.petName || '').toLowerCase().includes(q)
-    );
+    query = query.or(`ownerName.ilike.%${search.trim()}%,petName.ilike.%${search.trim()}%`);
   }
 
-  filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const total = filtered.length;
   const start = page * limit;
-  return { invoices: filtered.slice(start, start + limit), total };
+  query = query.order('date', { ascending: false }).range(start, start + limit - 1);
+
+  const { data, error, count } = await query;
+  if (error) { console.error('[DB]', error.message); return { invoices: [], total: 0 }; }
+  return { invoices: (data || []) as Invoice[], total: count || 0 };
 }
 
 /**
@@ -1184,41 +1182,39 @@ export async function fetchPaginatedRecords(
   search?: string
 ): Promise<{ records: MedicalRecord[]; total: number }> {
   if (!supabase) return { records: [], total: 0 };
-  const { data, error } = await supabase.from('medical_records').select('*');
-  if (error) { console.error('[DB]', error.message); return { records: [], total: 0 }; }
-  let filtered: MedicalRecord[] = ((data || []) as MedicalRecord[])
-    .filter(value => !(value as any).is_deleted);
+  let query = supabase.from('medical_records').select('*', { count: 'exact' })
+    .eq('is_deleted', false);
 
   if (search && search.trim()) {
-    const q = search.trim().toLowerCase();
-    filtered = filtered.filter(r =>
-      (r.ownerName || '').toLowerCase().includes(q) ||
-      (r.ownerPhone || '').includes(q) ||
-      ((r as any).petName || '').toLowerCase().includes(q)
-    );
+    query = query.or(`ownerName.ilike.%${search.trim()}%,ownerPhone.ilike.%${search.trim()}%`);
   }
 
-  filtered.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
-  const total = filtered.length;
   const start = page * limit;
-  return { records: filtered.slice(start, start + limit), total };
+  query = query.order('visitDate', { ascending: false }).range(start, start + limit - 1);
+
+  const { data, error, count } = await query;
+  if (error) { console.error('[DB]', error.message); return { records: [], total: 0 }; }
+  return { records: (data || []) as MedicalRecord[], total: count || 0 };
 }
 
 /**
- * Aggregate invoice KPIs by streaming through IndexedDB.
- * Used by InvoicesManager for all-time statistics without loading full arrays.
+ * Aggregate invoice KPIs using server-side count and selective column fetch.
  */
 export async function fetchInvoiceStats(): Promise<{ total: number; revenue: number; voided: number }> {
   if (!supabase) return { total: 0, revenue: 0, voided: 0 };
-  const { data, error } = await supabase.from('invoices').select('*');
-  if (error) { console.error('[DB]', error.message); return { total: 0, revenue: 0, voided: 0 }; }
-  let total = 0, revenue = 0, voided = 0;
-  for (const inv of ((data || []) as Invoice[])) {
-    total++;
-    if (inv.paymentStatus === 'paid') revenue += inv.sales_total || 0;
-    if (inv.paymentStatus === 'void') voided++;
-  }
-  return { total, revenue: Math.round(revenue * 100) / 100, voided };
+  const { count: total, error: totalError } = await supabase
+    .from('invoices').select('*', { count: 'exact', head: true });
+  const { data: paidData, error: paidError } = await supabase
+    .from('invoices').select('sales_total').eq('paymentStatus', 'paid');
+  const { count: voided, error: voidedError } = await supabase
+    .from('invoices').select('*', { count: 'exact', head: true }).eq('paymentStatus', 'void');
+
+  if (totalError) console.error('[DB]', totalError.message);
+  if (paidError) console.error('[DB]', paidError.message);
+  if (voidedError) console.error('[DB]', voidedError.message);
+
+  const revenue = (paidData || []).reduce((s, inv) => s + (inv.sales_total || 0), 0);
+  return { total: total || 0, revenue: Math.round(revenue * 100) / 100, voided: voided || 0 };
 }
 
 // ==========================================
