@@ -158,6 +158,7 @@ import {
   deleteClient,
   deletePet,
   addRevenueToActiveShift,
+  fetchActiveShiftDetails,
   nuclearWipeLocal,
   fetchUsers,
   upsertUser,
@@ -450,7 +451,19 @@ function App() {
           // Staff login accounts now live in Supabase `users`, not IndexedDB.
           const hUsers: any[] = await fetchUsers();
 
-          const hActiveShift = await db.system.getItem('active_shift') || null;
+          let hActiveShift = await db.system.getItem('active_shift') || null;
+          if (!hActiveShift) {
+            const { shift: cloudShift } = await fetchActiveShiftDetails();
+            if (cloudShift) {
+              hActiveShift = {
+                id: cloudShift.id,
+                openedAt: cloudShift.startTime,
+                openedBy: cloudShift.openedBy,
+                openedByName: cloudShift.openedBy,
+                openingFloat: cloudShift.opening_float || (cloudShift.openingFloatCents || 0) / 100
+              };
+            }
+          }
           const hConfig = await db.system.getItem('config');
 
           if (isMounted) {
@@ -1233,7 +1246,9 @@ function App() {
     let cloudFailed = false;
     try {
       // FIX 4: Use functional state update instead of destructive re-fetch
-      const target = await db.invoices.getItem<Invoice>(id);
+      const { data: targetData, error: targetError } = await supabase.from('invoices').select('*').eq('id', id).maybeSingle();
+      if (targetError) throw targetError;
+      const target = targetData as Invoice | null;
       if (target) {
         if (target.paymentStatus !== 'void') {
           for (const item of target.items) {
