@@ -96,7 +96,7 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Lock,
-  ChevronLeft, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle
+  ChevronLeft, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle, Truck
 } from 'lucide-react';
 
 import {
@@ -125,6 +125,7 @@ import BoardingManager from './components/BoardingManager';
 import GroomingManager from './components/GroomingManager';
 import ShiftManager from './components/ShiftManager';
 import StaffManager from './components/StaffManager';
+import SuppliersManager from './components/SuppliersManager';
 
 import { 
   fetchAppointments,
@@ -252,16 +253,16 @@ function App() {
       // to `|| []` and every manager account could log in but saw zero views.
       // Operational floor above cashier; no 'reminders'/'portal' (owner-only).
       // 'settings' is impossible here regardless — hard-blocked above.
-      manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
+      manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'boarding', 'grooming', 'shift'],
       // PROVIDER-1: 'groomer' gets a real floor (grooming + shift) so it does not
       // repeat the manager zero-panels bug. 'admin' is no longer root — this is
       // its ordinary default, based on what 'owner' gets; provider can grant or
       // revoke panels per role from the Panel Access Matrix in Settings.
       groomer: ['grooming', 'shift'],
-      admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
-      provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'staff', 'reminders', 'portal']
+      provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'staff', 'reminders', 'portal']
     },
     masterPin: hashPin('5692')
   } as SystemConfig);
@@ -1718,6 +1719,7 @@ function App() {
     { id: 'boarding', label: 'Boarding/Hotel', icon: Home, isLive: true },
     { id: 'grooming', label: 'Grooming Salon', icon: Scissors, isLive: true },
     { id: 'inventory', label: 'Inventory', icon: Package, isLive: true },
+    { id: 'suppliers', label: 'Suppliers', icon: Truck, isLive: true },
     { id: 'invoices', label: 'Invoices', icon: FileText, isLive: true }, // ACTIVATED
     { id: 'shift', label: 'Shift & Drawer', icon: Lock, isLive: true },
     { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true },
@@ -1748,6 +1750,7 @@ function App() {
       case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} onDischargeToQueue={async (item) => { await addToClinicQueue(item); setClinicQueue(prev => prev.some(q => q.id === item.id) ? prev : [item, ...prev]); }} />;
       case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} systemConfig={systemConfig} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
+      case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await db.shiftReconciliations.setItem(log.id, stampRecord(log)); setShiftLogs(prev => [log, ...prev]); }} onVerifyMasterPin={handleVerifyMasterPin} />;
       case 'dashboard':

@@ -1373,6 +1373,7 @@ export async function fetchSystemConfig(): Promise<SystemConfig | null> {
     defaultDepositCents: Number(data.default_deposit_cents) || 0,
     dummyAdminPin: data.dummy_admin_pin || '',
     idleLogoutMinutes: data.idle_logout_minutes ?? 15,
+    setupModeActive: data.setup_mode_active ?? false,
   } as SystemConfig;
 }
 
@@ -1412,6 +1413,7 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
     default_deposit_cents: config.defaultDepositCents,
     dummy_admin_pin: config.dummyAdminPin,
     idle_logout_minutes: config.idleLogoutMinutes,
+    setup_mode_active: config.setupModeActive,
   };
   const { error } = await supabase.from('system_config').upsert(payload);
   if (error) throw new Error(`CLOUD_SAVE_FAILED: ${error.message}`);
