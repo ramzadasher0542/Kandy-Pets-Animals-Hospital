@@ -162,7 +162,9 @@ import {
   nuclearWipeLocal,
   fetchUsers,
   upsertUser,
-  deleteUser
+  deleteUser,
+  fetchSystemConfig,
+  upsertSystemConfig
 } from './lib/db';
 import { SyncEngine, stopSync } from './lib/syncEngine';
 import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
@@ -464,7 +466,7 @@ function App() {
               };
             }
           }
-          const hConfig = await db.system.getItem('config');
+          const hConfig = (await fetchSystemConfig()) || (await db.system.getItem('config'));
 
           if (isMounted) {
             setInventory(Array.isArray(inv) ? inv as any : []);
@@ -1767,7 +1769,8 @@ function App() {
               // password to the shipped default on ANY settings save. Merge onto the
               // full config so those secrets survive.
               const merged = { ...systemConfig, ...config } as SystemConfig;
-              await db.system.setItem('config', merged);
+              await upsertSystemConfig(merged);
+              await db.system.setItem('config', merged); // local mirror for offline fallback
               setSystemConfig(merged);
             }}
             users={users.map(({ pin, ...safeU }) => safeU)}

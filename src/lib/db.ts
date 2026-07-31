@@ -26,6 +26,7 @@ import {
   BoardingRecord,
   InventoryBatch
 } from '../types';
+import { SystemConfig } from '../components/SystemSettings';
 
 // Clients DB is imported from localDb.ts
 
@@ -1319,4 +1320,98 @@ export async function upsertBoardingRecord(record: BoardingRecord): Promise<void
   if (!supabase) throw new Error('No internet connection');
   const { error } = await supabase.from('boarding_records').upsert(record);
   if (error) throw error;
+}
+
+// ==========================================
+// SYSTEM CONFIG (SUPABASE — cross-device permissions)
+// ==========================================
+
+export async function fetchSystemConfig(): Promise<SystemConfig | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('system_config')
+    .select('*')
+    .eq('id', 'global')
+    .maybeSingle();
+  if (error) {
+    console.error('[DB] fetchSystemConfig error:', error.message);
+    return null;
+  }
+  if (!data) return null;
+
+  return {
+    appName: data.app_name || '',
+    resellerName: data.reseller_name || '',
+    hospitalName: data.hospital_name || '',
+    hospitalAddress: data.hospital_address || '',
+    hospitalPhone: data.hospital_phone || '',
+    hospitalEmail: data.hospital_email || '',
+    invoiceLogo: data.invoice_logo || '',
+    invoiceFooterMessage: data.invoice_footer_message || '',
+    invoiceSubFooterMessage: data.invoice_sub_footer_message || '',
+    invoiceExtraFooterMessage: data.invoice_extra_footer_message || '',
+    taxRate: Number(data.tax_rate) || 0,
+    currencySymbol: data.currency_symbol || 'Rs. ',
+    selectedReceiptPrinter: data.selected_receipt_printer || '',
+    selectedReportPrinter: data.selected_report_printer || '',
+    receiptPaperSize: data.receipt_paper_size || '58mm',
+    connectionType: data.connection_type || 'usb',
+    localAutosaveInterval: Number(data.local_autosave_interval) || 15,
+    cloudEndpoint: data.cloud_endpoint || '',
+    cloudBackupEnabled: data.cloud_backup_enabled || false,
+    emailDigestEnabled: data.email_digest_enabled || false,
+    recipientEmails: data.recipient_emails || [],
+    digestSchedule: data.digest_schedule || 'daily_end',
+    rolePermissions: data.role_permissions || {},
+    masterPin: data.master_pin || '',
+    actionPolicies: data.action_policies || {},
+    emailjsServiceId: data.emailjs_service_id || '',
+    emailjsTemplateId: data.emailjs_template_id || '',
+    emailjsPublicKey: data.emailjs_public_key || '',
+    boardingRates: data.boarding_rates || {},
+    defaultDepositCents: Number(data.default_deposit_cents) || 0,
+    dummyAdminPin: data.dummy_admin_pin || '',
+    idleLogoutMinutes: data.idle_logout_minutes ?? 15,
+  } as SystemConfig;
+}
+
+export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
+  if (!supabase) throw new Error('No internet connection');
+  const payload = {
+    id: 'global',
+    app_name: config.appName,
+    reseller_name: config.resellerName,
+    hospital_name: config.hospitalName,
+    hospital_address: config.hospitalAddress,
+    hospital_phone: config.hospitalPhone,
+    hospital_email: config.hospitalEmail,
+    invoice_logo: config.invoiceLogo,
+    invoice_footer_message: config.invoiceFooterMessage,
+    invoice_sub_footer_message: config.invoiceSubFooterMessage,
+    invoice_extra_footer_message: config.invoiceExtraFooterMessage,
+    tax_rate: config.taxRate,
+    currency_symbol: config.currencySymbol,
+    selected_receipt_printer: config.selectedReceiptPrinter,
+    selected_report_printer: config.selectedReportPrinter,
+    receipt_paper_size: config.receiptPaperSize,
+    connection_type: config.connectionType,
+    local_autosave_interval: config.localAutosaveInterval,
+    cloud_endpoint: config.cloudEndpoint,
+    cloud_backup_enabled: config.cloudBackupEnabled,
+    email_digest_enabled: config.emailDigestEnabled,
+    recipient_emails: config.recipientEmails,
+    digest_schedule: config.digestSchedule,
+    role_permissions: config.rolePermissions,
+    master_pin: config.masterPin,
+    action_policies: config.actionPolicies,
+    emailjs_service_id: config.emailjsServiceId,
+    emailjs_template_id: config.emailjsTemplateId,
+    emailjs_public_key: config.emailjsPublicKey,
+    boarding_rates: config.boardingRates,
+    default_deposit_cents: config.defaultDepositCents,
+    dummy_admin_pin: config.dummyAdminPin,
+    idle_logout_minutes: config.idleLogoutMinutes,
+  };
+  const { error } = await supabase.from('system_config').upsert(payload);
+  if (error) throw new Error(`CLOUD_SAVE_FAILED: ${error.message}`);
 }
