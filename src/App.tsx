@@ -96,7 +96,7 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Lock,
-  ChevronLeft, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle, Truck
+  ChevronLeft, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle, Truck, Menu
 } from 'lucide-react';
 
 import {
@@ -200,6 +200,7 @@ function App() {
   // SYSTEM BOOT STATE
   const [isBooting, setIsBooting] = useState(true);
   const [dbCorrupted, setDbCorrupted] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // CORE DATA MATRICES (Now initialized empty, hydrated by DB)
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -2005,10 +2006,10 @@ function App() {
 
         {currentUser && (
           <div className="flex h-screen w-full bg-gray-50 overflow-hidden font-sans text-gray-900">
-            <aside className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-20 shadow-sm">
+            <aside className={`w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-30 shadow-sm fixed md:relative inset-y-0 left-0 transform transition-transform duration-200 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
               <div className="h-16 flex items-center px-6 border-b border-gray-100">
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-600 p-1.5 rounded-xl shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
+                  <div className="bg-indigo-600 p-1.5 rounded-xl shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
                   <div>
                     <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
@@ -2023,8 +2024,8 @@ function App() {
                   if (!isViewPermitted(permissionKey, currentUser)) return null;
                   const isSelected = activeView === item.id || (activeView === 'reports' && item.id === 'dashboard');
                   return (
-                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
-                      <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />{item.label}
+                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
+                      <Icon className={`w-5 h-5 ${isSelected ? 'text-indigo-600' : 'text-gray-500'}`} />{item.label}
                     </button>
                   );
                 })}
@@ -2047,11 +2048,11 @@ function App() {
                     data-testid="nav-settings"
                     onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
-                        ? 'bg-blue-50 text-blue-700'
+                        ? 'bg-indigo-50 text-indigo-700'
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                       }`}
                   >
-                    <Settings className={`w-5 h-5 ${activeView === 'settings' ? 'text-blue-600' : 'text-gray-500'}`} />
+                    <Settings className={`w-5 h-5 ${activeView === 'settings' ? 'text-indigo-600' : 'text-gray-500'}`} />
                     Settings
                   </button>
                 )}
@@ -2089,10 +2090,23 @@ function App() {
               </div>
             </aside>
 
+            {sidebarOpen && (
+              <div
+                className="fixed inset-0 bg-black/30 z-20 md:hidden"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+
             {/* MAIN CANVAS */}
             <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
               <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs justify-between">
                 <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    className="md:hidden p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                  >
+                    <Menu className="w-5 h-5" />
+                  </button>
                   {historyStack.length > 1 && (
                     <button
                       onClick={() => {

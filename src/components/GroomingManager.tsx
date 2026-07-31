@@ -10,6 +10,7 @@ import { showToast } from './Toast';
 import { fetchGroomingLogs, upsertGroomingLog } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
+import { EmptyState } from './ui/EmptyState';
 import MasterDetailLayout from './ui/MasterDetailLayout';
 import ClinicQueue from './ui/ClinicQueue';
 
@@ -309,7 +310,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
           list={
             <>
               {filteredPatients.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 font-bold text-xs">No patients found.</div>
+                <EmptyState title="No patients found" />
               ) : (
                 filteredPatients.map(patient => (
                   <div 
@@ -469,7 +470,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {historicalGroomingLogs.length === 0 ? (
-                          <tr><td colSpan={3} className="py-8 text-center text-slate-400 font-bold">No historical grooming sessions found.</td></tr>
+                          <tr><td colSpan={3}><EmptyState title="No grooming sessions found" /></td></tr>
                         ) : (
                           historicalGroomingLogs.map((log) => (
                             <tr key={log.id} className="hover:bg-slate-50">

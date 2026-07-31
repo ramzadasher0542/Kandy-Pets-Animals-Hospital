@@ -4,6 +4,7 @@ import {
   Printer, Mail, Users, Stethoscope, PieChart, Package
 } from 'lucide-react';
 import PageShell from './ui/PageShell';
+import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
 import { db } from '../lib/localDb';
 import { User, DeletionAudit } from '../types';
@@ -570,7 +571,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
           <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><PieChart className="w-4 h-4 text-amber-500" /> Revenue by Service Category</h2>
           <div data-testid="category-breakdown" className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
             {report.categories.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 font-bold text-xs">No revenue in this range.</div>
+              <div className="py-8"><EmptyState title="No revenue in this range" /></div>
             ) : (
               <div className="space-y-3">
                 {report.categories.map(c => (
@@ -622,7 +623,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
             {/* Top by revenue */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Package className="w-3.5 h-3.5" /> Top Items — Revenue</h3>
-              {report.topByRevenue.length === 0 ? <div className="text-[10px] text-slate-400 font-bold">No sales.</div> : report.topByRevenue.map((it, i) => (
+              {report.topByRevenue.length === 0 ? <div className="py-8"><EmptyState title="No sales recorded" /></div> : report.topByRevenue.map((it, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
                   <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
                   <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{formatCurrency(it.revenue)}</span>
@@ -632,7 +633,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
             {/* Top by qty */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Package className="w-3.5 h-3.5" /> Top Items — Quantity</h3>
-              {report.topByQty.length === 0 ? <div className="text-[10px] text-slate-400 font-bold">No sales.</div> : report.topByQty.map((it, i) => (
+              {report.topByQty.length === 0 ? <div className="py-8"><EmptyState title="No sales recorded" /></div> : report.topByQty.map((it, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
                   <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
                   <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{it.qty}</span>
@@ -642,7 +643,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
             {/* Vet productivity */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Stethoscope className="w-3.5 h-3.5" /> Vet Productivity (completed)</h3>
-              {report.vetProductivity.length === 0 ? <div className="text-[10px] text-slate-400 font-bold">No completed appointments.</div> : report.vetProductivity.map((v, i) => (
+              {report.vetProductivity.length === 0 ? <div className="py-8"><EmptyState title="No completed appointments" /></div> : report.vetProductivity.map((v, i) => (
                 <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
                   <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{v.vet}</span>
                   <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{v.count}</span>
@@ -790,7 +791,7 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {deletions.length === 0 ? (
-                  <tr><td colSpan={5} className="py-12 text-center text-slate-400 font-bold">No deletions recorded.</td></tr>
+                  <tr><td colSpan={5}><EmptyState title="No deletions recorded" /></td></tr>
                 ) : (
                   deletions.map(d => (
                     <tr key={d.id} className="hover:bg-slate-50 transition-colors">

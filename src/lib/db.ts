@@ -141,14 +141,18 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   if (!id) return;
   if (!supabase) throw new Error('No internet connection');
 
-  // FIX: Delete batches FIRST — inventory_batches has an FK to inventory
-  // (fk_batches_inventory, ON DELETE NO ACTION), so the parent row cannot be
-  // removed while its batches still reference it.
-  const { error: batchError } = await supabase.from('inventory_batches').delete().eq('inventoryItemId', id);
+  // Soft delete batches first
+  const { error: batchError } = await supabase
+    .from('inventory_batches')
+    .update({ is_deleted: true })
+    .eq('inventoryItemId', id);
   if (batchError) throw batchError;
 
-  // THEN delete inventory item
-  const { error } = await supabase.from('inventory').delete().eq('id', id);
+  // Soft delete inventory item
+  const { error } = await supabase
+    .from('inventory')
+    .update({ is_deleted: true })
+    .eq('id', id);
   if (error) throw error;
 }
 

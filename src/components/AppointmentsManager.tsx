@@ -12,6 +12,7 @@ import {
   Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, History, SearchCode, UserX
 } from 'lucide-react';
 import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client } from '../types';
+import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import PhoneInput from './PhoneInput';
@@ -980,7 +981,7 @@ export default function AppointmentsManager({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {todaysListApts.length === 0 ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-bold">No appointments scheduled for today.</td></tr>
+                  <tr><td colSpan={6}><EmptyState title="No appointments scheduled for today" /></td></tr>
                 ) : todaysListApts.map(renderAptRow)}
               </tbody>
             </table>

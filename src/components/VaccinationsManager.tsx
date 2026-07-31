@@ -10,6 +10,7 @@ import { showToast } from './Toast';
 import { fetchVaccinations, upsertVaccination } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
+import { EmptyState } from './ui/EmptyState';
 import MasterDetailLayout from './ui/MasterDetailLayout';
 import ClinicQueue from './ui/ClinicQueue';
 
@@ -124,7 +125,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
           list={
             <>
               {filteredPatients.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 font-bold text-xs">No patients found.</div>
+                <EmptyState title="No patients found" />
               ) : (
                 filteredPatients.map(patient => (
                   <div 
@@ -185,7 +186,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
                         </div>
                       )
                     })}
-                    {vaccineInventory.length === 0 && <div className="col-span-full text-xs font-bold text-slate-400 text-center py-4">No vaccines available in inventory.</div>}
+                    {vaccineInventory.length === 0 && <div className="col-span-full"><EmptyState title="No vaccines in inventory" /></div>}
                   </div>
                 </div>
 
@@ -204,7 +205,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {historicalVaccines.length === 0 ? (
-                          <tr><td colSpan={3} className="py-6 text-center text-slate-400 font-bold">No historical vaccinations recorded.</td></tr>
+                          <tr><td colSpan={3}><EmptyState title="No vaccinations recorded" /></td></tr>
                         ) : (
                           historicalVaccines.map((v, i) => (
                             <tr key={i} className="hover:bg-slate-50">

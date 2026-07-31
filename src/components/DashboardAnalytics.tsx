@@ -14,6 +14,7 @@ import { fetchBoardingRecords, fetchGroomingLogs } from '../lib/db';
 import { formatDisplayDate } from '../utils/time';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
+import { EmptyState } from './ui/EmptyState';
 
 interface DashboardProps {
   invoices: Invoice[];
@@ -257,6 +258,16 @@ export default function DashboardAnalytics({
   }, [weekInvoices]);
 
   const formatCurrency = (val: number) => 'Rs. ' + new Intl.NumberFormat('en-LK', { maximumFractionDigits: 0 }).format(val || 0);
+
+  const hasAnyData = invoices.length > 0 || appointments.length > 0 || records.length > 0 || inventory.length > 0;
+  if (!hasAnyData) {
+    return (
+      <EmptyState
+        title="No data yet"
+        description="Start creating invoices, appointments, and patient records to see your analytics dashboard."
+      />
+    );
+  }
 
   return (
     <PageShell title="Clinic Floor Ops" subtitle="Real-time patient traffic & facility status">
