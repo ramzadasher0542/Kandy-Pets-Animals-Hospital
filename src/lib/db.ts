@@ -24,7 +24,8 @@ import {
   LabResult,
   GroomingLog,
   BoardingRecord,
-  InventoryBatch
+  InventoryBatch,
+  Supplier
 } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 
@@ -1414,4 +1415,33 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
   };
   const { error } = await supabase.from('system_config').upsert(payload);
   if (error) throw new Error(`CLOUD_SAVE_FAILED: ${error.message}`);
+}
+
+// ==========================================
+// SUPPLIERS
+// ==========================================
+
+export async function fetchSuppliers(): Promise<Supplier[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .eq('is_deleted', false)
+    .order('name', { ascending: true });
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || []) as Supplier[];
+}
+
+export async function upsertSupplier(supplier: Supplier): Promise<void> {
+  if (!supplier || !supplier.id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('suppliers').upsert(supplier);
+  if (error) throw error;
+}
+
+export async function deleteSupplier(id: string): Promise<void> {
+  if (!id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('suppliers').update({ is_deleted: true }).eq('id', id);
+  if (error) throw error;
 }

@@ -42,11 +42,27 @@ export interface InventoryBatch {
   quantityRemaining: number;
   receivedDate: string;      // ISO date
   supplier?: string;
+  supplier_id?: string;   // UUID FK → suppliers.id
+  origin?: 'purchase' | 'opening_stock' | 'adjustment';
   costPerUnit?: number;      // cents — actual cost for this batch
-  created_at: string; 
+  created_at: string;
   updated_at: string;
-  is_deleted: boolean; 
+  is_deleted: boolean;
   _dirty: boolean;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  payment_terms?: string;
+  is_active?: boolean;
+  is_deleted?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type AppointmentStatus = 'booked' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';

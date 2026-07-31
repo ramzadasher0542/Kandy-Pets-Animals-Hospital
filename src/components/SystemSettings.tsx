@@ -70,6 +70,7 @@ export interface SystemConfig {
   defaultDepositCents?: number;
   dummyAdminPin?: string;
   idleLogoutMinutes?: number;
+  setupModeActive?: boolean;
 }
 
 interface SettingsProps {
