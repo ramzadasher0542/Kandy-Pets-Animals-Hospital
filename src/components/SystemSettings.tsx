@@ -919,6 +919,33 @@ export default function SystemSettings({
               tab; routine stock updates do not belong behind that gate. */}
           {activeTab === 'inventory' && (
             <div className="space-y-6 animate-fade-in">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">Stock Entry Mode</h3>
+                  <p className="text-xs text-slate-500 mt-1">Control how incoming stock is recorded in the system.</p>
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localConfig.setupModeActive || false}
+                    onChange={e => {
+                      const updated = { ...localConfig, setupModeActive: e.target.checked };
+                      setLocalConfig(updated);
+                      onChangeConfig(updated);
+                    }}
+                    className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 mt-0.5"
+                  />
+                  <div>
+                    <span className="text-sm font-bold text-slate-800">Opening Stock / Setup Mode</span>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      When enabled, receiving stock does not require a supplier and marks batches as
+                      <span className="font-bold text-amber-700"> opening stock</span> rather than purchases.
+                      Use this during initial clinic setup or full stock counts.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Bulk Stock Update</h3>

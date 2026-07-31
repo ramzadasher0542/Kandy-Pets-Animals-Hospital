@@ -7,11 +7,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
 import {
-  Plus, Edit2, Trash2, AlertTriangle,
+  Plus, X, Edit2, Trash2, AlertTriangle,
   Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
 } from 'lucide-react';
-import { InventoryItem, ItemCategory, InventoryBatch } from '../types';
-import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch } from '../lib/db';
+import { InventoryItem, ItemCategory, InventoryBatch, Supplier } from '../types';
+import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch, fetchSuppliers, upsertSupplier } from '../lib/db';
 import { showToast } from './Toast';
 import PageShell from './ui/PageShell';
 
@@ -35,7 +35,7 @@ interface InventoryProps {
   systemConfig?: any;
 }
 
-export default function InventoryManager({ inventory, onUpdateInventory, onDeleteInventory }: InventoryProps) {
+export default function InventoryManager({ inventory, onUpdateInventory, onDeleteInventory, systemConfig }: InventoryProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,6 +69,11 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     sku: '', name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', labParameters: []
   });
 
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [showInlineSupplier, setShowInlineSupplier] = useState(false);
+  const [inlineSupplierName, setInlineSupplierName] = useState('');
+
   const loadInventory = useCallback(async () => {
     const data = await fetchInventory();
     const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
@@ -80,6 +85,14 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
   useEffect(() => {
     loadInventory();
   }, [loadInventory]);
+
+  useEffect(() => {
+    const loadSuppliers = async () => {
+      const data = await fetchSuppliers();
+      setSuppliers(data);
+    };
+    loadSuppliers();
+  }, []);
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,7 +172,9 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       quantityReceived: qty,
       quantityRemaining: qty,
       receivedDate: receiveFormData.receivedDate || new Date().toISOString().split('T')[0],
-      supplier: receiveFormData.supplier,
+      supplier: receiveFormData.supplier || '',
+      supplier_id: receiveFormData.supplier_id || undefined,
+      origin: systemConfig?.setupModeActive ? 'opening_stock' : 'purchase',
       costPerUnit: receiveFormData.costPerUnit ? Math.round(Number(receiveFormData.costPerUnit) * 100) : undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -191,6 +206,24 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       lotNumber: '', expiryDate: '', quantityReceived: 0, supplier: '', costPerUnit: 0, receivedDate: new Date().toISOString().split('T')[0]
     });
     showToast('Stock received and batch created', 'success');
+  };
+
+  const handleAddInlineSupplier = async () => {
+    if (!inlineSupplierName.trim()) return;
+    const newSupplier: Supplier = {
+      id: crypto.randomUUID(),
+      name: inlineSupplierName.trim(),
+      is_active: true,
+      is_deleted: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    await upsertSupplier(newSupplier);
+    const refreshed = await fetchSuppliers();
+    setSuppliers(refreshed);
+    setReceiveFormData(prev => ({ ...prev, supplier_id: newSupplier.id }));
+    setShowInlineSupplier(false);
+    setInlineSupplierName('');
   };
 
   const handleDelete = async (id: string) => {
@@ -302,56 +335,20 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       {/* Main Data Grid */}
       <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
-          {activeCategory === 'Expiring' ? (
-            <table className="w-full text-left border-collapse min-w-[900px]">
-              <thead className="bg-amber-50 border-b border-amber-200 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Item Name</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Lot Number</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Expiry Date</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Qty Remaining</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-amber-700 uppercase tracking-widest">Days Until Expiry</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {batches
-                  .filter(b => b.quantityRemaining > 0 && (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 60)
-                  .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime())
-                  .map(b => {
-                    const daysDiff = Math.ceil((new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                    const isExp = daysDiff < 0;
-                    const item = items.find(i => i.id === b.inventoryItemId);
-                    return (
-                      <tr key={b.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 text-sm font-black text-slate-800">{item?.name || 'Unknown Item'}</td>
-                        <td className="px-6 py-4 text-xs font-mono font-bold text-slate-800">{b.lotNumber}</td>
-                        <td className="px-6 py-4 text-xs font-mono font-bold flex items-center gap-2">
-                          <span className={isExp ? 'text-rose-600' : 'text-amber-600'}>{b.expiryDate}</span>
-                          {isExp && <span className="bg-rose-100 text-rose-600 text-[10px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
-                        </td>
-                        <td className="px-6 py-4 text-sm font-black text-slate-800">{b.quantityRemaining}</td>
-                        <td className="px-6 py-4 text-xs font-black">
-                          {isExp ? <span className="text-rose-600">Expired {-daysDiff} days ago</span> : <span className="text-amber-600">{daysDiff} days</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          ) : (
-            <table className="w-full text-left border-collapse min-w-[900px]">
-              <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">SKU & Item Name</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost / Price</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Stock Level</th>
-                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+          <div className="flex gap-4">
+            <div className={`${selectedItem ? 'w-2/3' : 'w-full'} transition-all`}>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">SKU & Item Name</th>
+                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Category</th>
+                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Cost / Price</th>
+                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Stock Level</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredItems.length === 0 ? (
-                  <tr><td colSpan={5} className="py-16"><EmptyState icon={<Package className="w-8 h-8 opacity-50" />} title="No items found in registry" /></td></tr>
+                  <tr><td colSpan={4}><EmptyState title="No items found in registry" /></td></tr>
                 ) : filteredItems.map(item => {
                   const catInfo = CATEGORIES.find(c => c.id === item.category);
                   const isService = ['service', 'lab_service'].includes(item.category);
@@ -374,125 +371,165 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                     return days >= 0 && days <= 30;
                   }).reduce((sum, b) => sum + b.quantityRemaining, 0);
   
+                  const isSelected = selectedItem?.id === item.id;
                   return (
                     <React.Fragment key={item.id}>
-                    <tr className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-6 py-4">
-                        <div className="font-black text-slate-800 text-sm flex items-center gap-2">
-                          {item.name}
+                      <tr
+                        className={`hover:bg-slate-50 transition-colors cursor-pointer ${isSelected ? 'bg-indigo-50 border-l-4 border-indigo-500' : ''}`}
+                        onClick={() => setSelectedItem(isSelected ? null : item)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="text-xs font-bold text-slate-800">{item.name}</div>
                           {item.category === 'lab_service' && item.labParameters && item.labParameters.length > 0 && (
-                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"><TestTube className="w-2 h-2"/> {item.labParameters.length} Params</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full">{item.labParameters.length} Params</span>
                           )}
-                        </div>
-                        <div className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">{item.sku}</div>
-                        {!isService && itemBatches.length > 0 && (
-                          <button onClick={() => toggleBatches(item.id)} className="mt-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
-                            {isExpanded ? 'Hide Batches' : `Batches (${itemBatches.length})`}
-                          </button>
-                        )}
-                        {expiringSoonCount > 0 && !isExpanded && (
-                          <div className="mt-1 text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3"/> {expiringSoonCount} units expiring within 30 days
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border border-white/20 shadow-xs ${catInfo?.color || 'bg-slate-100 text-slate-600'}`}>
-                          {catInfo?.label || item.category}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-mono text-xs font-black text-slate-800">{(item.price || 0).toFixed(2)}</div>
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Cost: {(item.cost || 0).toFixed(2)}</div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {isService ? (
-                          <span className="text-lg font-black text-slate-300">∞</span>
-                        ) : (
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`font-mono text-sm font-black px-3 py-1 rounded-xl border ${isLow ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
-                              {item.stock} <span className="text-[10px] opacity-70 ml-0.5 uppercase">{item.unit}</span>
-                            </span>
-                            {isLow && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5"/> Low Stock</span>}
-                            {expiryStatus === 'expired' && <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-rose-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> EXPIRED</span>}
-                            {expiryStatus === 'soon' && <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded"><AlertTriangle className="w-2 h-2"/> Expiring Soon</span>}
-                            {item.stock === 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setReceiveStockItem(item)}
-                                className="mt-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest flex items-center gap-1 underline decoration-dotted cursor-pointer"
-                                title="Add stock via Receive Stock — creates a batch with lot number and expiry date"
-                              >
-                                <Package className="w-2.5 h-2.5" /> Receive Stock
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                          {!isService && (
-                            <>
-                              <button onClick={() => setReceiveStockItem(item)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition-colors text-[10px] font-black uppercase tracking-widest cursor-pointer flex items-center gap-1 mr-2" title="Receive Stock">
-                                <Package className="w-3 h-3" /> Receive
-                              </button>
-                              <button onClick={() => setAdjustItem(item)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer" title="Quick Adjust Stock">
-                                <RefreshCw className="w-4 h-4" />
-                              </button>
-                            </>
+                          <div className="text-[10px] font-mono text-slate-400 mt-0.5">{item.sku}</div>
+                          {!isService && itemBatches.length > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleBatches(item.id); }}
+                              className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold mt-1"
+                            >
+                              {expandedBatches.has(item.id) ? 'Hide Batches' : `Batches (${itemBatches.length})`}
+                            </button>
                           )}
-                          <button onClick={() => openEdit(item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer" title="Edit Master Data">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDelete(item.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer" title="Delete from Registry">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr className="bg-slate-50 border-b border-slate-200 shadow-inner">
-                        <td colSpan={5} className="px-6 py-4">
-                          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                            <table className="w-full text-left">
-                              <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr>
-                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Lot Number</th>
-                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Expiry Date</th>
-                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty Remaining</th>
-                                  <th className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</th>
+                          {expiringSoonCount > 0 && !expandedBatches.has(item.id) && (
+                            <div className="text-[10px] text-amber-600 font-bold mt-1">⚠ {expiringSoonCount} units expiring within 30 days</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{catInfo?.label || item.category}</td>
+                        <td className="px-4 py-3 text-xs font-mono text-slate-700">
+                          <div className="text-emerald-700 font-bold">{(item.price || 0).toFixed(2)}</div>
+                          <div className="text-slate-400">Cost: {(item.cost || 0).toFixed(2)}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {isService ? (
+                            <span className="text-xs text-slate-400">∞</span>
+                          ) : (
+                            <div className="text-xs">
+                              <span className="font-bold text-slate-800">{item.stock} {item.unit}</span>
+                              {isLow && <span className="ml-2 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">Low Stock</span>}
+                              {expiryStatus === 'expired' && <span className="ml-2 text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">EXPIRED</span>}
+                              {expiryStatus === 'soon' && <span className="ml-2 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Expiring Soon</span>}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                      {expandedBatches.has(item.id) && (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-2 bg-slate-50">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  <th className="text-left py-1">Lot Number</th>
+                                  <th className="text-left py-1">Expiry Date</th>
+                                  <th className="text-left py-1">Qty Remaining</th>
+                                  <th className="text-left py-1">Supplier</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-100">
+                              <tbody>
                                 {itemBatches.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()).map(b => {
-                                  const daysDiff = (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
+                                  const daysDiff = (new Date(b.expiryDate).getTime() - new Date().getTime()) / (1000*60*60*24);
                                   const isExp = daysDiff < 0;
                                   const isSoon = daysDiff >= 0 && daysDiff <= 30;
+                                  const supplierName = b.supplier_id ? suppliers.find(s => s.id === b.supplier_id)?.name || 'Unknown' : b.supplier || '-';
                                   return (
-                                    <tr key={b.id}>
-                                      <td className="px-4 py-2 text-xs font-mono font-bold text-slate-800">{b.lotNumber}</td>
-                                      <td className="px-4 py-2 text-xs font-mono font-bold flex items-center gap-2">
-                                        <span className={isExp ? 'text-rose-600' : isSoon ? 'text-amber-600' : 'text-slate-600'}>{b.expiryDate}</span>
-                                        {isExp && <span className="bg-rose-100 text-rose-600 text-[10px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Expired</span>}
-                                        {isSoon && <span className="bg-amber-100 text-amber-600 text-[10px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Soon</span>}
+                                    <tr key={b.id} className="border-t border-slate-100">
+                                      <td className="py-1 font-mono">{b.lotNumber}</td>
+                                      <td className="py-1">
+                                        {b.expiryDate}
+                                        {isExp && <span className="ml-1 text-rose-600 font-bold">Expired</span>}
+                                        {isSoon && <span className="ml-1 text-amber-600 font-bold">Soon</span>}
                                       </td>
-                                      <td className="px-4 py-2 text-xs font-black text-slate-800">{b.quantityRemaining}</td>
-                                      <td className="px-4 py-2 text-xs font-bold text-slate-500">{b.supplier || '-'}</td>
+                                      <td className="py-1 font-bold">{b.quantityRemaining}</td>
+                                      <td className="py-1 text-slate-500">{supplierName}</td>
                                     </tr>
                                   );
                                 })}
                               </tbody>
                             </table>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                          </td>
+                        </tr>
+                      )}
                     </React.Fragment>
                   );
                 })}
               </tbody>
             </table>
+            </div>
+
+          {selectedItem && (
+            <div className="w-1/3 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 animate-fade-in self-start">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">{selectedItem.name}</h3>
+                  <p className="text-[10px] font-mono text-slate-400">{selectedItem.sku}</p>
+                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full mt-1 inline-block">{CATEGORIES.find(c => c.id === selectedItem.category)?.label || selectedItem.category}</span>
+                </div>
+                <button onClick={() => setSelectedItem(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock</div>
+                  <div className="text-lg font-black text-slate-800">{selectedItem.stock} <span className="text-xs font-normal text-slate-500">{selectedItem.unit}</span></div>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Min Alert</div>
+                  <div className="text-lg font-black text-slate-800">{selectedItem.minStock}</div>
+                </div>
+                <div className="bg-emerald-50 rounded-xl p-3">
+                  <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Selling</div>
+                  <div className="text-lg font-black text-emerald-800">Rs. {(selectedItem.price || 0).toFixed(2)}</div>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost</div>
+                  <div className="text-lg font-black text-slate-800">Rs. {(selectedItem.cost || 0).toFixed(2)}</div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Active Batches</h4>
+                {(() => {
+                  const selectedBatches = batches.filter(b => b.inventoryItemId === selectedItem.id && b.quantityRemaining > 0).sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+                  return selectedBatches.length === 0 ? (
+                    <p className="text-xs text-slate-400">No active batches</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {selectedBatches.map(b => {
+                        const s = suppliers.find(sup => sup.id === b.supplier_id);
+                        return (
+                          <div key={b.id} className="bg-slate-50 rounded-xl p-3 text-xs">
+                            <div className="flex justify-between font-bold text-slate-700">
+                              <span>{b.lotNumber || 'No lot'}</span>
+                              <span>{b.quantityRemaining} left</span>
+                            </div>
+                            <div className="text-slate-500 mt-1">Exp: {b.expiryDate || 'N/A'} {b.origin && <span className="ml-1 text-[10px] bg-indigo-100 text-indigo-700 px-1 rounded">{b.origin}</span>}</div>
+                            <div className="text-slate-500 mt-0.5">{s?.name || b.supplier || 'No supplier'}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button onClick={() => setReceiveStockItem(selectedItem)} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-indigo-600 text-white text-xs font-black rounded-xl hover:bg-indigo-700 transition-colors">
+                  <Package className="w-3.5 h-3.5" /> Receive
+                </button>
+                <button onClick={() => setAdjustItem(selectedItem)} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-slate-100 text-slate-700 text-xs font-black rounded-xl hover:bg-slate-200 transition-colors">
+                  <RefreshCw className="w-3.5 h-3.5" /> Adjust
+                </button>
+                <button onClick={() => openEdit(selectedItem)} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors">
+                  <Edit2 className="w-3.5 h-3.5" /> Edit
+                </button>
+                <button onClick={() => handleDelete(selectedItem.id)} className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border border-rose-200 text-rose-700 text-xs font-bold rounded-xl hover:bg-rose-50 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              </div>
+            </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -726,9 +763,47 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Cost Price per Unit</label>
               <input type="number" step="0.01" min="0" required value={receiveFormData.costPerUnit || ""} onChange={e => setReceiveFormData({...receiveFormData, costPerUnit: Number(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             </div>
-            <div className="col-span-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Supplier / Vendor</label>
-              <input type="text" required value={receiveFormData.supplier || ""} onChange={e => setReceiveFormData({...receiveFormData, supplier: e.target.value})} placeholder="e.g. Medisupply Co." className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            <div className="col-span-2 space-y-2">
+              <div>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">
+                  Supplier {systemConfig?.setupModeActive ? '(Optional)' : '*'}
+                </label>
+                <select
+                  required={!systemConfig?.setupModeActive}
+                  value={receiveFormData.supplier_id || ''}
+                  onChange={e => {
+                    if (e.target.value === '__NEW__') {
+                      setShowInlineSupplier(true);
+                    } else {
+                      setReceiveFormData({...receiveFormData, supplier_id: e.target.value});
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  <option value="">
+                    {systemConfig?.setupModeActive ? 'No supplier (Opening Stock)' : 'Select supplier...'}
+                  </option>
+                  {suppliers.filter(s => s.is_active !== false).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                  <option value="__NEW__">+ Add New Supplier</option>
+                </select>
+              </div>
+              {showInlineSupplier && (
+                <div className="bg-slate-50 rounded-xl p-3 space-y-2 border border-slate-200">
+                  <input
+                    type="text"
+                    placeholder="New supplier name"
+                    value={inlineSupplierName}
+                    onChange={e => setInlineSupplierName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handleAddInlineSupplier} className="px-3 py-1.5 bg-indigo-600 text-white text-[10px] font-black rounded-lg hover:bg-indigo-700">Add</button>
+                    <button type="button" onClick={() => { setShowInlineSupplier(false); setInlineSupplierName(''); }} className="px-3 py-1.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg hover:bg-slate-300">Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="col-span-1">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot / Batch Number</label>
