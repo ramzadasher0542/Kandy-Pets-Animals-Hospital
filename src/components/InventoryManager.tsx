@@ -8,7 +8,7 @@ import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
 import {
   Plus, X, Edit2, Trash2, AlertTriangle,
-  Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle
+  Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle, Info
 } from 'lucide-react';
 import { InventoryItem, ItemCategory, InventoryBatch, Supplier } from '../types';
 import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch, fetchSuppliers, upsertSupplier } from '../lib/db';
@@ -23,6 +23,12 @@ const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] =
   { id: 'service', label: 'Clinical Services', color: 'bg-indigo-50 text-indigo-700' },
   { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' },
   { id: 'food', label: 'Food & Feeding', color: 'bg-amber-50 text-amber-700' }
+];
+
+const UNIT_PRESETS = [
+  'Tablet', 'Bottle', 'Vial', 'Box', 'Pack', 'Sachet', 'Tube',
+  'kg', 'g', 'ml', 'l', 'unit', 'dose', 'Ampoule', 'Capsule',
+  'Syringe', 'Other'
 ];
 
 interface InventoryProps {
@@ -69,6 +75,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     sku: '', name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', labParameters: []
   });
 
+  const [customUnit, setCustomUnit] = useState('');
+
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showInlineSupplier, setShowInlineSupplier] = useState(false);
@@ -110,7 +118,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       name: formData.name!.trim(),
       category: formData.category as ItemCategory,
       price: Number(formData.price) || 0,
-      cost: Number(formData.cost) || 0,
+      cost: 0, // deprecated — batch-level only
       stock: !editingItem ? 0 : (isPhysical ? (Number(formData.stock) || 0) : 0),
       minStock: isPhysical ? (Number(formData.minStock) || 0) : 0,
       unit: formData.unit || 'unit',
@@ -243,7 +251,18 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   const openNew = () => {
     setEditingItem(null);
-    setFormData({ sku: `SKU-${Date.now().toString().slice(-6)}`, name: '', category: 'retail', price: 0, cost: 0, stock: 0, minStock: 5, unit: 'unit', location: '', labParameters: [] });
+    setCustomUnit('');
+    setFormData({
+      sku: `SKU-${Date.now().toString().slice(-6)}`,
+      name: '',
+      category: 'retail',
+      price: 0,
+      stock: 0,
+      minStock: 5,
+      unit: '',
+      location: '',
+      labParameters: []
+    });
     setShowAddModal(true);
   };
 
@@ -553,142 +572,237 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
           </>
         }
       >
-        <form id="inventoryForm" onSubmit={handleSaveItem} className="space-y-6">
-          <fieldset disabled={isSaving} className="contents">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item / Test Name *</label>
-                    <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">SKU / Barcode *</label>
-                    <input type="text" required value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Master Category</label>
-                    <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as ItemCategory})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
-                      <option value="retail">Retail & Supplies</option>
-                      <option value="prescription">Pharmacy Rx</option>
-                      <option value="vaccine">Vaccine</option>
-                      <option value="service">Clinical Service</option>
-                      <option value="lab_service">Lab Test (Diagnostic)</option>
-                      <option value="food">Food & Feeding</option>
-                    </select>
-                  </div>
+<form id="inventoryForm" onSubmit={handleSaveItem} className="space-y-5">
+  <fieldset disabled={isSaving} className="contents">
+
+    {/* BASIC INFO */}
+    <div className="space-y-3">
+      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Basic Information</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Item / Test Name *</label>
+          <input
+            type="text"
+            required
+            value={formData.name || ''}
+            onChange={e => setFormData({...formData, name: e.target.value})}
+            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            placeholder="e.g. Amoxicillin 250mg"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">SKU / Barcode *</label>
+          <input
+            type="text"
+            required
+            value={formData.sku || ''}
+            onChange={e => setFormData({...formData, sku: e.target.value})}
+            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Master Category</label>
+          <select
+            value={formData.category || 'retail'}
+            onChange={e => setFormData({...formData, category: e.target.value as ItemCategory, unit: e.target.value === 'service' || e.target.value === 'lab_service' ? '' : formData.unit})}
+            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            <option value="retail">Retail & Supplies</option>
+            <option value="prescription">Pharmacy Rx</option>
+            <option value="vaccine">Vaccine</option>
+            <option value="service">Clinical Service</option>
+            <option value="lab_service">Lab Test (Diagnostic)</option>
+            <option value="food">Food & Feeding</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {/* PRICING */}
+    <div className="space-y-3">
+      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pricing</div>
+      <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+        <div>
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Selling Price (Rs.) *</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={formData.price || 0}
+            onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})}
+            className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <p className="mt-2 text-[10px] text-slate-400">Cost is tracked per batch when receiving stock.</p>
+      </div>
+    </div>
+
+    {/* PHYSICAL ITEMS: Stock Settings */}
+    {isFormPhysical && (
+      <div className="space-y-3">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Settings</div>
+        <div className="grid grid-cols-3 gap-3">
+          {editingItem && (
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Current Stock</label>
+              <input
+                type="number"
+                value={formData.stock || 0}
+                onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})}
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+              <p className="mt-1 text-[10px] text-amber-600">Manual adjustment only</p>
+            </div>
+          )}
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Alert Minimum</label>
+            <input
+              type="number"
+              value={formData.minStock || 0}
+              onChange={e => setFormData({...formData, minStock: parseInt(e.target.value)})}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Unit Metric *</label>
+            <select
+              required
+              value={formData.unit || ''}
+              onChange={e => {
+                const val = e.target.value;
+                setFormData({...formData, unit: val === '__OTHER__' ? customUnit || '' : val});
+                if (val !== '__OTHER__') setCustomUnit('');
+              }}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            >
+              <option value="">Select unit...</option>
+              {UNIT_PRESETS.map(u => (
+                <option key={u} value={u === 'Other' ? '__OTHER__' : u}>{u}</option>
+              ))}
+            </select>
+          </div>
+          {(formData.unit === '__OTHER__' || (!UNIT_PRESETS.includes(formData.unit || '') && formData.unit)) && (
+            <div className="col-span-full">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Custom Unit</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. strip, pouch"
+                value={customUnit}
+                onChange={e => {
+                  setCustomUnit(e.target.value);
+                  setFormData({...formData, unit: e.target.value});
+                }}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* SERVICE INFO (non-physical, non-lab) */}
+    {!isFormPhysical && !isFormLab && (
+      <div className="bg-indigo-50 rounded-xl border border-indigo-100 p-4 flex items-start gap-3">
+        <Info className="w-4 h-4 text-indigo-600 mt-0.5 flex-shrink-0" />
+        <div>
+          <div className="text-xs font-bold text-indigo-800">Service Item</div>
+          <p className="text-[10px] text-indigo-600 mt-0.5">Stock tracking is disabled. Set quantity at billing time. No expiry dates.</p>
+        </div>
+      </div>
+    )}
+
+    {/* LAB PARAMETERS */}
+    {isFormLab && (
+      <div className="space-y-3">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Diagnostic Parameters</div>
+        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 animate-fade-in shadow-inner">
+          <div className="flex items-center justify-between border-b border-indigo-200 pb-3 mb-4">
+            <div>
+              <h4 className="text-xs font-black text-indigo-900 flex items-center gap-2"><TestTube className="w-4 h-4"/> Diagnostic Parameter Matrix</h4>
+              <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase tracking-widest">Define the reference ranges & units for this specific test.</p>
+            </div>
+            <button type="button" onClick={handleAddLabParameter} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors cursor-pointer flex items-center gap-1">
+              <Plus className="w-3 h-3"/> Add Parameter
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {formData.labParameters && formData.labParameters.length === 0 ? (
+              <div className="text-center py-6 text-indigo-400 font-bold text-xs border border-dashed border-indigo-200 rounded-xl">
+                No parameters defined. The lab module will only show a general notes box for this test.
+              </div>
+            ) : (
+              formData.labParameters?.map((param, index) => (
+                <div key={index} className="flex gap-2 items-center bg-white p-2 rounded-xl border border-indigo-100 shadow-sm animate-fade-in">
+                  <input
+                    type="text"
+                    placeholder="Name (e.g. WBC, RBC)"
+                    value={param.name}
+                    onChange={(e) => handleUpdateLabParameter(index, 'name', e.target.value)}
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Range (e.g. 6.0 - 17.0)"
+                    value={param.referenceRange}
+                    onChange={(e) => handleUpdateLabParameter(index, 'referenceRange', e.target.value)}
+                    className="w-1/3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Unit (e.g. 10^9/L)"
+                    value={param.unit}
+                    onChange={(e) => handleUpdateLabParameter(index, 'unit', e.target.value)}
+                    className="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLabParameter(index)}
+                    className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                    title="Remove Parameter"
+                  >
+                    <MinusCircle className="w-5 h-5"/>
+                  </button>
                 </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )}
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1"><DollarSign className="w-3 h-3"/> Cost Price (Buying)</label>
-                    <input type="number" step="0.01" min="0" value={formData.cost} onChange={e => setFormData({...formData, cost: parseFloat(e.target.value)})} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block mb-1.5 flex items-center gap-1"><DollarSign className="w-3 h-3"/> Selling Price</label>
-                    <input type="number" step="0.01" min="0" required value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} className="w-full px-4 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-black font-mono text-emerald-800 outline-none focus:border-emerald-500 shadow-sm" />
-                  </div>
-                </div>
+    {/* LOT/EXPIRY — edit only, prescription/vaccine */}
+    {editingItem && ['prescription', 'vaccine'].includes(formData.category || '') && (
+      <div className="space-y-3">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Batch Override (Edit Only)</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot Number</label>
+            <input
+              type="text"
+              value={formData.lotNumber || ''}
+              onChange={e => setFormData({...formData, lotNumber: e.target.value})}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Expiry Date</label>
+            <input
+              type="date"
+              value={formData.expiryDate || ''}
+              onChange={e => setFormData({...formData, expiryDate: e.target.value})}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-amber-600">⚠ This overrides the soonest-expiring batch display only. Use Receive Stock for actual batch management.</p>
+      </div>
+    )}
 
-                {isFormPhysical ? (
-                  <div className="grid grid-cols-3 gap-4 animate-fade-in">
-                    {/* Stock is only editable for EXISTING items. New items start at 0
-                        and receive stock via the batch "Receive Stock" flow. */}
-                    {editingItem && (
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Current Stock</label>
-                      <input type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500" />
-                      <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-widest">⚠ Manual adjustment — does not create a batch. Use Receive Stock for deliveries.</p>
-                    </div>
-                    )}
-                    <div>
-                      <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1.5">Alert Minimum</label>
-                      <input type="number" value={formData.minStock} onChange={e => setFormData({...formData, minStock: parseInt(e.target.value)})} className="w-full px-4 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-black font-mono text-rose-800 outline-none focus:border-rose-500" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Unit Metric</label>
-                      <input type="text" placeholder="e.g. tablet, box" value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
-                    </div>
-                  </div>
-                ) : null}
-
-                {editingItem && ['prescription', 'vaccine'].includes(formData.category) && (
-                  <div className="grid grid-cols-2 gap-4 mt-4 animate-fade-in">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Lot Number</label>
-                      <input type="text" placeholder="e.g. LOT-12345" value={formData.lotNumber || ''} onChange={e => setFormData({...formData, lotNumber: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-1.5">Expiry Date</label>
-                      <input type="date" value={formData.expiryDate || ''} onChange={e => setFormData({...formData, expiryDate: e.target.value})} className="w-full px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-black font-mono text-amber-800 outline-none focus:border-amber-500" />
-                    </div>
-                  </div>
-                )}
-
-                {isFormLab ? (
-                  /* PHASE 2: DYNAMIC LAB PARAMETER BUILDER */
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 animate-fade-in shadow-inner">
-                    <div className="flex items-center justify-between border-b border-indigo-200 pb-3 mb-4">
-                      <div>
-                        <h4 className="text-xs font-black text-indigo-900 flex items-center gap-2"><TestTube className="w-4 h-4"/> Diagnostic Parameter Matrix</h4>
-                        <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase tracking-widest">Define the reference ranges & units for this specific test.</p>
-                      </div>
-                      <button type="button" onClick={handleAddLabParameter} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors cursor-pointer flex items-center gap-1">
-                        <Plus className="w-3 h-3"/> Add Parameter
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      {formData.labParameters && formData.labParameters.length === 0 ? (
-                        <div className="text-center py-6 text-indigo-400 font-bold text-xs border border-dashed border-indigo-200 rounded-xl">
-                          No parameters defined. The lab module will only show a general notes box for this test.
-                        </div>
-                      ) : (
-                        formData.labParameters?.map((param, index) => (
-                          <div key={index} className="flex gap-2 items-center bg-white p-2 rounded-xl border border-indigo-100 shadow-sm animate-fade-in">
-                            <input 
-                              type="text" 
-                              placeholder="Name (e.g. WBC, RBC)" 
-                              value={param.name} 
-                              onChange={(e) => handleUpdateLabParameter(index, 'name', e.target.value)}
-                              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
-                            />
-                            <input 
-                              type="text" 
-                              placeholder="Range (e.g. 6.0 - 17.0)" 
-                              value={param.referenceRange} 
-                              onChange={(e) => handleUpdateLabParameter(index, 'referenceRange', e.target.value)}
-                              className="w-1/3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
-                            />
-                            <input 
-                              type="text" 
-                              placeholder="Unit (e.g. 10^9/L)" 
-                              value={param.unit} 
-                              onChange={(e) => handleUpdateLabParameter(index, 'unit', e.target.value)}
-                              className="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
-                            />
-                            <button 
-                              type="button" 
-                              onClick={() => handleRemoveLabParameter(index)}
-                              className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                              title="Remove Parameter"
-                            >
-                              <MinusCircle className="w-5 h-5"/>
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-start gap-3 animate-fade-in">
-                    <Activity className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="text-xs font-black text-indigo-900">Infinite Capacity Service</h4>
-                      <p className="text-[10px] font-black text-indigo-700 mt-1 leading-relaxed">Because this is classified as a Clinical Service, physical stock tracking is disabled.</p>
-                    </div>
-                  </div>
-                )}
-          </fieldset>
-        </form>
+  </fieldset>
+</form>
       </Modal>
 
       {/* MODAL: Quick Adjust Stock */}
