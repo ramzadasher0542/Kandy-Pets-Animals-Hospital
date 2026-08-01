@@ -11,15 +11,16 @@ export type UserRole = 'provider' | 'admin' | 'veterinarian' | 'cashier' | 'mana
 
 export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; active?: boolean; }
 
-export type ItemCategory = 'retail' | 'prescription' | 'lab_service' | 'service' | 'vaccine' | 'food';
+export type ItemCategory = string;
 
 // PHASE 2 PREP: Added labParameters to support Dynamic Test Categories
 export interface InventoryItem { 
   id: string; 
   sku: string; 
-  name: string; 
-  category: ItemCategory; 
-  price: number; 
+  name: string;
+  category: ItemCategory;
+  category_id?: string;
+  price: number;
   cost: number; 
   stock: number; 
   minStock: number; 
@@ -60,6 +61,18 @@ export interface Supplier {
   address?: string;
   payment_terms?: string;
   is_active?: boolean;
+  is_deleted?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InventoryCategory {
+  id: string;
+  name: string;
+  label: string;
+  is_service: boolean;
+  is_lab: boolean;
+  sort_order: number;
   is_deleted?: boolean;
   created_at?: string;
   updated_at?: string;

@@ -25,7 +25,8 @@ import {
   GroomingLog,
   BoardingRecord,
   InventoryBatch,
-  Supplier
+  Supplier,
+  InventoryCategory
 } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 
@@ -1449,5 +1450,34 @@ export async function deleteSupplier(id: string): Promise<void> {
   if (!id) return;
   if (!supabase) throw new Error('No internet connection');
   const { error } = await supabase.from('suppliers').update({ is_deleted: true }).eq('id', id);
+  if (error) throw error;
+}
+
+// ==========================================
+// INVENTORY CATEGORIES (dynamic, cross-device)
+// ==========================================
+
+export async function fetchInventoryCategories(): Promise<InventoryCategory[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('inventory_categories')
+    .select('*')
+    .eq('is_deleted', false)
+    .order('sort_order', { ascending: true });
+  if (error) { console.error('[DB]', error.message); return []; }
+  return (data || []) as InventoryCategory[];
+}
+
+export async function upsertInventoryCategory(cat: InventoryCategory): Promise<void> {
+  if (!cat || !cat.id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('inventory_categories').upsert(cat);
+  if (error) throw error;
+}
+
+export async function deleteInventoryCategory(id: string): Promise<void> {
+  if (!id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('inventory_categories').update({ is_deleted: true }).eq('id', id);
   if (error) throw error;
 }

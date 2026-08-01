@@ -8,22 +8,12 @@ import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
 import {
   Plus, X, Edit2, Trash2, AlertTriangle,
-  Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle, Info
+  Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle, Info, Settings2
 } from 'lucide-react';
-import { InventoryItem, ItemCategory, InventoryBatch, Supplier } from '../types';
-import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch, fetchSuppliers, upsertSupplier } from '../lib/db';
+import { InventoryItem, ItemCategory, InventoryBatch, Supplier, InventoryCategory } from '../types';
+import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch, fetchSuppliers, upsertSupplier, fetchInventoryCategories, upsertInventoryCategory, deleteInventoryCategory } from '../lib/db';
 import { showToast } from './Toast';
 import PageShell from './ui/PageShell';
-
-const CATEGORIES: { id: ItemCategory | 'All', label: string, color: string }[] = [
-  { id: 'All', label: 'All Items', color: 'bg-slate-100 text-slate-700' },
-  { id: 'retail', label: 'Retail & Supplies', color: 'bg-sky-50 text-sky-700' },
-  { id: 'prescription', label: 'Pharmacy Rx', color: 'bg-emerald-50 text-emerald-700' },
-  { id: 'vaccine', label: 'Vaccines', color: 'bg-amber-50 text-amber-700' },
-  { id: 'service', label: 'Clinical Services', color: 'bg-indigo-50 text-indigo-700' },
-  { id: 'lab_service', label: 'Lab Tests', color: 'bg-rose-50 text-rose-700' },
-  { id: 'food', label: 'Food & Feeding', color: 'bg-amber-50 text-amber-700' }
-];
 
 const UNIT_PRESETS = [
   'Tablet', 'Bottle', 'Vial', 'Box', 'Pack', 'Sachet', 'Tube',
@@ -77,6 +67,11 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   const [customUnit, setCustomUnit] = useState('');
 
+  const [categories, setCategories] = useState<InventoryCategory[]>([]);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const [newCategoryIsService, setNewCategoryIsService] = useState(false);
+
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showInlineSupplier, setShowInlineSupplier] = useState(false);
@@ -102,6 +97,52 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     loadSuppliers();
   }, []);
 
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    const cats = await fetchInventoryCategories();
+    setCategories(cats);
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryLabel.trim()) { showToast('Category name is required.', 'error'); return; }
+    const name = newCategoryLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    if (categories.find(c => c.name === name)) { showToast('Category already exists.', 'error'); return; }
+    const newCat: InventoryCategory = {
+      id: crypto.randomUUID(),
+      name,
+      label: newCategoryLabel.trim(),
+      is_service: newCategoryIsService,
+      is_lab: false,
+      sort_order: categories.length + 1,
+      is_deleted: false
+    };
+    await upsertInventoryCategory(newCat);
+    await loadCategories();
+    setNewCategoryLabel('');
+    setNewCategoryIsService(false);
+    showToast('Category added.', 'success');
+  };
+
+  const handleUpdateCategory = async (id: string, updates: Partial<InventoryCategory>) => {
+    const cat = categories.find(c => c.id === id);
+    if (!cat) return;
+    await upsertInventoryCategory({ ...cat, ...updates });
+    await loadCategories();
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    const cat = categories.find(c => c.id === id);
+    if (!cat) return;
+    const inUse = (items || []).some(i => i.category === cat.name);
+    if (inUse) { showToast('Cannot delete — items still use this category.', 'error'); return; }
+    await deleteInventoryCategory(id);
+    await loadCategories();
+    showToast('Category removed.', 'success');
+  };
+
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.sku) {
@@ -117,6 +158,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       sku: formData.sku!.trim(),
       name: formData.name!.trim(),
       category: formData.category as ItemCategory,
+      category_id: categories.find(c => c.name === formData.category)?.id,
       price: Number(formData.price) || 0,
       cost: 0, // deprecated — batch-level only
       stock: !editingItem ? 0 : (isPhysical ? (Number(formData.stock) || 0) : 0),
@@ -306,8 +348,9 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
   const physicalItems = items.filter(i => !['service', 'lab_service'].includes(i.category));
   const lowStockCount = physicalItems.filter(i => i.stock <= i.minStock).length;
   const totalValue = physicalItems.reduce((sum, item) => sum + ((item.cost || 0) * (item.stock || 0)), 0);
-  const isFormPhysical = !['service', 'lab_service'].includes(formData.category as string);
-  const isFormLab = formData.category === 'lab_service';
+  const selectedCategory = categories.find(c => c.name === formData.category);
+  const isFormPhysical = selectedCategory ? !selectedCategory.is_service : true;
+  const isFormLab = selectedCategory ? selectedCategory.is_lab : false;
 
   return (
     <PageShell
@@ -334,7 +377,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       ]}
       filters={{
         options: [
-          ...CATEGORIES.map(cat => ({ id: cat.id, label: cat.label })),
+          { id: 'All', label: 'All Items' },
+          ...categories.map(cat => ({ id: cat.name, label: cat.label })),
           { id: 'Expiring', label: 'Expiring Stock', icon: <AlertTriangle className="w-3 h-3"/>, activeClass: 'bg-amber-500 text-white shadow-md' },
         ],
         active: activeCategory,
@@ -346,9 +390,14 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
         placeholder: 'Search SKU or Name...',
       }}
       actions={
-        <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
-          <Plus className="w-4 h-4" /> Add Item
-        </button>
+        <>
+          <button onClick={() => setShowCategoryManager(true)} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-[10px] font-black text-slate-500 uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer whitespace-nowrap">
+            <Settings2 className="w-3.5 h-3.5" /> Manage
+          </button>
+          <button onClick={openNew} className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap">
+            <Plus className="w-4 h-4" /> Add Item
+          </button>
+        </>
       }
     >
       {/* Main Data Grid */}
@@ -369,7 +418,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                 {filteredItems.length === 0 ? (
                   <tr><td colSpan={4}><EmptyState title="No items found in registry" /></td></tr>
                 ) : filteredItems.map(item => {
-                  const catInfo = CATEGORIES.find(c => c.id === item.category);
+                  const catInfo = categories.find(c => c.name === item.category);
                   const isService = ['service', 'lab_service'].includes(item.category);
                   const isLow = !isService && item.stock <= item.minStock;
   
@@ -482,7 +531,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                 <div>
                   <h3 className="text-sm font-black text-slate-800">{selectedItem.name}</h3>
                   <p className="text-[10px] font-mono text-slate-400">{selectedItem.sku}</p>
-                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full mt-1 inline-block">{CATEGORIES.find(c => c.id === selectedItem.category)?.label || selectedItem.category}</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full mt-1 inline-block">{categories.find(c => c.name === selectedItem.category)?.label || selectedItem.category}</span>
                 </div>
                 <button onClick={() => setSelectedItem(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button>
               </div>
@@ -607,12 +656,9 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
             onChange={e => setFormData({...formData, category: e.target.value as ItemCategory, unit: e.target.value === 'service' || e.target.value === 'lab_service' ? '' : formData.unit})}
             className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
           >
-            <option value="retail">Retail & Supplies</option>
-            <option value="prescription">Pharmacy Rx</option>
-            <option value="vaccine">Vaccine</option>
-            <option value="service">Clinical Service</option>
-            <option value="lab_service">Lab Test (Diagnostic)</option>
-            <option value="food">Food & Feeding</option>
+            {categories.map(cat => (
+              <option key={cat.name} value={cat.name}>{cat.label}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -930,7 +976,70 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
           </div>
         </form>
       </Modal>
-      
+
+      {showCategoryManager && (
+        <Modal open={showCategoryManager} onClose={() => setShowCategoryManager(false)} title="Manage Categories" size="md" footer={
+          <button onClick={() => setShowCategoryManager(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200">Done</button>
+        }>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+            {categories.map(cat => (
+              <div key={cat.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="flex-1">
+                  <input
+                    value={cat.label}
+                    onChange={e => handleUpdateCategory(cat.id, { label: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 whitespace-nowrap cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.is_service}
+                    onChange={e => handleUpdateCategory(cat.id, { is_service: e.target.checked })}
+                    className="w-4 h-4 rounded text-indigo-600"
+                  />
+                  Service
+                </label>
+                <button
+                  onClick={() => handleDeleteCategory(cat.id)}
+                  className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+
+            <div className="border-t border-slate-200 pt-4 space-y-3">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Add New Category</div>
+              <div className="flex items-center gap-3">
+                <input
+                  placeholder="e.g. Pet Toys"
+                  value={newCategoryLabel}
+                  onChange={e => setNewCategoryLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); }}
+                  className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 whitespace-nowrap cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newCategoryIsService}
+                    onChange={e => setNewCategoryIsService(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600"
+                  />
+                  Service
+                </label>
+                <button
+                  onClick={handleAddCategory}
+                  className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
