@@ -196,40 +196,60 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // Supported cloud reads — fail-closed helpers that throw on a cloud outage
-      // or query error, so a failure can never masquerade as an empty report.
-      const [cloudInvoices, cloudAdjustments, cloudAppointments, cloudClients] = await Promise.all([
-        fetchInvoices(),
-        fetchCashAdjustments(),
-        fetchAppointments(),
-        fetchClients(),
-      ]);
-      const invs = cloudInvoices as unknown as VaultInvoice[];
-      // Adjustments: newest first (unchanged ordering).
-      const adjs = (cloudAdjustments as CashAdjustment[]).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      // Non-deleted (the helpers already exclude soft-deleted rows).
-      const appts = cloudAppointments.filter((v: any) => v && !v.is_deleted);
-      const cls = cloudClients.filter((v: any) => v && !v.is_deleted);
+      // ---- Supported cloud reads (fail-closed) ----
+      // Isolated from the deferred local reads below: on failure we keep the
+      // existing supported state + metrics untouched (no setter runs — Promise.all
+      // rejects before any of them), show the toast, and still fall through to the
+      // deferred reads. A cloud outage never becomes zero financial data.
+      try {
+        const [cloudInvoices, cloudAdjustments, cloudAppointments, cloudClients] = await Promise.all([
+          fetchInvoices(),
+          fetchCashAdjustments(),
+          fetchAppointments(),
+          fetchClients(),
+        ]);
+        const invs = cloudInvoices as unknown as VaultInvoice[];
+        // Adjustments: newest first (unchanged ordering).
+        const adjs = (cloudAdjustments as CashAdjustment[]).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Non-deleted (the helpers already exclude soft-deleted rows).
+        const appts = cloudAppointments.filter((v: any) => v && !v.is_deleted);
+        const cls = cloudClients.filter((v: any) => v && !v.is_deleted);
 
-      // Deferred / frozen reads — no verified cloud helper/contract yet, so the
-      // deletion audit, payslips and shift reconciliations still load from
-      // IndexedDB. Left untouched in this task on purpose.
-      const dels: DeletionAudit[] = [];
-      await db.deletionAudit.iterate((val: DeletionAudit) => { if (val && !Array.isArray(val)) dels.push(val); });
-      dels.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
-      const pays: any[] = [];
-      await db.payslips.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted) pays.push(v); });
-      const recs: any[] = [];
-      await db.shiftReconciliations.iterate((v: any) => { if (v && !Array.isArray(v)) recs.push(v); });
+        setInvoices(invs); setAdjustments(adjs);
+        setAppointments(appts); setClients(cls);
+        calculateVault(invs, adjs);
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Vault Error:', e);
+        showToast('Could not load report data from the cloud. Showing last known data.', 'error');
+      }
 
-      setInvoices(invs); setAdjustments(adjs); setDeletions(dels);
-      setAppointments(appts); setClients(cls); setPayslips(pays); setShiftRecons(recs);
-      calculateVault(invs, adjs);
-    } catch (e) {
-      // Fail-closed: keep the previously loaded report state; never render a cloud
-      // failure as zero data. Surface it via the existing toast mechanism.
-      if (import.meta.env.DEV) console.error('Vault Error:', e);
-      showToast('Could not load report data from the cloud. Showing last known data.', 'error');
+      // ---- Deferred / frozen local reads (no verified cloud contract yet) ----
+      // Always attempted after the cloud attempt regardless of its outcome, and
+      // isolated from each other so one failing store does not block the others.
+      // On failure a section keeps its previous state (no setter, no fabricated
+      // empty result).
+      try {
+        const dels: DeletionAudit[] = [];
+        await db.deletionAudit.iterate((val: DeletionAudit) => { if (val && !Array.isArray(val)) dels.push(val); });
+        dels.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
+        setDeletions(dels);
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Deletion audit read failed:', e);
+      }
+      try {
+        const pays: any[] = [];
+        await db.payslips.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted) pays.push(v); });
+        setPayslips(pays);
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Payslips read failed:', e);
+      }
+      try {
+        const recs: any[] = [];
+        await db.shiftReconciliations.iterate((v: any) => { if (v && !Array.isArray(v)) recs.push(v); });
+        setShiftRecons(recs);
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Shift reconciliations read failed:', e);
+      }
     } finally {
       setLoading(false);
     }
