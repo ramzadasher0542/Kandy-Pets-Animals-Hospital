@@ -98,7 +98,7 @@ import {
 
 import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
-  SystemAlert, Invoice, AppointmentStatus, OfflineSyncItem,
+  SystemAlert, Invoice, AppointmentStatus,
   ShiftReconciliation, ActiveShift, ClinicQueueItem,
   Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, Payslip
 } from './types';
@@ -212,7 +212,6 @@ function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [shiftLogs, setShiftLogs] = useState<ShiftReconciliation[]>([]);
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
-  const [syncQueue, setSyncQueue] = useState<OfflineSyncItem[]>([]);
   const [pinCache, setPinCache] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<any[]>([]);
   const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
@@ -295,47 +294,6 @@ function App() {
           });
         }
 
-        // Phase 1.5: Migrate from single key 'data' (Phase 7) to ID-based flat keys (Phase 8)
-        const isPhase8Migrated = await db.system.getItem('indexeddb_migration_v2');
-        if (!isPhase8Migrated) {
-          if (import.meta.env.DEV) {
-            console.log('[Bootloader] Migrating single-key data arrays to flat ID-based collections...');
-          }
-
-          const migrateStore = async (dbInstance: any, idField: string = 'id') => {
-            const dataArray = await dbInstance.getItem('data');
-            if (Array.isArray(dataArray)) {
-              if (import.meta.env.DEV) {
-                console.log(`[Bootloader] Migrating ${dataArray.length} items to flat keys...`);
-              }
-              await Promise.all(dataArray.map((item: any) => {
-                if (item) {
-                  const key = item[idField];
-                  if (key) return dbInstance.setItem(key, item);
-                }
-                return Promise.resolve();
-              }));
-              await dbInstance.removeItem('data');
-            }
-          };
-
-          await migrateStore(db.inventory);
-          await migrateStore(db.appointments);
-          await migrateStore(db.records);
-          await migrateStore(db.invoices);
-          await migrateStore(db.shifts);
-          await migrateStore(db.notifications);
-          await migrateStore(db.alerts);
-          await migrateStore(db.users);
-          await migrateStore(db.clients, 'client_id');
-          await migrateStore(db.syncQueue);
-
-          await db.system.setItem('indexeddb_migration_v2', true);
-          if (import.meta.env.DEV) {
-            console.log('[Bootloader] Phase 8 flat migration complete.');
-          }
-        }
-
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
         // Boot: load operational data (today's records/invoices via fetchTodays*)
         try {
@@ -374,9 +332,6 @@ function App() {
             if (value && !value.is_deleted) hPayslips.push(value);
           });
 
-          const hSyncQueue: any[] = [];
-          await db.syncQueue.iterate((value: any) => { if (value) hSyncQueue.push(value); });
-
           const hNotifications = await fetchNotifications();
           const hAlerts = await fetchAlerts();
 
@@ -404,7 +359,6 @@ function App() {
             setRecords(Array.isArray(recs) ? recs as any : []);
             setInvoices(Array.isArray(invs) ? invs as any : []);
             setShiftLogs(Array.isArray(hShifts) ? hShifts as any : []);
-            setSyncQueue(Array.isArray(hSyncQueue) ? hSyncQueue as any : []);
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
@@ -450,40 +404,6 @@ function App() {
                 if (merged.dummyAdminPin === prev.dummyAdminPin) merged.dummyAdminPin = hashPin(merged.dummyAdminPin);
                 return merged;
               });
-            }
-
-            // ── ONE-TIME MIGRATION: Deduplicate ghost clients by phone ──
-            try {
-              const dedupDone = await db.system.getItem('migration_client_dedup_v1');
-              if (!dedupDone) {
-                const allClients: any[] = [];
-                await db.clients.iterate((v: any) => { if (v && !Array.isArray(v)) allClients.push(v); });
-                const phoneMap = new Map<string, any[]>();
-                allClients.forEach(c => {
-                  const norm = (c.primary_phone || '').replace(/\D/g, '').slice(-9);
-                  if (norm.length >= 7) {
-                    const existing = phoneMap.get(norm) || [];
-                    existing.push(c);
-                    phoneMap.set(norm, existing);
-                  }
-                });
-                let deduped = 0;
-                for (const [, dupes] of phoneMap) {
-                  if (dupes.length <= 1) continue;
-                  // Keep the one with the most data (longest administrative_notes or first created)
-                  dupes.sort((a, b) => (a.client_id || '').length - (b.client_id || '').length);
-                  const keeper = dupes[0];
-                  for (let i = 1; i < dupes.length; i++) {
-                    await db.clients.removeItem(dupes[i].client_id);
-                    deduped++;
-                  }
-                  if (import.meta.env.DEV) console.info(`[Boot] Deduped client "${keeper.full_name}" — removed ${dupes.length - 1} ghost(s)`);
-                }
-                await db.system.setItem('migration_client_dedup_v1', new Date().toISOString());
-                if (deduped > 0) if (import.meta.env.DEV) console.info(`[Boot] Client dedup complete: ${deduped} ghost(s) removed.`);
-              }
-            } catch (dedupErr) {
-              if (import.meta.env.DEV) console.warn('[Boot] Client dedup migration failed (non-fatal):', dedupErr);
             }
 
             // Allow 500ms for UI painting to stabilize
