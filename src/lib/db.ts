@@ -701,9 +701,12 @@ export async function addRevenueToActiveShift(method: PaymentMethod, amountCents
 // CLIENTS
 // ==========================================
 export async function fetchClients(): Promise<Client[]> {
-  if (!supabase) return [];
+  // Fail closed: a missing client or a cloud outage must NOT masquerade as an
+  // empty client database. Throw so callers can distinguish "no clients" from
+  // "could not reach the cloud".
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('clients').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const clients: Client[] = [];
   let hasWalkIn = false;
 
