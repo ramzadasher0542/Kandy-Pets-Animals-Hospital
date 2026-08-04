@@ -77,7 +77,6 @@ interface SettingsProps {
   config: SystemConfig;
   onChangeConfig: (config: SystemConfig) => void;
   users: any[];
-  onForceCloudSync: () => Promise<void>;
   onRefreshUsers: () => Promise<void>;
   onAddUser: (user: any) => Promise<void>;
   onRemoveUser: (id: string) => Promise<void>;

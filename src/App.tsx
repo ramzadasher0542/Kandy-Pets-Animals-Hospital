@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useCallback } from 'react';
 
 const PROVIDER_EMAIL = 'ramzadasher0542@gmail.com';
 
@@ -78,8 +78,7 @@ export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, Pane
   }
 }
 
-import { db, initializeDatabaseVault, stampRecord } from './lib/localDb';
-import { seedDemoData } from './lib/demoSeed';
+import { db, stampRecord } from './lib/localDb';
 import {
   hashCredential, verifyCredential, verifyCredentialSync, isBcryptHash,
   migrateOldHash, recordFailedAttempt, isLockedOut, resetAttempts
@@ -89,8 +88,6 @@ import AuthPromptHost from './components/ui/AuthPrompt';
 
 // @ts-ignore
 window._db = db;
-// @ts-ignore
-window.seedDemoData = seedDemoData;
 
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
@@ -167,7 +164,6 @@ import {
   fetchSystemConfig,
   upsertSystemConfig
 } from './lib/db';
-import { SyncEngine, stopSync } from './lib/syncEngine';
 import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
 
 function hashPin(pin: string): string {
@@ -299,62 +295,6 @@ function App() {
           });
         }
 
-        if (import.meta.env.DEV) {
-          console.log('[Bootloader] Initiating DB sequence...');
-        }
-        await initializeDatabaseVault();
-
-        // Phase 1: Check for Legacy Migration
-        const isMigrated = await db.system.getItem('indexeddb_migration_v1');
-        if (!isMigrated) {
-          if (import.meta.env.DEV) {
-            console.log('[Bootloader] Migrating legacy localStorage to unlimited IndexedDB vault...');
-          }
-          const migrateItem = async (key: string, dbInstance: any) => {
-            const legacy = localStorage.getItem(key);
-            if (legacy) {
-              try {
-                const parsed = JSON.parse(legacy);
-                if (Array.isArray(parsed)) {
-                  await Promise.all(parsed.map((item: any) => {
-                    if (item && item.id) return dbInstance.setItem(item.id, item);
-                    return Promise.resolve();
-                  }));
-                } else if (parsed && parsed.id) {
-                  await dbInstance.setItem(parsed.id, parsed);
-                } else {
-                  await dbInstance.setItem('data', parsed);
-                }
-              } catch (e) {
-                if (import.meta.env.DEV) {
-                  console.error(`[Bootloader] Failed to migrate ${key}:`, e);
-                }
-              }
-            }
-          };
-
-          await migrateItem('ceylon_inventory_v2', db.inventory);
-          await migrateItem('ceylon_appointments_v2', db.appointments);
-          await migrateItem('ceylon_records_v2', db.records);
-          await migrateItem('ceylon_invoices_v2', db.invoices);
-          await migrateItem('ceylon_shifts_v1', db.shifts);
-          await migrateItem('ceylon_sync_queue_v3', db.syncQueue);
-          await migrateItem('ceylon_notifications_v2', db.notifications);
-          await migrateItem('ceylon_alerts_v2', db.alerts);
-          await migrateItem('ceylon_users_v3', db.users);
-
-          const legacyShift = localStorage.getItem('ceylon_active_shift_v1');
-          if (legacyShift) await db.system.setItem('active_shift', JSON.parse(legacyShift));
-
-          const legacyConfig = localStorage.getItem('ceylon_system_config_v2');
-          if (legacyConfig) await db.system.setItem('config', JSON.parse(legacyConfig));
-
-          await db.system.setItem('indexeddb_migration_v1', true);
-          if (import.meta.env.DEV) {
-            console.log('[Bootloader] Migration successful. Data secured.');
-          }
-        }
-
         // Phase 1.5: Migrate from single key 'data' (Phase 7) to ID-based flat keys (Phase 8)
         const isPhase8Migrated = await db.system.getItem('indexeddb_migration_v2');
         if (!isPhase8Migrated) {
@@ -394,18 +334,6 @@ function App() {
           if (import.meta.env.DEV) {
             console.log('[Bootloader] Phase 8 flat migration complete.');
           }
-        }
-
-        // Phase 1.9: Populate an empty vault with realistic demo data so every
-        // screen looks alive on a fresh install. No-op if data exists; skipped
-        // under automation (Playwright seeds its own fixtures).
-        try {
-          if (!(navigator as any).webdriver && !localStorage.getItem('kp_purged')) {
-            const seeded = await seedDemoData();
-            if (seeded && import.meta.env.DEV) console.log('[Bootloader] Demo data seeded into empty vault.');
-          }
-        } catch (e) {
-          if (import.meta.env.DEV) console.warn('[Bootloader] Demo seed skipped:', e);
         }
 
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
@@ -584,22 +512,6 @@ function App() {
     return () => { isMounted = false; };
   }, []);
 
-  // MISSION 1: Background Sync Engine lifecycle
-  const syncEngineRef = useRef<SyncEngine | null>(null);
-  useEffect(() => {
-    // After a deliberate "Erase Entire Database", do NOT start cloud sync —
-    // otherwise the engine pulls the old rows straight back from Supabase and
-    // the vault is never actually empty. Keeps a purged app blank ("factory" state).
-    if (localStorage.getItem('kp_purged')) {
-      if (import.meta.env.DEV) console.info('[CeylonPets] Vault was purged — cloud sync stays offline so the app remains blank.');
-      return;
-    }
-    const engine = new SyncEngine({ onStatusChange: (online) => setIsOnline(online) });
-    if (false) engine.start();
-    syncEngineRef.current = engine;
-    return () => { engine.stop(); };
-  }, []);
-
   // Session states
   const [isOnline, setIsOnline] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -610,7 +522,7 @@ function App() {
   const [idleMessage, setIdleMessage] = useState<string | null>(null);
 
   // Sync status indicator: reflect browser online/offline state in the existing
-  // isOnline flag (also driven by the SyncEngine status callback above).
+  // isOnline flag.
   useEffect(() => {
     setIsOnline(navigator.onLine);
     const goOnline = () => setIsOnline(true);
@@ -1445,12 +1357,9 @@ function App() {
   // does NOT abort the local purge.
   const handleWipeCloudAndPurge = useCallback(async () => {
     try {
-      // 1. Kill the sync engine FIRST so no in-flight push/pull can resurrect
-      //    data we are about to delete.
-      stopSync();
-      // 2. Nuke the cloud AND every local store + reset config to defaults.
-      //    db.ts deletes each cloud table explicitly and returns a per-table
-      //    log, so a partial failure is visible instead of silent.
+      // Nuke the cloud AND every local store + reset config to defaults.
+      // db.ts deletes each cloud table explicitly and returns a per-table
+      // log, so a partial failure is visible instead of silent.
       const wipeLog = await nuclearWipeLocal();
       console.log('[WIPE RESULT]', wipeLog);
       showToast(`Wiped ${wipeLog.filter(l => l.startsWith('OK')).length}/18 tables. Check console for details.`, 'success');
@@ -1778,7 +1687,6 @@ function App() {
               setSystemConfig(merged);
             }}
             users={users.map(({ pin, ...safeU }) => safeU)}
-            onForceCloudSync={async () => { if (syncEngineRef.current) await syncEngineRef.current.forceSync(); }}
             onRefreshUsers={async () => { setUsers(await fetchUsers()); }}
             onAddUser={async (user) => {
               // AUTH-4 FIX: new accounts previously stored their PIN in PLAINTEXT,
