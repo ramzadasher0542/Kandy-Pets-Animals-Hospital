@@ -593,10 +593,17 @@ export async function fetchActiveShiftDetails(): Promise<{ shift: Shift | null; 
   return { shift, adjustments: adjData || [] };
 }
 
-export async function fetchCashAdjustments(shiftId: string): Promise<any[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('cash_adjustments').select('*').eq('shiftId', shiftId);
-  if (error) { console.error('[DB]', error.message); return []; }
+// shiftId provided → that shift's adjustments (existing behavior). shiftId omitted
+// → ALL adjustments (explicit all-time mode for the reports vault). Fail-closed:
+// a missing Supabase client or a query error throws instead of returning [], so a
+// cloud outage can never look like a zeroed financial report. An empty successful
+// result is still a valid empty array.
+export async function fetchCashAdjustments(shiftId?: string): Promise<any[]> {
+  if (!supabase) throw new Error('No internet connection');
+  let query = supabase.from('cash_adjustments').select('*');
+  if (shiftId) query = query.eq('shiftId', shiftId);
+  const { data, error } = await query;
+  if (error) throw error;
   return data || [];
 }
 

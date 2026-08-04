@@ -7,6 +7,7 @@ import PageShell from './ui/PageShell';
 import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
 import { db } from '../lib/localDb';
+import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments } from '../lib/db';
 import { User, DeletionAudit } from '../types';
 import type { SystemConfig } from './SystemSettings';
 
@@ -195,18 +196,27 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const invs: VaultInvoice[] = [];
-      await db.invoices.iterate((val: VaultInvoice) => { if (val && !Array.isArray(val)) invs.push(val); });
-      const adjs: CashAdjustment[] = [];
-      await db.cashAdjustments.iterate((val: CashAdjustment) => { adjs.push(val); });
-      adjs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      // Supported cloud reads — fail-closed helpers that throw on a cloud outage
+      // or query error, so a failure can never masquerade as an empty report.
+      const [cloudInvoices, cloudAdjustments, cloudAppointments, cloudClients] = await Promise.all([
+        fetchInvoices(),
+        fetchCashAdjustments(),
+        fetchAppointments(),
+        fetchClients(),
+      ]);
+      const invs = cloudInvoices as unknown as VaultInvoice[];
+      // Adjustments: newest first (unchanged ordering).
+      const adjs = (cloudAdjustments as CashAdjustment[]).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      // Non-deleted (the helpers already exclude soft-deleted rows).
+      const appts = cloudAppointments.filter((v: any) => v && !v.is_deleted);
+      const cls = cloudClients.filter((v: any) => v && !v.is_deleted);
+
+      // Deferred / frozen reads — no verified cloud helper/contract yet, so the
+      // deletion audit, payslips and shift reconciliations still load from
+      // IndexedDB. Left untouched in this task on purpose.
       const dels: DeletionAudit[] = [];
       await db.deletionAudit.iterate((val: DeletionAudit) => { if (val && !Array.isArray(val)) dels.push(val); });
       dels.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
-      const appts: any[] = [];
-      await db.appointments.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted) appts.push(v); });
-      const cls: any[] = [];
-      await db.clients.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted) cls.push(v); });
       const pays: any[] = [];
       await db.payslips.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted) pays.push(v); });
       const recs: any[] = [];
@@ -216,7 +226,10 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
       setAppointments(appts); setClients(cls); setPayslips(pays); setShiftRecons(recs);
       calculateVault(invs, adjs);
     } catch (e) {
+      // Fail-closed: keep the previously loaded report state; never render a cloud
+      // failure as zero data. Surface it via the existing toast mechanism.
       if (import.meta.env.DEV) console.error('Vault Error:', e);
+      showToast('Could not load report data from the cloud. Showing last known data.', 'error');
     } finally {
       setLoading(false);
     }
