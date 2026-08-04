@@ -1241,12 +1241,15 @@ export async function fetchInvoiceStats(): Promise<{ total: number; revenue: num
 // ==========================================
 
 // PETS
-export async function fetchPets(): Promise<Pet[]> {
+// includeDeleted=false (default) returns only active pets — the normal read.
+// Pass true ONLY for the client-deletion history preflight, which must still
+// count a soft-deleted pet's surviving clinical/financial history.
+export async function fetchPets(includeDeleted = false): Promise<Pet[]> {
   if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('pets').select('*');
   if (error) throw error;
   const items = (data || []) as Pet[];
-  return items.filter(value => !(value as any).is_deleted);
+  return includeDeleted ? items : items.filter(value => !(value as any).is_deleted);
 }
 
 export async function upsertPet(pet: Pet): Promise<void> {

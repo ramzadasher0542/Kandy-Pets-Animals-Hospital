@@ -1,16 +1,16 @@
-RULES: STEP 8 ONLY
+RULES: STEP 9 ONLY
 
-Use this file with prompt-step-8-customers-cloud-read.md only.
+Use this file with prompt-step-9-delete-history-soft-deleted.md only.
 
 
 
 Mission
 
-Move CustomersManager history and pet/appointment lookup reads from IndexedDB to the
+Restore the original deletion-safety behavior for client history: a client delete
 
-existing fail-closed Supabase helpers. A cloud read failure must block the delete flow,
+preflight must include both active and soft-deleted pets when collecting pet IDs.
 
-not look like a customer with no history.
+Normal application pet reads must continue excluding soft-deleted pets.
 
 
 
@@ -22,33 +22,41 @@ Check git status --short --branch and git diff --stat before editing.
 
 Perform exactly this task. Do not fix unrelated issues.
 
-Read the real current target file and helper implementations before editing.
+Read the real current src/lib/db.ts and src/components/CustomersManager.tsx before editing.
 
-Only edit src/components/CustomersManager.tsx. If another file is required, stop
+Only edit these files:
 
-and report it before editing.
+src/lib/db.ts
 
-Use only existing functions. Never invent tables, columns, APIs or fallback data.
+src/components/CustomersManager.tsx
 
-Do not run SQL or mutate Supabase schema/data.
+Before changing fetchPets's signature, grep the whole repository for every call site.
 
-Do not print secrets, API keys, passwords, tokens, personal data or medical data.
+Preserve the existing default behavior of fetchPets(): it must return only non-deleted pets.
 
-Do not use a Vercel URL, credentials or Supabase MCP for this code-only task.
+Add the smallest explicit opt-in needed for the deletion preflight to receive soft-deleted pets.
 
-Do not change authentication, staff/payroll, deletion callbacks, SQL, tests,
+Do not silently change any other caller's behavior.
 
-src/lib/db.ts, src/lib/localDb.ts or src/App.tsx.
+Use that opt-in only in openDeleteClient in CustomersManager.tsx.
 
-Do not add local storage, IndexedDB, caching, sync queues or compatibility code.
+Preserve the existing client ID and client.petIds matching rules and all existing
 
-If the real code differs from the prompt, stop and report the actual difference.
+!is\_deleted history-record filters.
+
+Do not change computeHistory, openDeletePet, deletion callbacks, auth, UI, tests,
+
+src/lib/localDb.ts, schema, RLS, RPCs or live data.
+
+Do not add local storage, IndexedDB, caching, sync queues or fallback data.
+
+Do not use Supabase MCP, SQL, a Vercel URL or credentials. This is a code-only task.
 
 After every logical edit, run npx tsc --noEmit. Fix only errors caused by this task.
 
 Before finishing, run npx tsc --noEmit, npm run build, and the closest existing
 
-customer/deletion test. Report failures honestly.
+deletion test. Report every failure exactly.
 
 Do not commit, push, reset, stash or change git history.
 
@@ -56,7 +64,7 @@ Required final report
 
 Changed
 
-Exact files changed, or None.
+Exact files changed and concise summary.
 
 
 
@@ -74,7 +82,7 @@ Concrete blockers only.
 
 Noticed, not fixed
 
-Remaining IndexedDB, auth, frozen-feature and unrelated findings.
+Remaining IndexedDB, auth, frozen-feature, test-fixture and unrelated findings.
 
 
 

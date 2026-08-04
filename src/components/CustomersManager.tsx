@@ -363,7 +363,9 @@ export default function CustomersManager({
     // Cloud preflight: if any read fails, block the delete rather than assume "no history".
     let summary: string;
     try {
-      const allPets = await fetchPets();
+      // includeDeleted=true: a soft-deleted pet's surviving history must still
+      // count toward the deletion warning (computeHistory drops deleted records).
+      const allPets = await fetchPets(true);
       const petIds = new Set<string>();
       allPets.forEach((p: any) => { if (p && (p.clientId === client.client_id || client.petIds?.includes(p.id))) petIds.add(p.id); });
       const counts = await computeHistory(petIds, normalizePhone(client.primary_phone || ''));
