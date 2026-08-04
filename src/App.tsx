@@ -952,14 +952,28 @@ function App() {
     }
 
     try {
-      await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
-      await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
-      await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
+      // Attempt every independent write (non-aborting). Only rows whose write
+      // fulfilled are merged into React state; rejected rows stay unchanged so
+      // the UI never claims a history row was updated when its cloud write failed.
+      const aptResults = await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
+      const recResults = await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
+      const invResults = await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
 
-      // Refresh state without destructive fetches
-      setAppointments(prev => prev.map(a => aptUpdates.find(u => u.id === a.id) || a));
-      setRecords(prev => prev.map(r => recUpdates.find(u => u.id === r.id) || r));
-      setInvoices(prev => prev.map(i => invUpdates.find(u => u.id === i.id) || i));
+      const aptDone = aptUpdates.filter((_, i) => aptResults[i]?.status === 'fulfilled');
+      const recDone = recUpdates.filter((_, i) => recResults[i]?.status === 'fulfilled');
+      const invDone = invUpdates.filter((_, i) => invResults[i]?.status === 'fulfilled');
+
+      // Refresh state without destructive fetches — fulfilled writes only.
+      setAppointments(prev => prev.map(a => aptDone.find(u => u.id === a.id) || a));
+      setRecords(prev => prev.map(r => recDone.find(u => u.id === r.id) || r));
+      setInvoices(prev => prev.map(i => invDone.find(u => u.id === i.id) || i));
+
+      const anyRejected = [...aptResults, ...recResults, ...invResults]
+        .some(r => r.status === 'rejected');
+      if (anyRejected) {
+        if (import.meta.env.DEV) console.error('[CeylonPets] Some customer history writes failed');
+        showToast('Some customer history updates failed and were not saved.', 'error');
+      }
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('[CeylonPets] Customer update failed:', error);
       showToast(`Failed to update customer across records: ${error.message}`, 'error');
@@ -982,8 +996,13 @@ function App() {
         .filter((r: any) => r && !(r as any).is_deleted && r.patientId === oldPatientId)
         .map((r: any) => ({ ...r, petName: newPetName, ...newDetails }));
       if (toUpdate.length === 0) return;
-      await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
-      setRecords(prev => prev.map(r => toUpdate.find(u => u.id === r.id) || r));
+      // Non-aborting: attempt every record write, merge only fulfilled rows.
+      const recResults = await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
+      const recDone = toUpdate.filter((_, i) => recResults[i]?.status === 'fulfilled');
+      setRecords(prev => prev.map(r => recDone.find(u => u.id === r.id) || r));
+      if (recResults.some(r => r.status === 'rejected')) {
+        showToast('Some pet history updates failed and were not saved.', 'error');
+      }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
     }
