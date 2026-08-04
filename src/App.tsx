@@ -921,28 +921,35 @@ function App() {
   // This ensures ALL historical records are updated, not just today's in-memory subset.
   const handleUpdateCustomer = useCallback(async (oldPhone: string, newPhone: string, newName: string, newEmail: string) => {
     const normOld = oldPhone.replace(/\D/g, '');
-    
-    // Scan entire DB — not just today's state
-    const aptUpdates: Appointment[] = [];
-    await db.appointments.iterate((a: any) => {
-      if (a && !Array.isArray(a) && a.ownerPhone && a.ownerPhone.replace(/\D/g, '') === normOld) {
-        aptUpdates.push({ ...a, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail });
-      }
-    });
-    
-    const recUpdates: MedicalRecord[] = [];
-    await db.records.iterate((r: any) => {
-      if (r && !Array.isArray(r) && !(r as any).is_deleted && r.ownerPhone && r.ownerPhone.replace(/\D/g, '') === normOld) {
-        recUpdates.push({ ...r, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail });
-      }
-    });
-    
-    const invUpdates: Invoice[] = [];
-    await db.invoices.iterate((i: any) => {
-      if (i && !Array.isArray(i) && (i.ownerPhone || '').replace(/\D/g, '') === normOld) {
-        invUpdates.push({ ...i, ownerName: newName, ownerPhone: newPhone });
-      }
-    });
+
+    // Scan cloud history (not just today's mirror) so identity edits reach older
+    // rows. Fail-closed: if any read throws, stop before the propagation writes
+    // rather than treating a cloud outage as an empty update set.
+    let aptUpdates: Appointment[] = [];
+    let recUpdates: MedicalRecord[] = [];
+    let invUpdates: Invoice[] = [];
+    try {
+      // includeDeleted=true: the original scan matched EVERY appointment row,
+      // including soft-deleted ones.
+      const [allAppts, allRecs, allInvs] = await Promise.all([
+        fetchAppointments(undefined, true),
+        fetchMedicalRecords(),
+        fetchInvoices(),
+      ]);
+      aptUpdates = allAppts
+        .filter((a: any) => a && a.ownerPhone && a.ownerPhone.replace(/\D/g, '') === normOld)
+        .map((a: any) => ({ ...a, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail }));
+      recUpdates = allRecs
+        .filter((r: any) => r && !(r as any).is_deleted && r.ownerPhone && r.ownerPhone.replace(/\D/g, '') === normOld)
+        .map((r: any) => ({ ...r, ownerName: newName, ownerPhone: newPhone, ownerEmail: newEmail }));
+      invUpdates = allInvs
+        .filter((i: any) => i && (i.ownerPhone || '').replace(/\D/g, '') === normOld)
+        .map((i: any) => ({ ...i, ownerName: newName, ownerPhone: newPhone }));
+    } catch (error: any) {
+      if (import.meta.env.DEV) console.error('[CeylonPets] Customer update history read failed:', error);
+      showToast(`Failed to update customer across records: ${error.message}`, 'error');
+      return;
+    }
 
     try {
       await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
@@ -968,12 +975,12 @@ function App() {
         return [...prev, { ...newDetails, id: oldPatientId, name: newPetName }];
       });
 
-      const toUpdate: MedicalRecord[] = [];
-      await db.records.iterate((r: any) => {
-        if (r && !Array.isArray(r) && !(r as any).is_deleted && r.patientId === oldPatientId) {
-          toUpdate.push({ ...r, petName: newPetName, ...newDetails });
-        }
-      });
+      // Cloud history scan (fail-closed): a thrown read is caught below, showing
+      // the error toast and stopping before any propagation write.
+      const allRecs = await fetchMedicalRecords();
+      const toUpdate: MedicalRecord[] = allRecs
+        .filter((r: any) => r && !(r as any).is_deleted && r.patientId === oldPatientId)
+        .map((r: any) => ({ ...r, petName: newPetName, ...newDetails }));
       if (toUpdate.length === 0) return;
       await Promise.allSettled(toUpdate.map(u => upsertMedicalRecord(u)));
       setRecords(prev => prev.map(r => toUpdate.find(u => u.id === r.id) || r));

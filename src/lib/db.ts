@@ -232,7 +232,10 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
 // ==========================================
 // APPOINTMENTS
 // ==========================================
-export async function fetchAppointments(days?: number): Promise<Appointment[]> {
+// includeDeleted=false (default) excludes soft-deleted rows — the normal read.
+// Pass true ONLY where the caller must scan every appointment row (e.g. customer
+// identity propagation across historical, possibly soft-deleted, appointments).
+export async function fetchAppointments(days?: number, includeDeleted = false): Promise<Appointment[]> {
   if (!supabase) throw new Error('No internet connection');
   let query = supabase.from('appointments').select('*');
   if (days && days > 0) {
@@ -244,7 +247,7 @@ export async function fetchAppointments(days?: number): Promise<Appointment[]> {
   const { data, error } = await query;
   if (error) throw error;
   return (data || [])
-    .filter((value: any) => !value.is_deleted)
+    .filter((value: any) => includeDeleted || !value.is_deleted)
     .sort((a, b) => {
       const dateA = new Date(`${a.date}T${a.time}`).getTime();
       const dateB = new Date(`${b.date}T${b.time}`).getTime();
