@@ -16,7 +16,6 @@ import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import PhoneInput from './PhoneInput';
-import { db } from '../lib/localDb';
 import { fetchPets, fetchClients, upsertPet, fetchHistoricalAppointmentsArchive } from '../lib/db';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
@@ -424,13 +423,8 @@ export default function AppointmentsManager({
 
         // Update the existing Client in place (same client_id, new name/phone).
         try {
-          let existingClient: any = null;
-          await db.clients.iterate((value: any) => {
-            if (value && !Array.isArray(value) && value.client_id === oldClientId) {
-              existingClient = value;
-              return false;
-            }
-          });
+          const allClients = await fetchClients();
+          const existingClient = allClients.find((value: any) => value && value.client_id === oldClientId) || null;
           if (existingClient && onUpdateClient) {
             await onUpdateClient({
               ...existingClient,
@@ -531,13 +525,8 @@ export default function AppointmentsManager({
     
     // BUG #4 FIX: Deduplicate clients — search by phone before creating
     try {
-      let existingClient: any = null;
-      await db.clients.iterate((value: any) => {
-        if (value && !Array.isArray(value) && normalizeSearchPhone(value.primary_phone) === normalizedPhone) {
-          existingClient = value;
-          return false; // stop iteration — found match
-        }
-      });
+      const allClients = await fetchClients();
+      const existingClient = allClients.find((value: any) => value && normalizeSearchPhone(value.primary_phone) === normalizedPhone) || null;
 
       if (!existingClient) {
         // No existing client with this phone — create with deterministic ID
