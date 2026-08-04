@@ -12,8 +12,7 @@ import {
   ArrowRight, Wallet, ShieldAlert, PawPrint, Activity,
   Edit2, PenTool, CheckCircle2, ChevronLeft, HeartPulse, TestTube, Syringe, Trash2, Users, Receipt, Stethoscope} from 'lucide-react';
 import { Client, MedicalRecord, Invoice, Appointment, PetClassification, Pet, Vaccination, LabResult } from '../types';
-import { upsertPet } from '../lib/db';
-import { db } from '../lib/localDb';
+import { upsertPet, fetchInvoices, fetchMedicalRecords, fetchAppointments, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations, fetchPets } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
@@ -331,16 +330,28 @@ export default function CustomersManager({
     return parts.join(', ');
   };
 
-  // Query the DB directly (not today-only props) so the orphan warning is accurate.
+  // Query Supabase (not today-only props) so the orphan warning is accurate.
+  // These helpers are fail-closed: on a cloud error they throw, so the failure
+  // propagates to the caller's preflight and blocks the delete instead of
+  // silently counting zero history.
   const computeHistory = async (petIds: Set<string>, phone: string): Promise<HistoryCounts> => {
     const counts: HistoryCounts = { invoices: 0, records: 0, appointments: 0, boarding: 0, grooming: 0, labs: 0, vaccinations: 0 };
-    await db.invoices.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && ((v.patientId && petIds.has(v.patientId)) || (phone && normalizePhone(v.ownerPhone || '') === phone))) counts.invoices++; });
-    await db.records.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.patientId)) counts.records++; });
-    await db.appointments.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && phone && normalizePhone(v.ownerPhone || '') === phone) counts.appointments++; });
-    await db.boardingRecords.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.boarding++; });
-    await db.groomingLogs.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.grooming++; });
-    await db.labResults.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.labs++; });
-    await db.vaccinations.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && petIds.has(v.petId)) counts.vaccinations++; });
+    const [invoices, records, appts, boarding, grooming, labs, vaccinations] = await Promise.all([
+      fetchInvoices(),
+      fetchMedicalRecords(),
+      fetchAppointments(),
+      fetchBoardingRecords(),
+      fetchGroomingLogs(),
+      fetchLabResults(),
+      fetchVaccinations()
+    ]);
+    counts.invoices = invoices.filter((v: any) => v && !v.is_deleted && ((v.patientId && petIds.has(v.patientId)) || (phone && normalizePhone(v.ownerPhone || '') === phone))).length;
+    counts.records = records.filter((v: any) => v && !v.is_deleted && petIds.has(v.patientId)).length;
+    counts.appointments = appts.filter((v: any) => v && !v.is_deleted && phone && normalizePhone(v.ownerPhone || '') === phone).length;
+    counts.boarding = boarding.filter((v: any) => v && !v.is_deleted && petIds.has(v.petId)).length;
+    counts.grooming = grooming.filter((v: any) => v && !v.is_deleted && petIds.has(v.petId)).length;
+    counts.labs = labs.filter((v: any) => v && !v.is_deleted && petIds.has(v.petId)).length;
+    counts.vaccinations = vaccinations.filter((v: any) => v && !v.is_deleted && petIds.has(v.petId)).length;
     return counts;
   };
 
@@ -349,10 +360,19 @@ export default function CustomersManager({
     if (!window.confirm('Delete this client and all their pets? Invoices and medical records will be preserved.')) return;
 
     // History is still computed AFTER the confirm so the deletion audit row stays truthful.
-    const petIds = new Set<string>();
-    await db.pets.iterate((p: any) => { if (p && !Array.isArray(p) && (p.clientId === client.client_id || client.petIds?.includes(p.id))) petIds.add(p.id); });
-    const counts = await computeHistory(petIds, normalizePhone(client.primary_phone || ''));
-    const summary = buildHistorySummary(counts);
+    // Cloud preflight: if any read fails, block the delete rather than assume "no history".
+    let summary: string;
+    try {
+      const allPets = await fetchPets();
+      const petIds = new Set<string>();
+      allPets.forEach((p: any) => { if (p && (p.clientId === client.client_id || client.petIds?.includes(p.id))) petIds.add(p.id); });
+      const counts = await computeHistory(petIds, normalizePhone(client.primary_phone || ''));
+      summary = buildHistorySummary(counts);
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[Delete] client history preflight failed:', err);
+      showToast('Could not verify client history from the cloud. Delete blocked.', 'error');
+      return;
+    }
 
     if (onDeleteClient) await onDeleteClient(client, { hadHistory: summary.length > 0, historySummary: summary, overrideConfirmed: summary.length > 0 });
     if (selectedClientId === client.client_id) { setSelectedClientId(null); setSelectedPetId(null); }
@@ -363,16 +383,25 @@ export default function CustomersManager({
     if (!window.confirm('Delete this pet? Medical records and invoices will be preserved.')) return;
 
     const client = clients.find(c => c.client_id === pet.clientId);
-    const counts = await computeHistory(new Set<string>([pet.id]), client ? normalizePhone(client.primary_phone || '') : '');
-    // Appointments have no petId; for a single pet don't attribute the client's whole
-    // appointment history to it — reset that count to what actually names this pet.
-    let petAppointments = 0;
-    if (client) {
-      const phone = normalizePhone(client.primary_phone || '');
-      await db.appointments.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted && phone && normalizePhone(v.ownerPhone || '') === phone && (v.petName || '').trim().toLowerCase() === pet.name.trim().toLowerCase()) petAppointments++; });
+    // Cloud preflight: if any read fails, block the delete rather than assume "no history".
+    let summary: string;
+    try {
+      const counts = await computeHistory(new Set<string>([pet.id]), client ? normalizePhone(client.primary_phone || '') : '');
+      // Appointments have no petId; for a single pet don't attribute the client's whole
+      // appointment history to it — reset that count to what actually names this pet.
+      let petAppointments = 0;
+      if (client) {
+        const phone = normalizePhone(client.primary_phone || '');
+        const appts = await fetchAppointments();
+        petAppointments = appts.filter((v: any) => v && !v.is_deleted && phone && normalizePhone(v.ownerPhone || '') === phone && (v.petName || '').trim().toLowerCase() === pet.name.trim().toLowerCase()).length;
+      }
+      counts.appointments = petAppointments;
+      summary = buildHistorySummary(counts);
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[Delete] pet history preflight failed:', err);
+      showToast('Could not verify pet history from the cloud. Delete blocked.', 'error');
+      return;
     }
-    counts.appointments = petAppointments;
-    const summary = buildHistorySummary(counts);
 
     if (onDeletePet) await onDeletePet(pet, { hadHistory: summary.length > 0, historySummary: summary, overrideConfirmed: summary.length > 0 });
     if (selectedPetId === pet.id) setSelectedPetId(null);
