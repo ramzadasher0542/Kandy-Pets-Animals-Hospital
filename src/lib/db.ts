@@ -233,7 +233,7 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
 // APPOINTMENTS
 // ==========================================
 export async function fetchAppointments(days?: number): Promise<Appointment[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   let query = supabase.from('appointments').select('*');
   if (days && days > 0) {
     const cutoff = new Date();
@@ -242,7 +242,7 @@ export async function fetchAppointments(days?: number): Promise<Appointment[]> {
     query = query.gte('date', cutoffStr);
   }
   const { data, error } = await query;
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || [])
     .filter((value: any) => !value.is_deleted)
     .sort((a, b) => {
@@ -369,9 +369,9 @@ export async function fetchVeterinarians(): Promise<User[]> {
 // MEDICAL RECORDS
 // ==========================================
 export async function fetchMedicalRecords(): Promise<MedicalRecord[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('medical_records').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const records = (data || []) as MedicalRecord[];
   return records
     .filter(value => !(value as any).is_deleted)
@@ -400,9 +400,9 @@ export async function deleteMedicalRecord(id: string): Promise<void> {
 // INVOICES & AUTOMATION
 // ==========================================
 export async function fetchInvoices(): Promise<Invoice[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('invoices').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   // FIXED: Include ALL invoices (including voided) — let consumers handle filtering
   const invoices = (data || []) as Invoice[];
   return invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1242,9 +1242,9 @@ export async function fetchInvoiceStats(): Promise<{ total: number; revenue: num
 
 // PETS
 export async function fetchPets(): Promise<Pet[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('pets').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const items = (data || []) as Pet[];
   return items.filter(value => !(value as any).is_deleted);
 }
@@ -1270,9 +1270,9 @@ export async function deletePet(id: string): Promise<void> {
 
 // VACCINATIONS
 export async function fetchVaccinations(): Promise<Vaccination[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('vaccinations').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const items = (data || []) as Vaccination[];
   return items.filter(value => !(value as any).is_deleted);
 }
@@ -1286,9 +1286,9 @@ export async function upsertVaccination(vaccine: Vaccination): Promise<void> {
 
 // LAB RESULTS
 export async function fetchLabResults(): Promise<LabResult[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('lab_results').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []).filter((r: any) => !r.is_deleted);
 }
 
@@ -1301,9 +1301,9 @@ export async function upsertLabResult(result: LabResult): Promise<void> {
 
 // GROOMING LOGS
 export async function fetchGroomingLogs(): Promise<GroomingLog[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('grooming_logs').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const items = (data || []) as GroomingLog[];
   return items.filter(value => !(value as any).is_deleted);
 }
@@ -1317,9 +1317,9 @@ export async function upsertGroomingLog(log: GroomingLog): Promise<void> {
 
 // BOARDING RECORDS
 export async function fetchBoardingRecords(): Promise<BoardingRecord[]> {
-  if (!supabase) return [];
+  if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.from('boarding_records').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const items = (data || []) as BoardingRecord[];
   return items.filter(value => !(value as any).is_deleted);
 }
