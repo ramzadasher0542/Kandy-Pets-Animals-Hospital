@@ -27,8 +27,7 @@ export const db = {
   users: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'users' }),
   clients: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'clients' }),
   cashAdjustments: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'cash_adjustments' }),
-  shiftReconciliations: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'shift_reconciliations' }),
-  
+
   pets: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'pets' }),
   vaccinations: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'vaccinations' }),
   labResults: localforage.createInstance({ name: 'CeylonPets_Enterprise_OS', storeName: 'lab_results' }),

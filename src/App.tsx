@@ -99,7 +99,7 @@ import {
 import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
-  ShiftReconciliation, ActiveShift, ClinicQueueItem,
+  ActiveShift, ClinicQueueItem,
   Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, Payslip
 } from './types';
 
@@ -215,7 +215,6 @@ function App() {
   const [notifications, setNotifications] = useState<ClientNotification[]>([]);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [shiftLogs, setShiftLogs] = useState<ShiftReconciliation[]>([]);
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [pinCache, setPinCache] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<any[]>([]);
@@ -314,9 +313,6 @@ function App() {
             fetchBoardingRecords()
           ]);
 
-          const hShifts: any[] = [];
-          await db.shiftReconciliations.iterate((value: any) => { if (value) hShifts.push(value); });
-
           const hStaffProfiles: any[] = [];
           await db.staffProfiles.iterate((value: any) => {
             if (value && !value.is_deleted) hStaffProfiles.push(value);
@@ -363,7 +359,6 @@ function App() {
             setAppointments(Array.isArray(appts) ? appts as any : []);
             setRecords(Array.isArray(recs) ? recs as any : []);
             setInvoices(Array.isArray(invs) ? invs as any : []);
-            setShiftLogs(Array.isArray(hShifts) ? hShifts as any : []);
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
@@ -1649,7 +1644,7 @@ function App() {
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
-      case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await upsertShiftReconciliation(log); setShiftLogs(prev => [log, ...prev]); }} onVerifyMasterPin={handleVerifyMasterPin} />;
+      case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onSaveShift={async (log) => { await upsertShiftReconciliation(log); }} onVerifyMasterPin={handleVerifyMasterPin} />;
       case 'dashboard':
         // FIX 8: Pass activeShift and onNavigate props
         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} currentUser={currentUser} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
