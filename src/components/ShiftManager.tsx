@@ -31,7 +31,7 @@ interface ShiftManagerProps {
   currentUser: StaffUser;
   activeShift: ActiveShift | null;
   setActiveShift: (s: ActiveShift | null) => void;
-  onSaveShift: (log: ShiftReconciliation) => void;
+  onSaveShift: (log: ShiftReconciliation) => Promise<void>;
   onVerifyMasterPin?: (pin: string) => boolean;
 }
 
@@ -199,10 +199,26 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       return;
     }
 
-    onSaveShift(log);
-    setLastClosedShift(log);
+    // NOTE: closing the shift (above) and writing the reconciliation row (below)
+    // are still two SEPARATE cloud operations in this step — they are NOT one
+    // database transaction. The close can therefore succeed while the
+    // reconciliation write fails; that case is reported rather than hidden, and
+    // the reconciliation is not persisted anywhere else (no local fallback).
+    let reconSaved = true;
+    try {
+      await onSaveShift(log);
+    } catch (e: any) {
+      reconSaved = false;
+      showToast(`Shift closed, but saving the reconciliation failed: ${e.message}. It was not recorded.`, 'error');
+    }
+
+    // The shift is already closed in the database, so the local active-shift state
+    // is cleared either way to stay consistent with it. The reconciliation summary
+    // is only shown when the row actually saved.
+    if (reconSaved) setLastClosedShift(log);
     setActiveShift(null);
     localStorage.removeItem('ceylon_active_shift_id');
+    if (!reconSaved) return;
 
     if (drawerMath.discrepancy !== 0) {
       showToast(`Warning: Drawer discrepancy of Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)} detected.`, 'warning');

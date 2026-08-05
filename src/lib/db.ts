@@ -614,6 +614,19 @@ export async function fetchShiftReconciliations(): Promise<ShiftReconciliation[]
   return items.filter(value => !(value as any).is_deleted);
 }
 
+// Persist one shift reconciliation to the same table ReportsManager reads, so the
+// read and write paths agree. The ShiftReconciliation payload already uses the
+// live quoted camelCase column names; updated_at / _dirty / is_deleted are left to
+// their column defaults. Fail-closed: a missing Supabase client or a write error
+// throws — the caller must surface it. There is deliberately NO IndexedDB
+// fallback, so a failed write is reported rather than silently kept locally.
+export async function upsertShiftReconciliation(log: ShiftReconciliation): Promise<void> {
+  if (!log || !log.id) throw new Error('INVALID_SHIFT_RECONCILIATION');
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('shift_reconciliations').upsert(log);
+  if (error) throw error;
+}
+
 /**
  * Cash drawer adjustment (IN/OUT). Shape mirrors the CashAdjustment interface
  * declared in ShiftManager/ReportsManager — it is not exported from types.ts,
