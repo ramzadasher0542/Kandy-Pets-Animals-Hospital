@@ -687,7 +687,7 @@ CREATE POLICY "Allow anon write access on deletion_audit"
 DROP TABLE IF EXISTS inventory_batches CASCADE;
 CREATE TABLE inventory_batches (
   "id"                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "inventoryItemId"   TEXT NOT NULL DEFAULT '',
+  "inventoryItemId"   UUID NOT NULL,
   "lotNumber"         TEXT NOT NULL DEFAULT '',
   "expiryDate"        TEXT NOT NULL DEFAULT '',
   "quantityReceived"  INTEGER NOT NULL DEFAULT 0,

@@ -732,7 +732,7 @@ CREATE POLICY "Allow anon write access on deletion_audit"
 -- =============================================================
 CREATE TABLE IF NOT EXISTS inventory_batches (
   "id"                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "inventoryItemId"    TEXT NOT NULL,
+  "inventoryItemId"    UUID NOT NULL,
   "lotNumber"          TEXT NOT NULL,
   "expiryDate"         TEXT NOT NULL,
   "quantityReceived"   INTEGER NOT NULL,

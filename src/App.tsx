@@ -1295,7 +1295,14 @@ function App() {
       if (sourceBillingFailed) showToast('Sale saved, but one or more linked service records were not billed in the cloud.', 'warning');
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Checkout failed:', error);
-      showToast(`Checkout Error: ${error.message}`, 'error');
+      // The invoice+stock RPC rolls back on INSUFFICIENT_STOCK, so nothing was
+      // saved. Map that one opaque DB error to a clear POS message; still a hard
+      // failed checkout (no local fallback, no success/retry warning).
+      const raw = typeof error?.message === 'string' ? error.message : '';
+      const msg = raw.includes('INSUFFICIENT_STOCK')
+        ? 'Checkout failed: not enough stock for one or more items. No sale was recorded.'
+        : `Checkout Error: ${error.message}`;
+      showToast(msg, 'error');
       throw error;
     }
   }, [closeVisit]);
