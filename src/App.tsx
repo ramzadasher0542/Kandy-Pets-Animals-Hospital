@@ -566,22 +566,15 @@ function App() {
 
   // AUDIT FIX: Atomic stock decrement — reads from IndexedDB, not stale React state
   const handleUpdateStock = useCallback(async (itemId: string, qtyDelta: number, _expectedStock?: number) => {
-    let cloudFailed = false;
     let newStock: number | null = null;
     try {
       newStock = await atomicStockDecrement(itemId, qtyDelta);
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        // Local decrement succeeded; only the cloud push failed. Recover the new
-        // stock level from IndexedDB so React state still reflects the truth.
-        cloudFailed = true;
-        const fresh = await db.inventory.getItem<InventoryItem>(itemId);
-        newStock = fresh ? fresh.stock : null;
-      } else {
-        if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
-        showToast(`Stock update failed: ${error.message}`, 'error');
-        return;
-      }
+      // Cloud-only: a failed atomic stock operation must never be reconstructed
+      // from a local mirror. Show the failure and leave React stock state unchanged.
+      if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
+      showToast(`Stock update failed: ${error.message}`, 'error');
+      return;
     }
     if (newStock === null) return;
     const finalStock = newStock;
@@ -595,10 +588,7 @@ function App() {
       await upsertAlert(alert);
       setAlerts(prev => [alert, ...prev]);
     }
-    showToast(
-      cloudFailed ? CLOUD_RETRY_TOAST : `Stock updated: ${currentItem?.name || itemId} (${finalStock} remaining).`,
-      cloudFailed ? 'warning' : 'success'
-    );
+    showToast(`Stock updated: ${currentItem?.name || itemId} (${finalStock} remaining).`, 'success');
   }, [inventory]);
 
   const handleUpdatePrice = useCallback(async (id: string, newPrice: number) => {
@@ -1118,17 +1108,9 @@ function App() {
         if (target.paymentStatus !== 'void') {
           for (const item of target.items) {
             if (!['service', 'lab_service'].includes(item.category)) {
-              let newStock = 0;
-              try {
-                newStock = await atomicStockDecrement(item.itemId, +item.quantity);
-              } catch (e) {
-                if (isCloudSaveError(e)) {
-                  // Local restock succeeded; recover the level from IndexedDB.
-                  cloudFailed = true;
-                  const fresh = await db.inventory.getItem<InventoryItem>(item.itemId);
-                  newStock = fresh ? fresh.stock : 0;
-                } else throw e;
-              }
+              // Cloud-only restock: a failure propagates to the outer catch so the
+              // invoice is NOT voided on a stale/fabricated local stock value.
+              const newStock = await atomicStockDecrement(item.itemId, +item.quantity);
               const finalStock = newStock;
               setInventory(prev => prev.map(invItem => invItem.id === item.itemId ? { ...invItem, stock: finalStock } : invItem));
             }
@@ -1210,17 +1192,9 @@ function App() {
 
       for (const cartItem of cart) {
         if (!['service', 'lab_service'].includes(cartItem.category)) {
-          let newStock = 0;
-          try {
-            newStock = await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
-          } catch (e) {
-            if (isCloudSaveError(e)) {
-              // Local decrement succeeded; recover the level from IndexedDB.
-              cloudFailed = true;
-              const fresh = await db.inventory.getItem<InventoryItem>(cartItem.id);
-              newStock = fresh ? fresh.stock : 0;
-            } else throw e;
-          }
+          // Cloud-only: a failed decrement aborts checkout via the outer catch
+          // rather than fabricating a stock level from IndexedDB.
+          const newStock = await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
           const finalStock = newStock;
           setInventory(prev => prev.map(item => item.id === cartItem.id ? { ...item, stock: finalStock } : item));
         }
