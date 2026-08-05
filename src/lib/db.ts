@@ -694,25 +694,60 @@ export async function closeShiftAndReconcile(
   return { already_closed: !!(data as any)?.already_closed };
 }
 
-export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {
-  const activeId = await fetchActiveShiftId();
-  if (!activeId) return;
+// Void a paid invoice and reverse its shift revenue atomically & idempotently via
+// the void_invoice_and_reverse_revenue RPC (flips paymentStatus to 'void', reverts
+// the linked appointment to 'booked', and subtracts the exact revenue from the
+// invoice's OWN shift — exactly once). Fail-closed: throws on any error, no local
+// fallback. Returns whether the invoice was already void and whether revenue was
+// reversed on this call.
+export async function voidInvoiceAndReverseRevenue(
+  invoiceId: string
+): Promise<{ already_void: boolean; reversed: boolean }> {
   if (!supabase) throw new Error('No internet connection');
-  const unlock = await globalMutex.lock();
+  if (!invoiceId) throw new Error('INVALID_INVOICE_ID');
+  const { data, error } = await supabase.rpc('void_invoice_and_reverse_revenue', {
+    p_invoice_id: invoiceId,
+  });
+  if (error) throw error;
+  return {
+    already_void: !!(data as any)?.already_void,
+    reversed: !!(data as any)?.reversed,
+  };
+}
+
+// All paid invoices attributed to a shift, regardless of date — so reconciliation
+// covers the complete shift (including one that crosses midnight), not only today's
+// in-memory list. Fail-closed: throws on a cloud error so an outage can never look
+// like an empty (fully-reconciled) shift.
+export async function fetchPaidInvoicesForShift(shiftId: string): Promise<Invoice[]> {
+  if (!supabase) throw new Error('No internet connection');
+  if (!shiftId) return [];
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('shiftId', shiftId)
+    .eq('paymentStatus', 'paid');
+  if (error) throw error;
+  return (data || []) as Invoice[];
+}
+
+// Distinguish "cloud state unavailable" from "confirmed no open shift". Callers use
+// available=false to BLOCK unsafe register-state changes rather than treating an
+// outage as "no shift open". Never throws.
+export async function fetchActiveShiftState(): Promise<{ available: boolean; shift: Shift | null }> {
+  if (!supabase) return { available: false, shift: null };
   try {
-    const { data, error: readError } = await supabase.from('shifts').select('*').eq('id', activeId).maybeSingle();
-    if (readError) throw readError;
-    const shift = data as Shift | null;
-    if (shift && shift.isOpen) {
-      const update: any = { updated_at: new Date().toISOString() };
-      if (method === 'cash') update.cashCollectedCents = (shift.cashCollectedCents || 0) + Math.round(amountCents);
-      if (method === 'card') update.cardCollectedCents = (shift.cardCollectedCents || 0) + Math.round(amountCents);
-      if (method === 'bank_transfer') update.bankTransferCollectedCents = (shift.bankTransferCollectedCents || 0) + Math.round(amountCents);
-      const { error } = await supabase.from('shifts').update(update).eq('id', activeId);
-      if (error) throw error;
-    }
-  } finally {
-    unlock();
+    const { data, error } = await supabase
+      .from('shifts')
+      .select('*')
+      .eq('isOpen', true)
+      .order('startTime', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return { available: false, shift: null };
+    return { available: true, shift: (data as Shift) || null };
+  } catch {
+    return { available: false, shift: null };
   }
 }
 

@@ -8,7 +8,7 @@ import { Modal } from './ui/Modal';
 import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2 } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
-import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile } from '../lib/db';
+import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile, fetchPaidInvoicesForShift, fetchActiveShiftState } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
@@ -49,12 +49,31 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const [adjReason, setAdjReason] = useState('');
   const [adjustments, setAdjustments] = useState<CashAdjustment[]>([]);
 
+  // All paid invoices attributed to this shift, loaded from the cloud so
+  // reconciliation covers the COMPLETE shift (including one crossing midnight),
+  // not just today's in-memory invoice list.
+  const [shiftPaidInvoices, setShiftPaidInvoices] = useState<Invoice[]>([]);
+
   // Load adjustments for the current shift from Supabase (visible on any device).
   useEffect(() => {
     if (!activeShift) { setAdjustments([]); return; }
     const load = async () => {
       const { adjustments: adjs } = await fetchActiveShiftDetails();
       setAdjustments((adjs as CashAdjustment[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    };
+    load();
+  }, [activeShift]);
+
+  // Load this shift's paid invoices from the cloud for reconciliation.
+  useEffect(() => {
+    if (!activeShift) { setShiftPaidInvoices([]); return; }
+    const load = async () => {
+      try {
+        setShiftPaidInvoices(await fetchPaidInvoicesForShift(activeShift.id));
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Shift paid-invoice load failed:', e);
+        showToast('Could not load this shift’s sales from the cloud. Reconciliation totals may be incomplete.', 'error');
+      }
     };
     load();
   }, [activeShift]);
@@ -71,9 +90,8 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const drawerMath = useMemo(() => {
     if (!activeShift) return { cashSales: 0, cardSales: 0, bankSales: 0, adjustIn: 0, adjustOut: 0, expectedCash: 0, totalRevenue: 0, discrepancy: 0, txCount: 0 };
 
-    const shiftInvoices = invoices.filter(inv =>
-      inv.paymentStatus === 'paid' && inv.shiftId === activeShift.id
-    );
+    // Cloud-loaded, already filtered to paid + this shiftId (all dates).
+    const shiftInvoices = shiftPaidInvoices;
 
     // AUDIT FIX: Use integer cents to prevent floating-point drift, and support split payments
     let cashSalesCents = 0;
@@ -116,7 +134,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       discrepancy: discrepancyCents / 100,
       txCount: shiftInvoices.length
     };
-  }, [invoices, activeShift, adjustments, actualClosingInput]);
+  }, [shiftPaidInvoices, activeShift, adjustments, actualClosingInput]);
 
   const handleOpenShift = async () => {
     if (!openingFloatInput) { showToast('Please enter a starting float amount.', 'error'); return; }
@@ -149,8 +167,27 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     // Use insert (not openShift()) so the id we built stays consistent with
     // setActiveShift and the shiftId stamped onto invoices.
     if (!supabase) { showToast('No internet connection. Cannot open shift.', 'error'); return; }
+    // Confirm cloud shift state before changing register state. If the cloud state
+    // cannot be confirmed (unavailable != "no open shift"), BLOCK rather than risk a
+    // duplicate open.
+    const state = await fetchActiveShiftState();
+    if (!state.available) {
+      showToast('Cannot confirm register state with the cloud. Not opening a shift — check your connection and retry.', 'error');
+      return;
+    }
+    if (state.shift) {
+      showToast('A shift is already open. Close it before opening a new one.', 'error');
+      return;
+    }
     const { error } = await supabase.from('shifts').insert(newShift);
-    if (error) { showToast(`Failed to open shift: ${error.message}`, 'error'); return; }
+    if (error) {
+      // The single-open-shift unique index rejects a concurrent duplicate open.
+      const msg = /duplicate|unique|uniq_shifts_single_open/i.test(error.message || '')
+        ? 'A shift was just opened on another device. Not opening a duplicate.'
+        : `Failed to open shift: ${error.message}`;
+      showToast(msg, 'error');
+      return;
+    }
 
     const activeShiftState: ActiveShift = {
       id: newShift.id,

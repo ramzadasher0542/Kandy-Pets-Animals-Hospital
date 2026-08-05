@@ -159,7 +159,7 @@ import {
   deleteInventoryItem,
   deleteClient,
   deletePet,
-  addRevenueToActiveShift,
+  voidInvoiceAndReverseRevenue,
   fetchActiveShiftDetails,
   nuclearWipeLocal,
   fetchUsers,
@@ -1100,13 +1100,13 @@ function App() {
       showToast('Unauthorized. Invoice was not voided.', 'error');
       return;
     }
-    let cloudFailed = false;
     try {
       // FIX 4: Use functional state update instead of destructive re-fetch
       const { data: targetData, error: targetError } = await supabase.from('invoices').select('*').eq('id', id).maybeSingle();
       if (targetError) throw targetError;
       const target = targetData as Invoice | null;
       if (target) {
+        const wasPaid = target.paymentStatus === 'paid';
         if (target.paymentStatus !== 'void') {
           for (const item of target.items) {
             if (!['service', 'lab_service'].includes(item.category)) {
@@ -1118,16 +1118,21 @@ function App() {
             }
           }
         }
+        // Atomic: flip the invoice to void, revert its linked appointment, and
+        // reverse the exact shift revenue in ONE idempotent RPC (no separate revenue
+        // undo, no double-reverse on retry). Throws on failure -> outer catch, so a
+        // failed void changes nothing.
+        const voidResult = await voidInvoiceAndReverseRevenue(id);
         const voided = { ...target, paymentStatus: 'void' as const };
-        try { await upsertInvoice(voided); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
         setInvoices(prev => {
           const exists = prev.some(i => i.id === id);
           if (exists) return prev.map(i => i.id === id ? voided : i);
           return [voided, ...prev];
         });
 
-        // MISSION 3: Decrement Client Lifetime Value if previously paid
-        if (target.paymentStatus === 'paid' && target.patientId && target.patientId !== 'RETAIL') {
+        // MISSION 3: Decrement Client Lifetime Value once, only when THIS call
+        // actually performed the void of a previously-paid invoice.
+        if (wasPaid && !voidResult.already_void && target.patientId && target.patientId !== 'RETAIL') {
           const pet = pets.find(p => p.id === target.patientId);
           if (pet) {
             const client = clients.find(c => c.client_id === pet.clientId);
@@ -1141,7 +1146,6 @@ function App() {
             }
           }
         }
-        if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
       }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
@@ -1172,23 +1176,9 @@ function App() {
           : item
       ));
 
-      // Attach this sale's revenue to the open shift (Supabase). Paid sales only.
-      // Non-fatal: the invoice is already committed, so a shift-attach failure
-      // must not void the sale — surface it as a cloud-retry warning instead.
-      if (invoice.paymentStatus === 'paid') {
-        try {
-          if (invoice.paymentMethod === 'split' && invoice.splitPayments) {
-            for (const sp of invoice.splitPayments) {
-              await addRevenueToActiveShift(sp.method, Math.round(sp.amount * 100));
-            }
-          } else if (invoice.paymentMethod) {
-            await addRevenueToActiveShift(invoice.paymentMethod, Math.round(invoice.sales_total * 100));
-          }
-        } catch (e) {
-          cloudFailed = true;
-          if (import.meta.env.DEV) console.error('[CeylonPets] Shift revenue attach failed:', e);
-        }
-      }
+      // Shift revenue is now attributed to the invoice's OWN shiftId INSIDE
+      // commitCheckoutInvoiceAndStock (one transaction, exactly once per invoice) —
+      // no separate post-commit "find the latest open shift" attach step.
 
       // MISSION 3: Update Client Lifetime Value
       if (invoice.patientId && invoice.patientId !== 'RETAIL') {
