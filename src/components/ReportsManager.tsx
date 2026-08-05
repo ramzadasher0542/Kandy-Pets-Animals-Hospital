@@ -7,7 +7,7 @@ import PageShell from './ui/PageShell';
 import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
 import { db } from '../lib/localDb';
-import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments } from '../lib/db';
+import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations } from '../lib/db';
 import { User, DeletionAudit } from '../types';
 import type { SystemConfig } from './SystemSettings';
 
@@ -223,6 +223,17 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
         showToast('Could not load report data from the cloud. Showing last known data.', 'error');
       }
 
+      // Shift reconciliations are cloud-backed. Isolated from the block above so a
+      // failure here does not blank the vault/invoice sections (and vice versa).
+      // Fail-closed: on error the previous state is kept (no setter, no fabricated
+      // empty list) and the failure is surfaced — never a silent empty report.
+      try {
+        setShiftRecons(await fetchShiftReconciliations());
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Shift reconciliations read failed:', e);
+        showToast('Could not load shift reconciliations from the cloud. Showing last known data.', 'error');
+      }
+
       // ---- Deferred / frozen local reads (no verified cloud contract yet) ----
       // Always attempted after the cloud attempt regardless of its outcome, and
       // isolated from each other so one failing store does not block the others.
@@ -242,13 +253,6 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
         setPayslips(pays);
       } catch (e) {
         if (import.meta.env.DEV) console.error('Payslips read failed:', e);
-      }
-      try {
-        const recs: any[] = [];
-        await db.shiftReconciliations.iterate((v: any) => { if (v && !Array.isArray(v)) recs.push(v); });
-        setShiftRecons(recs);
-      } catch (e) {
-        if (import.meta.env.DEV) console.error('Shift reconciliations read failed:', e);
       }
     } finally {
       setLoading(false);

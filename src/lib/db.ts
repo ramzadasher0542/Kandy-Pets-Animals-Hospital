@@ -26,7 +26,8 @@ import {
   BoardingRecord,
   InventoryBatch,
   Supplier,
-  InventoryCategory
+  InventoryCategory,
+  ShiftReconciliation
 } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 
@@ -596,6 +597,21 @@ export async function fetchCashAdjustments(shiftId?: string): Promise<any[]> {
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
+}
+
+// Shift reconciliation history for the reports vault. Live columns are quoted
+// camelCase (timestamp, userId, userName, openingFloat, cashSales,
+// expectedClosing, actualClosing, discrepancy, status) and match the
+// ShiftReconciliation type. Soft-deleted rows are excluded. Fail-closed: a
+// missing Supabase client or a query error throws instead of returning [], so a
+// cloud outage can never look like an empty reconciliation report. An empty
+// successful result is still a valid empty array.
+export async function fetchShiftReconciliations(): Promise<ShiftReconciliation[]> {
+  if (!supabase) throw new Error('No internet connection');
+  const { data, error } = await supabase.from('shift_reconciliations').select('*');
+  if (error) throw error;
+  const items = (data || []) as ShiftReconciliation[];
+  return items.filter(value => !(value as any).is_deleted);
 }
 
 /**
