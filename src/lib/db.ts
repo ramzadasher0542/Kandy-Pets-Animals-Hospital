@@ -567,7 +567,6 @@ export async function fetchActiveShiftId(): Promise<string | null> {
     .maybeSingle();
   if (error) { console.error('[DB]', error.message); return null; }
   if (data?.id) {
-    localStorage.setItem('ceylon_active_shift_id', data.id);
     return data.id;
   }
   return null;
@@ -660,7 +659,6 @@ export async function openShift(openedBy: string, openingFloatCents: number): Pr
   const { error } = await supabase.from('shifts').insert(newShift);
   if (error) throw error;
 
-  localStorage.setItem('ceylon_active_shift_id', newShiftId);
   return newShiftId;
 }
 
@@ -888,7 +886,6 @@ export async function masterSystemPurge(): Promise<string[]> {
     db.groomingLogs.clear(),
     db.boardingRecords.clear()
   ]);
-  localStorage.removeItem('ceylon_active_shift_id');
   return logs;
 }
 
@@ -910,7 +907,6 @@ export async function nuclearWipeLocal(): Promise<string[]> {
       store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
     )
   );
-  localStorage.removeItem('ceylon_active_shift_id');
   return logs;
 }
 

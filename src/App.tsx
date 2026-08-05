@@ -338,8 +338,12 @@ function App() {
           // Staff login accounts now live in Supabase `users`, not IndexedDB.
           const hUsers: any[] = await fetchUsers();
 
-          let hActiveShift = await db.system.getItem('active_shift') || null;
-          if (!hActiveShift) {
+          // Active-shift source of truth: when Supabase is configured, the cloud
+          // `shifts` table is authoritative — a stale local mirror must never
+          // override it (e.g. after another device closes the shift). The local
+          // db.system mirror is consulted ONLY in genuine offline mode (no config).
+          let hActiveShift: any = null;
+          if (SYNC_ENABLED) {
             const { shift: cloudShift } = await fetchActiveShiftDetails();
             if (cloudShift) {
               hActiveShift = {
@@ -350,6 +354,8 @@ function App() {
                 openingFloat: cloudShift.opening_float || (cloudShift.openingFloatCents || 0) / 100
               };
             }
+          } else {
+            hActiveShift = await db.system.getItem('active_shift') || null;
           }
           const hConfig = (await fetchSystemConfig()) || (await db.system.getItem('config'));
 

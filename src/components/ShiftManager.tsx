@@ -146,13 +146,11 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     };
 
     // Persist the shift to Supabase so any device can find the open shift.
-    // Use insert (not openShift()) so the id we built stays consistent with the
-    // localStorage cache, setActiveShift, and the shiftId stamped onto invoices.
+    // Use insert (not openShift()) so the id we built stays consistent with
+    // setActiveShift and the shiftId stamped onto invoices.
     if (!supabase) { showToast('No internet connection. Cannot open shift.', 'error'); return; }
     const { error } = await supabase.from('shifts').insert(newShift);
     if (error) { showToast(`Failed to open shift: ${error.message}`, 'error'); return; }
-
-    localStorage.setItem('ceylon_active_shift_id', newShift.id);
 
     const activeShiftState: ActiveShift = {
       id: newShift.id,
@@ -211,7 +209,6 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       // reconciliation as saved. Clear the stale active-shift UI and point the
       // operator at the original close in the report.
       setActiveShift(null);
-      localStorage.removeItem('ceylon_active_shift_id');
       showToast('This shift was already closed — no duplicate reconciliation was created. Check the original close in the report.', 'warning');
       return;
     }
@@ -219,7 +216,6 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     // Both writes committed. Only now clear the local active-shift state.
     setLastClosedShift(log);
     setActiveShift(null);
-    localStorage.removeItem('ceylon_active_shift_id');
 
     if (drawerMath.discrepancy !== 0) {
       showToast(`Warning: Drawer discrepancy of Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)} detected.`, 'warning');
