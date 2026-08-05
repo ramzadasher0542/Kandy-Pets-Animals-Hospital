@@ -166,64 +166,18 @@ export async function atomicStockDecrement(itemId: string, qtyDelta: number): Pr
   const unlock = await globalMutex.lock();
   try {
     if (!supabase) throw new Error('No internet connection');
-    const { data: itemData, error: itemError } = await supabase
-      .from('inventory')
-      .select('*')
-      .eq('id', itemId)
-      .maybeSingle();
-    if (itemError) throw itemError;
-    if (!itemData) throw new Error(`ITEM_NOT_FOUND: ${itemId}`);
-    const item = itemData as InventoryItem;
-
-    const newStock = Math.max(0, item.stock + qtyDelta);
-
-    // Fetch all batches for this item from Supabase
-    const { data: batchData, error: batchError } = await supabase
-      .from('inventory_batches')
-      .select('*')
-      .eq('inventoryItemId', itemId);
-    if (batchError) throw batchError;
-    const batches = ((batchData || []) as InventoryBatch[]).filter((b: any) => !b.is_deleted);
-
-    if (batches.length > 0) {
-      if (qtyDelta < 0) {
-        let remainingToConsume = Math.abs(qtyDelta);
-        // Sort by expiry ascending (soonest first)
-        const activeBatches = batches.filter(b => b.quantityRemaining > 0).sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-        
-        for (const batch of activeBatches) {
-          if (remainingToConsume <= 0) break;
-          const consumeFromBatch = Math.min(batch.quantityRemaining, remainingToConsume);
-          batch.quantityRemaining -= consumeFromBatch;
-          remainingToConsume -= consumeFromBatch;
-          if (!supabase) throw new Error('No internet connection');
-          const { error } = await supabase.from('inventory_batches').upsert(batch);
-          if (error) throw error;
-        }
-      } else if (qtyDelta > 0) {
-        // For returns/voids, add to the newest batch
-        const sortedBatches = batches.sort((a, b) => new Date(b.expiryDate).getTime() - new Date(a.expiryDate).getTime());
-        if (sortedBatches.length > 0) {
-          const newestBatch = sortedBatches[0];
-          newestBatch.quantityRemaining += qtyDelta;
-          if (!supabase) throw new Error('No internet connection');
-          const { error } = await supabase.from('inventory_batches').upsert(newestBatch);
-          if (error) throw error;
-        }
-      }
-
-      // Batch-tracked item: batch totals are the source of truth. Recompute
-      // item.stock (and expiry/lot) from the now-updated batches and save it.
-      const total = await recomputeItemStockFromBatches(itemId);
-      return total;
-    }
-
-    // No batches: this item uses manual stock — apply the delta directly.
-    item.stock = newStock;
-    if (!supabase) throw new Error('No internet connection');
-    const { error } = await supabase.from('inventory').upsert(item);
+    // Atomicity is now enforced by the Postgres RPC public.atomic_stock_decrement
+    // (single transaction + FOR UPDATE row locks on the inventory row and affected
+    // batches), not by this browser-only mutex. The RPC preserves the previous
+    // semantics — FEFO consumption for negative deltas, newest-batch return for
+    // positive deltas, manual-stock items without batches, soft-deleted batches
+    // ignored, expiry/lot recomputed — and returns the resulting numeric stock.
+    const { data, error } = await supabase.rpc('atomic_stock_decrement', {
+      p_item_id: itemId,
+      p_qty_delta: qtyDelta,
+    });
     if (error) throw error;
-    return newStock;
+    return Number(data);
   } finally {
     unlock();
   }
