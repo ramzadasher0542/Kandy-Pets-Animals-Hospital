@@ -146,7 +146,8 @@ import {
   upsertAppointment, 
   upsertMedicalRecord,
   deleteMedicalRecord, 
-  upsertInvoice, 
+  upsertInvoice,
+  commitCheckoutInvoiceAndStock,
   upsertAlert,
   upsertVaccination,
   upsertGroomingLog,
@@ -1153,8 +1154,22 @@ function App() {
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
     let cloudFailed = false;
     try {
-      try { await upsertInvoice(invoice); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
-      setInvoices(prev => [invoice, ...prev]);
+      // ATOMIC (invoice + inventory ONLY): persist the invoice and decrement all
+      // of its stock items in one DB transaction via the RPC. A failure here means
+      // NOTHING committed, so it propagates to the outer catch as a real checkout
+      // error (not a "saved locally" warning). Idempotent by invoice id on retry.
+      // The post-commit effects below (shift, client value, visit, source billing)
+      // are NOT part of this transaction.
+      const stockItems = cart
+        .filter((ci: any) => !['service', 'lab_service'].includes(ci.category))
+        .map((ci: any) => ({ item_id: ci.id, qty: ci.cartQuantity }));
+      const commit = await commitCheckoutInvoiceAndStock(invoice, stockItems);
+      setInvoices(prev => (prev.some(i => i.id === invoice.id) ? prev : [invoice, ...prev]));
+      setInventory(prev => prev.map(item =>
+        Object.prototype.hasOwnProperty.call(commit.remaining_stock, item.id)
+          ? { ...item, stock: commit.remaining_stock[item.id] }
+          : item
+      ));
 
       // Attach this sale's revenue to the open shift (Supabase). Paid sales only.
       // Non-fatal: the invoice is already committed, so a shift-attach failure
@@ -1185,20 +1200,20 @@ function App() {
               lifetime_value: (client.lifetime_value || 0) + invoice.sales_total,
               updated_at: new Date().toISOString()
             };
-            await handleUpdateClient(updatedClient);
+            // Post-commit effect: invoice + stock already committed atomically, so a
+            // failure here must NOT masquerade as a checkout failure. Warn instead.
+            try {
+              await handleUpdateClient(updatedClient);
+            } catch (e) {
+              cloudFailed = true;
+              if (import.meta.env.DEV) console.error('[CeylonPets] Client lifetime update failed:', e);
+            }
           }
         }
       }
 
-      for (const cartItem of cart) {
-        if (!['service', 'lab_service'].includes(cartItem.category)) {
-          // Cloud-only: a failed decrement aborts checkout via the outer catch
-          // rather than fabricating a stock level from IndexedDB.
-          const newStock = await atomicStockDecrement(cartItem.id, -cartItem.cartQuantity);
-          const finalStock = newStock;
-          setInventory(prev => prev.map(item => item.id === cartItem.id ? { ...item, stock: finalStock } : item));
-        }
-      }
+      // (Stock decrements now happen inside commitCheckoutInvoiceAndStock above,
+      // atomically with the invoice write — the separate loop was removed.)
 
       // Close visit (appointment complete + queue removal) via unified path
       if (invoice.appointmentId) {

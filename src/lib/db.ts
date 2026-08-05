@@ -383,6 +383,40 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
   }
 }
 
+export interface CheckoutStockItem { item_id: string; qty: number; }
+export interface CheckoutCommitResult {
+  invoice_id: string;
+  already_committed: boolean;
+  remaining_stock: Record<string, number>;
+}
+
+// Persists ONE checkout invoice and decrements ALL of its stock items in a single
+// DB transaction via the commit_checkout_invoice_and_stock RPC (invoice + inventory
+// are atomic together; post-commit effects like shift/visit/source billing are NOT).
+// Idempotent by invoice id: a retry for an already-committed invoice does not
+// decrement stock again. Fail-closed — throws on any RPC error, no local fallback.
+// The invoice `date` is pre-formatted exactly as upsertInvoice does so the stored
+// representation is identical.
+export async function commitCheckoutInvoiceAndStock(
+  inv: Invoice,
+  stockItems: CheckoutStockItem[]
+): Promise<CheckoutCommitResult> {
+  if (!inv || !inv.id) throw new Error('INVALID_INVOICE_ID');
+  if (!supabase) throw new Error('No internet connection');
+  const formattedInv = { ...inv, date: formatDisplayDate(inv.date) };
+  const { data, error } = await supabase.rpc('commit_checkout_invoice_and_stock', {
+    p_invoice: formattedInv,
+    p_stock_items: stockItems,
+  });
+  if (error) throw error;
+  const result = (data || {}) as Partial<CheckoutCommitResult>;
+  return {
+    invoice_id: result.invoice_id ?? inv.id,
+    already_committed: !!result.already_committed,
+    remaining_stock: result.remaining_stock ?? {},
+  };
+}
+
 // ==========================================
 // NOTIFICATIONS
 // ==========================================
