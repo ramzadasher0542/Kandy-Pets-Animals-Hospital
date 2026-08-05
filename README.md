@@ -8,7 +8,7 @@ inventory in one place. It works fully offline on the local device and
 transparently syncs to the cloud when a connection is available, so the front
 desk never stops during a network drop.
 
-**Live demo:** https://ceylon-pets-cloud-pos.vercel.app/
+**Live demo:** https://kpah-aps.vercel.app/
 
 ## Features
 
