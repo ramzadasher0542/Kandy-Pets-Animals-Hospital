@@ -676,10 +676,11 @@ CREATE TABLE deletion_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_deletion_audit_updated_at ON deletion_audit ("updated_at");
 ALTER TABLE deletion_audit ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon write access on deletion_audit"
-  ON deletion_audit FOR ALL TO anon
-  USING (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__')
-  WITH CHECK (current_setting('request.headers', true)::json->>'x-sync-secret' = '__SYNC_SECRET_PLACEHOLDER__');
+-- Step 20A: SAFE NO-READ posture. RLS is enabled with NO anon/authenticated
+-- policy, so deletion-audit history is denied to the app roles by default
+-- (service_role bypasses RLS for admin/backup). The legacy x-sync-secret
+-- placeholder policy is intentionally NOT recreated. A read policy is deferred
+-- until the ReportsManager Supabase auth model is decided.
 
 -- ---------------------------------------------------------------------------
 -- 23. INVENTORY BATCHES (FEFO)
