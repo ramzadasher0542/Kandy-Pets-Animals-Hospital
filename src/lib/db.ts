@@ -671,6 +671,8 @@ export async function openShift(openedBy: string, openingFloatCents: number): Pr
 // pair. The RPC raises SHIFT_NOT_FOUND for a missing shift. Fail-closed: a missing
 // client or any RPC error throws; there is NO IndexedDB fallback. The caller is
 // responsible for clearing local active-shift state only after this resolves.
+// Returns already_closed=true when the shift was already closed (a retry / lost
+// response), in which case the RPC performed no second insert and no re-close.
 export async function closeShiftAndReconcile(
   shiftId: string,
   actualCashCents: number,
@@ -678,11 +680,11 @@ export async function closeShiftAndReconcile(
   discrepancyCents: number,
   notes: string,
   reconciliation: ShiftReconciliation
-): Promise<void> {
+): Promise<{ already_closed: boolean }> {
   if (!supabase) throw new Error('No internet connection');
   if (!shiftId) throw new Error('INVALID_SHIFT_ID');
   if (!reconciliation || !reconciliation.id) throw new Error('INVALID_SHIFT_RECONCILIATION');
-  const { error } = await supabase.rpc('close_shift_and_reconcile', {
+  const { data, error } = await supabase.rpc('close_shift_and_reconcile', {
     p_shift_id: shiftId,
     p_actual_cash_cents: actualCashCents,
     p_expected_cash_cents: expectedCashCents,
@@ -691,6 +693,7 @@ export async function closeShiftAndReconcile(
     p_reconciliation: reconciliation,
   });
   if (error) throw error;
+  return { already_closed: !!(data as any)?.already_closed };
 }
 
 export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {

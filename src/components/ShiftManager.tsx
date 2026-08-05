@@ -188,8 +188,9 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     // transaction via close_shift_and_reconcile: both commit or neither does, so a
     // failure can no longer close the shift while losing the reconciliation.
     const notes = log.status === 'balanced' ? 'Balanced' : `Discrepancy Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)}`;
+    let result: { already_closed: boolean };
     try {
-      await closeShiftAndReconcile(
+      result = await closeShiftAndReconcile(
         activeShift.id,
         Math.round((parseFloat(actualClosingInput) || 0) * 100),
         Math.round(drawerMath.expectedCash * 100),
@@ -201,6 +202,17 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       // Neither the shift nor the reconciliation persisted — do not claim the
       // shift closed and do not clear the local active shift.
       showToast(`Failed to close shift: ${e.message}`, 'error');
+      return;
+    }
+
+    if (result.already_closed) {
+      // This shift was already closed by a prior (possibly lost-response) call.
+      // The RPC created NO duplicate reconciliation, so do not show this attempt's
+      // reconciliation as saved. Clear the stale active-shift UI and point the
+      // operator at the original close in the report.
+      setActiveShift(null);
+      localStorage.removeItem('ceylon_active_shift_id');
+      showToast('This shift was already closed — no duplicate reconciliation was created. Check the original close in the report.', 'warning');
       return;
     }
 
