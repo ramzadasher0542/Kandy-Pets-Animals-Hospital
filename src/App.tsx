@@ -138,6 +138,9 @@ import {
   fetchPets,
   fetchClients,
   fetchBoardingRecords,
+  fetchVaccinations,
+  fetchGroomingLogs,
+  fetchLabResults,
   upsertClient,
   upsertInventoryItem,
   upsertAppointment, 
@@ -1238,22 +1241,51 @@ function App() {
         }
       }
 
+      // Source records now live in Supabase (the local mirror can be empty on a
+      // fresh cloud-only device). Load each needed collection with its fail-closed
+      // helper, isolated per type so one failed read cannot block the others and
+      // cannot void the already-committed sale — a failure only raises the existing
+      // cloud-retry warning.
+      const refTypes = new Set([...uniqueRefs.values()].map(r => r.type));
+      const vaccById = new Map<string, Vaccination>();
+      const groomById = new Map<string, GroomingLog>();
+      const labById = new Map<string, LabResult>();
+      const boardById = new Map<string, BoardingRecord>();
+
+      if (refTypes.has('vaccination')) {
+        try { (await fetchVaccinations()).forEach(r => vaccById.set(r.id, r)); }
+        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Vaccination read for billing failed:', e); }
+      }
+      if (refTypes.has('grooming')) {
+        try { (await fetchGroomingLogs()).forEach(r => groomById.set(r.id, r)); }
+        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Grooming read for billing failed:', e); }
+      }
+      if (refTypes.has('lab')) {
+        try { (await fetchLabResults()).forEach(r => labById.set(r.id, r)); }
+        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Lab read for billing failed:', e); }
+      }
+      if (refTypes.has('boarding')) {
+        try { (await fetchBoardingRecords()).forEach(r => boardById.set(r.id, r)); }
+        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Boarding read for billing failed:', e); }
+      }
+
       for (const ref of uniqueRefs.values()) {
         try {
           if (ref.type === 'vaccination') {
-            const rec = await db.vaccinations.getItem<Vaccination>(ref.id);
+            const rec = vaccById.get(ref.id);
             if (rec) await upsertVaccination({ ...rec, billed: true, updated_at: new Date().toISOString() });
           } else if (ref.type === 'grooming') {
-            const rec = await db.groomingLogs.getItem<GroomingLog>(ref.id);
+            const rec = groomById.get(ref.id);
             if (rec) await upsertGroomingLog({ ...rec, billed: true, updated_at: new Date().toISOString() });
           } else if (ref.type === 'lab') {
-            const rec = await db.labResults.getItem<LabResult>(ref.id);
+            const rec = labById.get(ref.id);
             if (rec) await upsertLabResult({ ...rec, billed: true, updated_at: new Date().toISOString() });
           } else if (ref.type === 'boarding') {
-            const rec = await db.boardingRecords.getItem<BoardingRecord>(ref.id);
+            const rec = boardById.get(ref.id);
             if (rec) await upsertBoardingRecord({ ...rec, billed: true, updated_at: new Date().toISOString() });
           }
         } catch (e) {
+          cloudFailed = true;
           if (import.meta.env.DEV) console.error(`Failed to mark swept record billed:`, e);
         }
       }
