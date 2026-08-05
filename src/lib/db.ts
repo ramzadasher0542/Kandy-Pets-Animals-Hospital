@@ -614,19 +614,6 @@ export async function fetchShiftReconciliations(): Promise<ShiftReconciliation[]
   return items.filter(value => !(value as any).is_deleted);
 }
 
-// Persist one shift reconciliation to the same table ReportsManager reads, so the
-// read and write paths agree. The ShiftReconciliation payload already uses the
-// live quoted camelCase column names; updated_at / _dirty / is_deleted are left to
-// their column defaults. Fail-closed: a missing Supabase client or a write error
-// throws — the caller must surface it. There is deliberately NO IndexedDB
-// fallback, so a failed write is reported rather than silently kept locally.
-export async function upsertShiftReconciliation(log: ShiftReconciliation): Promise<void> {
-  if (!log || !log.id) throw new Error('INVALID_SHIFT_RECONCILIATION');
-  if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('shift_reconciliations').upsert(log);
-  if (error) throw error;
-}
-
 /**
  * Cash drawer adjustment (IN/OUT). Shape mirrors the CashAdjustment interface
  * declared in ShiftManager/ReportsManager — it is not exported from types.ts,
@@ -677,29 +664,33 @@ export async function openShift(openedBy: string, openingFloatCents: number): Pr
   return newShiftId;
 }
 
-export async function closeShift(
-  shiftId: string, 
-  actualCashCents: number, 
-  expectedCashCents: number, 
-  discrepancyCents: number, 
-  notes: string
+// Atomic shift close + reconciliation. One Supabase RPC transaction updates the
+// shifts row (endTime, cents, notes, isOpen=false, actual_cash, discrepancy_reason,
+// updated_at) AND inserts the matching shift_reconciliations row — both commit or
+// neither does, replacing the previous separate closeShift + upsertShiftReconciliation
+// pair. The RPC raises SHIFT_NOT_FOUND for a missing shift. Fail-closed: a missing
+// client or any RPC error throws; there is NO IndexedDB fallback. The caller is
+// responsible for clearing local active-shift state only after this resolves.
+export async function closeShiftAndReconcile(
+  shiftId: string,
+  actualCashCents: number,
+  expectedCashCents: number,
+  discrepancyCents: number,
+  notes: string,
+  reconciliation: ShiftReconciliation
 ): Promise<void> {
   if (!supabase) throw new Error('No internet connection');
-  const now = new Date().toISOString();
-  const { error } = await supabase.from('shifts').update({
-    endTime: now,
-    expectedCashCents: Math.round(expectedCashCents),
-    actualCashCents: Math.round(actualCashCents),
-    discrepancyCents: Math.round(discrepancyCents),
-    notes: notes || 'Shift closed',
-    isOpen: false,
-    actual_cash: Math.round(actualCashCents) / 100, // FIXED: ensure integer before division
-    discrepancy_reason: notes || '',
-    updated_at: now
-  }).eq('id', shiftId);
+  if (!shiftId) throw new Error('INVALID_SHIFT_ID');
+  if (!reconciliation || !reconciliation.id) throw new Error('INVALID_SHIFT_RECONCILIATION');
+  const { error } = await supabase.rpc('close_shift_and_reconcile', {
+    p_shift_id: shiftId,
+    p_actual_cash_cents: actualCashCents,
+    p_expected_cash_cents: expectedCashCents,
+    p_discrepancy_cents: discrepancyCents,
+    p_notes: notes,
+    p_reconciliation: reconciliation,
+  });
   if (error) throw error;
-
-  localStorage.removeItem('ceylon_active_shift_id');
 }
 
 export async function addRevenueToActiveShift(method: PaymentMethod, amountCents: number): Promise<void> {

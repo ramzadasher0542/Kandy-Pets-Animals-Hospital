@@ -8,7 +8,7 @@ import { Modal } from './ui/Modal';
 import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2 } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
-import { fetchActiveShiftDetails, addCashAdjustment, closeShift } from '../lib/db';
+import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
@@ -31,13 +31,12 @@ interface ShiftManagerProps {
   currentUser: StaffUser;
   activeShift: ActiveShift | null;
   setActiveShift: (s: ActiveShift | null) => void;
-  onSaveShift: (log: ShiftReconciliation) => Promise<void>;
   onVerifyMasterPin?: (pin: string) => boolean;
 }
 
 const formatCurrency = (v: number) => `Rs. ${v.toFixed(2)}`;
 
-export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift, onSaveShift, onVerifyMasterPin }: ShiftManagerProps) {
+export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift, onVerifyMasterPin }: ShiftManagerProps) {
   const [openingFloatInput, setOpeningFloatInput] = useState('');
   const [actualClosingInput, setActualClosingInput] = useState('');
   const [lastClosedShift, setLastClosedShift] = useState<ShiftReconciliation | null>(null);
@@ -185,40 +184,30 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     };
 
     // Close the shift in Supabase (rupees → integer cents to match the columns).
+    // The shift-close UPDATE and the reconciliation INSERT run in ONE database
+    // transaction via close_shift_and_reconcile: both commit or neither does, so a
+    // failure can no longer close the shift while losing the reconciliation.
     const notes = log.status === 'balanced' ? 'Balanced' : `Discrepancy Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)}`;
     try {
-      await closeShift(
+      await closeShiftAndReconcile(
         activeShift.id,
         Math.round((parseFloat(actualClosingInput) || 0) * 100),
         Math.round(drawerMath.expectedCash * 100),
         Math.round(drawerMath.discrepancy * 100),
-        notes
+        notes,
+        log
       );
     } catch (e: any) {
+      // Neither the shift nor the reconciliation persisted — do not claim the
+      // shift closed and do not clear the local active shift.
       showToast(`Failed to close shift: ${e.message}`, 'error');
       return;
     }
 
-    // NOTE: closing the shift (above) and writing the reconciliation row (below)
-    // are still two SEPARATE cloud operations in this step — they are NOT one
-    // database transaction. The close can therefore succeed while the
-    // reconciliation write fails; that case is reported rather than hidden, and
-    // the reconciliation is not persisted anywhere else (no local fallback).
-    let reconSaved = true;
-    try {
-      await onSaveShift(log);
-    } catch (e: any) {
-      reconSaved = false;
-      showToast(`Shift closed, but saving the reconciliation failed: ${e.message}. It was not recorded.`, 'error');
-    }
-
-    // The shift is already closed in the database, so the local active-shift state
-    // is cleared either way to stay consistent with it. The reconciliation summary
-    // is only shown when the row actually saved.
-    if (reconSaved) setLastClosedShift(log);
+    // Both writes committed. Only now clear the local active-shift state.
+    setLastClosedShift(log);
     setActiveShift(null);
     localStorage.removeItem('ceylon_active_shift_id');
-    if (!reconSaved) return;
 
     if (drawerMath.discrepancy !== 0) {
       showToast(`Warning: Drawer discrepancy of Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)} detected.`, 'warning');
