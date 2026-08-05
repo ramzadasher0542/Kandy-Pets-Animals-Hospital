@@ -1244,8 +1244,10 @@ function App() {
       // Source records now live in Supabase (the local mirror can be empty on a
       // fresh cloud-only device). Load each needed collection with its fail-closed
       // helper, isolated per type so one failed read cannot block the others and
-      // cannot void the already-committed sale — a failure only raises the existing
-      // cloud-retry warning.
+      // cannot void the already-committed sale. Source-billing failures are tracked
+      // separately from `cloudFailed`: these records are NOT saved locally and there
+      // is no sync queue, so the "Saved locally, will retry" message would be false.
+      let sourceBillingFailed = false;
       const refTypes = new Set([...uniqueRefs.values()].map(r => r.type));
       const vaccById = new Map<string, Vaccination>();
       const groomById = new Map<string, GroomingLog>();
@@ -1254,44 +1256,54 @@ function App() {
 
       if (refTypes.has('vaccination')) {
         try { (await fetchVaccinations()).forEach(r => vaccById.set(r.id, r)); }
-        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Vaccination read for billing failed:', e); }
+        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Vaccination read for billing failed:', e); }
       }
       if (refTypes.has('grooming')) {
         try { (await fetchGroomingLogs()).forEach(r => groomById.set(r.id, r)); }
-        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Grooming read for billing failed:', e); }
+        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Grooming read for billing failed:', e); }
       }
       if (refTypes.has('lab')) {
         try { (await fetchLabResults()).forEach(r => labById.set(r.id, r)); }
-        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Lab read for billing failed:', e); }
+        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Lab read for billing failed:', e); }
       }
       if (refTypes.has('boarding')) {
         try { (await fetchBoardingRecords()).forEach(r => boardById.set(r.id, r)); }
-        catch (e) { cloudFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Boarding read for billing failed:', e); }
+        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Boarding read for billing failed:', e); }
       }
 
       for (const ref of uniqueRefs.values()) {
         try {
+          let rec: Vaccination | GroomingLog | LabResult | BoardingRecord | undefined;
           if (ref.type === 'vaccination') {
-            const rec = vaccById.get(ref.id);
+            rec = vaccById.get(ref.id);
             if (rec) await upsertVaccination({ ...rec, billed: true, updated_at: new Date().toISOString() });
           } else if (ref.type === 'grooming') {
-            const rec = groomById.get(ref.id);
+            rec = groomById.get(ref.id);
             if (rec) await upsertGroomingLog({ ...rec, billed: true, updated_at: new Date().toISOString() });
           } else if (ref.type === 'lab') {
-            const rec = labById.get(ref.id);
+            rec = labById.get(ref.id);
             if (rec) await upsertLabResult({ ...rec, billed: true, updated_at: new Date().toISOString() });
           } else if (ref.type === 'boarding') {
-            const rec = boardById.get(ref.id);
+            rec = boardById.get(ref.id);
             if (rec) await upsertBoardingRecord({ ...rec, billed: true, updated_at: new Date().toISOString() });
           }
+          // A referenced ID absent from its successfully fetched map means the
+          // record could not be billed — flag it rather than silently skipping.
+          if ((ref.type === 'vaccination' || ref.type === 'grooming' || ref.type === 'lab' || ref.type === 'boarding') && !rec) {
+            sourceBillingFailed = true;
+            if (import.meta.env.DEV) console.error(`[CeylonPets] Source record not found for billing (type=${ref.type}).`);
+          }
         } catch (e) {
-          cloudFailed = true;
+          sourceBillingFailed = true;
           if (import.meta.env.DEV) console.error(`Failed to mark swept record billed:`, e);
         }
       }
 
       // Local sale is fully committed; only the cloud push failed on some rows.
       if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
+      // Source records have no local save/sync queue, so report their failure
+      // accurately and separately (both warnings can appear if both categories fail).
+      if (sourceBillingFailed) showToast('Sale saved, but one or more linked service records were not billed in the cloud.', 'warning');
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Checkout failed:', error);
       showToast(`Checkout Error: ${error.message}`, 'error');
