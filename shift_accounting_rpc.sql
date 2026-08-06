@@ -11,10 +11,14 @@
 --    invoice's OWN shiftId inside the same transaction, only on first insert
 --    (ON CONFLICT DO NOTHING) -> revenue is applied exactly once per invoice, so a
 --    lost-response retry cannot double-count. Everything else about the RPC is unchanged.
--- 4) void_invoice_and_reverse_revenue(invoice) -> atomically flips a not-yet-void invoice
---    to 'void' (preserving the appointment->'booked' cascade) and reverses the exact
---    revenue once, attributed to the invoice's shiftId. Idempotent: a second call sees
---    paymentStatus='void' and returns already_void without reversing again.
+-- 4) void_invoice_and_reverse_revenue(invoice) -> ATOMIC void boundary (Step 29):
+--    in one transaction it locks the invoice, restores stock for its non-service line
+--    items (same primitive as checkout, positive delta), flips to 'void', reverts the
+--    linked appointment to 'booked', and reverses the exact shift revenue once.
+--    Idempotent: an already-void invoice returns already_void with NO stock/revenue/
+--    appointment change. A newly-voided PAID invoice REQUIRES a valid shiftId (fails
+--    rather than silently skipping the reversal). Returns the restocked map so the
+--    client updates inventory UI only after success.
 -- 5) uniq_shifts_single_open -> smallest DB protection against concurrent open shifts:
 --    a partial unique index allowing at most one row with isOpen = true. Live data was
 --    inspected first (exactly 1 open shift), so this creates cleanly without touching data.
@@ -215,37 +219,77 @@ DECLARE
   v_bank integer;
   v_appt text;
   v_was_paid boolean;
+  v_item jsonb;
+  v_item_id uuid;
+  v_qty integer;
+  v_remaining numeric;
+  v_restocked jsonb := '{}'::jsonb;
 BEGIN
   IF p_invoice_id IS NULL THEN
     RAISE EXCEPTION 'INVALID_INVOICE_ID';
   END IF;
+
+  -- Lock the invoice first so retries / concurrent voids serialize on this row.
   SELECT * INTO v_inv FROM public.invoices WHERE id = p_invoice_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'INVOICE_NOT_FOUND: %', p_invoice_id;
   END IF;
 
-  -- Idempotent: a retry / concurrent second void reverses nothing again.
+  -- Idempotent: already void -> touch nothing (no second restock / reversal /
+  -- appointment / state change).
   IF v_inv."paymentStatus" = 'void' THEN
-    RETURN jsonb_build_object('invoice_id', p_invoice_id, 'already_void', true, 'reversed', false);
+    RETURN jsonb_build_object('invoice_id', p_invoice_id, 'already_void', true,
+                             'reversed', false, 'restocked', '{}'::jsonb);
   END IF;
 
   v_was_paid := (v_inv."paymentStatus" = 'paid');
 
+  -- A newly-voided PAID invoice must carry a valid shiftId; fail rather than
+  -- silently losing the revenue reversal.
+  IF v_was_paid THEN
+    IF NULLIF(v_inv."shiftId", '') IS NULL THEN
+      RAISE EXCEPTION 'MISSING_SHIFT_ID_FOR_PAID_INVOICE: %', p_invoice_id;
+    END IF;
+    BEGIN
+      PERFORM (v_inv."shiftId")::uuid;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'INVALID_SHIFT_ID_FOR_PAID_INVOICE: %', v_inv."shiftId";
+    END;
+  END IF;
+
+  -- 1) Restore stock for non-service line items in THIS transaction, using the same
+  --    primitive checkout used (positive delta = restock). All-or-nothing.
+  IF jsonb_typeof(v_inv.items) = 'array' THEN
+    FOR v_item IN SELECT * FROM jsonb_array_elements(v_inv.items) LOOP
+      IF COALESCE(v_item->>'category', '') NOT IN ('service', 'lab_service')
+         AND NULLIF(v_item->>'itemId', '') IS NOT NULL THEN
+        v_item_id := (v_item->>'itemId')::uuid;
+        v_qty := round(COALESCE((v_item->>'quantity')::numeric, 0))::integer;
+        IF v_qty > 0 THEN
+          v_remaining := public.atomic_stock_decrement(v_item_id, v_qty);
+          v_restocked := v_restocked || jsonb_build_object(v_item_id::text, v_remaining);
+        END IF;
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- 2) Mark the invoice void.
   UPDATE public.invoices SET "paymentStatus" = 'void', updated_at = now() WHERE id = p_invoice_id;
 
-  -- Preserve the existing void cascade: revert the linked appointment to 'booked'.
+  -- 3) Revert the linked appointment to 'booked' (preserved cascade).
   v_appt := NULLIF(v_inv."appointmentId", '');
   IF v_appt IS NOT NULL THEN
     UPDATE public.appointments SET status = 'booked' WHERE id = v_appt::uuid;
   END IF;
 
-  -- Reverse the exact revenue exactly once, on the invoice's own shift.
-  IF v_was_paid AND NULLIF(v_inv."shiftId", '') IS NOT NULL THEN
+  -- 4) Reverse the exact shift revenue exactly once (paid only; shiftId validated above).
+  IF v_was_paid THEN
     SELECT * INTO v_cash, v_card, v_bank FROM public._invoice_method_cents(to_jsonb(v_inv));
     PERFORM public.apply_shift_revenue(v_inv."shiftId"::uuid, -v_cash, -v_card, -v_bank);
   END IF;
 
-  RETURN jsonb_build_object('invoice_id', p_invoice_id, 'already_void', false, 'reversed', v_was_paid);
+  RETURN jsonb_build_object('invoice_id', p_invoice_id, 'already_void', false,
+                           'reversed', v_was_paid, 'restocked', v_restocked);
 END;
 $$;
 

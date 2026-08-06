@@ -702,7 +702,7 @@ export async function closeShiftAndReconcile(
 // reversed on this call.
 export async function voidInvoiceAndReverseRevenue(
   invoiceId: string
-): Promise<{ already_void: boolean; reversed: boolean }> {
+): Promise<{ already_void: boolean; reversed: boolean; restocked: Record<string, number> }> {
   if (!supabase) throw new Error('No internet connection');
   if (!invoiceId) throw new Error('INVALID_INVOICE_ID');
   const { data, error } = await supabase.rpc('void_invoice_and_reverse_revenue', {
@@ -712,6 +712,7 @@ export async function voidInvoiceAndReverseRevenue(
   return {
     already_void: !!(data as any)?.already_void,
     reversed: !!(data as any)?.reversed,
+    restocked: ((data as any)?.restocked || {}) as Record<string, number>,
   };
 }
 

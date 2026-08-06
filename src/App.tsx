@@ -1106,23 +1106,22 @@ function App() {
       if (targetError) throw targetError;
       const target = targetData as Invoice | null;
       if (target) {
-        const wasPaid = target.paymentStatus === 'paid';
-        if (target.paymentStatus !== 'void') {
-          for (const item of target.items) {
-            if (!['service', 'lab_service'].includes(item.category)) {
-              // Cloud-only restock: a failure propagates to the outer catch so the
-              // invoice is NOT voided on a stale/fabricated local stock value.
-              const newStock = await atomicStockDecrement(item.itemId, +item.quantity);
-              const finalStock = newStock;
-              setInventory(prev => prev.map(invItem => invItem.id === item.itemId ? { ...invItem, stock: finalStock } : invItem));
-            }
-          }
-        }
-        // Atomic: flip the invoice to void, revert its linked appointment, and
-        // reverse the exact shift revenue in ONE idempotent RPC (no separate revenue
-        // undo, no double-reverse on retry). Throws on failure -> outer catch, so a
-        // failed void changes nothing.
+        // ATOMIC void boundary: ONE server transaction restores stock for the
+        // invoice's non-service items, flips it to void, reverts the linked
+        // appointment, and reverses the exact shift revenue — idempotent by invoice
+        // status. No client-side pre-RPC restock (that could double-restock on a
+        // retry/concurrent void). Throws on failure -> outer catch, so a failed void
+        // changes nothing at all.
         const voidResult = await voidInvoiceAndReverseRevenue(id);
+
+        // Reflect the RPC's authoritative restored stock levels, then the voided
+        // invoice, in local UI — only after the RPC succeeded.
+        const restocked = voidResult.restocked || {};
+        setInventory(prev => prev.map(item =>
+          Object.prototype.hasOwnProperty.call(restocked, item.id)
+            ? { ...item, stock: restocked[item.id] }
+            : item
+        ));
         const voided = { ...target, paymentStatus: 'void' as const };
         setInvoices(prev => {
           const exists = prev.some(i => i.id === id);
@@ -1131,8 +1130,9 @@ function App() {
         });
 
         // MISSION 3: Decrement Client Lifetime Value once, only when THIS call
-        // actually performed the void of a previously-paid invoice.
-        if (wasPaid && !voidResult.already_void && target.patientId && target.patientId !== 'RETAIL') {
+        // actually voided a previously-paid invoice (RPC reversed flag; false on an
+        // idempotent repeat).
+        if (voidResult.reversed && target.patientId && target.patientId !== 'RETAIL') {
           const pet = pets.find(p => p.id === target.patientId);
           if (pet) {
             const client = clients.find(c => c.client_id === pet.clientId);
