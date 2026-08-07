@@ -8,6 +8,13 @@ Last deployed application-code commit: `c2507f7`
 
 Live deployment: `https://kpah-aps.vercel.app/`
 
+## Agent Gate
+
+- Required code/SQL model: **Claude Opus 4.8**.
+- Required live database tool: **Supabase MCP ON**.
+- Current coordinator: **GPT-5.6-luna**.
+- Current worker status: **Supabase MCP unavailable**, so live SQL/RLS/PITR proof remains blocked.
+
 ## Accepted
 
 - [x] Workspace synced to GitHub `main`.
