@@ -965,8 +965,7 @@ export async function nuclearWipeLocal(): Promise<string[]> {
 }
 
 export async function reconstituteSystemState(payload: any): Promise<void> {
-  console.warn('[SYSTEM] Restore is disabled. All data lives in Supabase cloud.');
-  return;
+  throw new Error('Restore is unavailable for Supabase-backed data. Use the provider-managed Supabase recovery process.');
   if (!payload || !payload.collections) {
     throw new Error("Invalid backup payload. Ensure this file is a valid CeylonPets JSON export.");
   }
@@ -1125,8 +1124,7 @@ export async function exportFullDatabase(): Promise<string> {
 }
 
 export async function restoreFullDatabase(jsonData: string): Promise<void> {
-  console.warn('[SYSTEM] Restore is disabled. All data lives in Supabase cloud.');
-  return;
+  throw new Error('Restore is unavailable for Supabase-backed data. Use the provider-managed Supabase recovery process.');
   const data = JSON.parse(jsonData);
   const unlock = await globalMutex.lock();
   try {
