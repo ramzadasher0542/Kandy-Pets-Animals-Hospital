@@ -11,6 +11,15 @@ Prove whether Ceylon Pets is safe for real clinic data. Do not redesign the prod
 - Confirm the live deployment is `https://kpah-aps.vercel.app/`.
 - Read the real current source and live state before making any claim.
 
+## Agent And Tool Gate
+
+- Required model for code or SQL changes: **Claude Opus 4.8**.
+- Required live database tool: **Supabase MCP ON**.
+- Browser verification must use the authenticated browser session.
+- GitHub edits must use the authenticated repository checkout and must be synced back locally.
+- The current coordinator model is **GPT-5.6-luna**. It may inspect GitHub and the browser, but it must not invent Supabase results or replace the required database inspection tool.
+- If Claude Opus 4.8 or Supabase MCP is unavailable, mark the affected acceptance item `BLOCKED` and stop. Do not run SQL or claim live RLS, RPC, or recovery proof.
+
 ## Safety Rules
 
 - Never wipe, truncate, purge, or bulk-delete existing clinic data.
@@ -53,4 +62,3 @@ Only make a code change when a concrete acceptance failure requires it. Make the
 - Findings: highest-risk failures first
 - Data mutation: none, or exact disposable marker and cleanup proof
 - One next action: one sentence only
-
