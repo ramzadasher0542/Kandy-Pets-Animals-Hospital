@@ -1176,6 +1176,16 @@ function App() {
           : item
       ));
 
+      // Retry of an already-committed sale: the invoice, stock decrement, and shift
+      // revenue were all applied on the first success, and every post-commit effect
+      // below (client lifetime value, visit close, source billing) ALSO already ran.
+      // Skip them now — re-running would double-count lifetime value and re-bill
+      // source records. Local UI is already reconciled from the RPC result above.
+      if (commit.already_committed) {
+        if (import.meta.env.DEV) console.info('[CeylonPets] Checkout already committed (retry) — skipping post-commit effects.');
+        return;
+      }
+
       // Shift revenue is now attributed to the invoice's OWN shiftId INSIDE
       // commitCheckoutInvoiceAndStock (one transaction, exactly once per invoice) —
       // no separate post-commit "find the latest open shift" attach step.

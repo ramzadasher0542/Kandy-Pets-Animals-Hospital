@@ -54,25 +54,42 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   // not just today's in-memory invoice list.
   const [shiftPaidInvoices, setShiftPaidInvoices] = useState<Invoice[]>([]);
 
+  // Fail-closed reconciliation: closing a shift is BLOCKED unless BOTH the shift's
+  // paid invoices and its cash adjustments loaded cleanly from the cloud. Otherwise
+  // a partial/empty load would let the drawer close on incomplete totals.
+  const [invoicesLoaded, setInvoicesLoaded] = useState(false);
+  const [adjustmentsLoaded, setAdjustmentsLoaded] = useState(false);
+
   // Load adjustments for the current shift from Supabase (visible on any device).
   useEffect(() => {
-    if (!activeShift) { setAdjustments([]); return; }
+    if (!activeShift) { setAdjustments([]); setAdjustmentsLoaded(false); return; }
+    setAdjustmentsLoaded(false);
     const load = async () => {
-      const { adjustments: adjs } = await fetchActiveShiftDetails();
-      setAdjustments((adjs as CashAdjustment[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      try {
+        const { adjustments: adjs } = await fetchActiveShiftDetails();
+        setAdjustments((adjs as CashAdjustment[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setAdjustmentsLoaded(true);
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Shift adjustments load failed:', e);
+        setAdjustmentsLoaded(false);
+        showToast('Could not load this shift’s cash adjustments from the cloud. Close is blocked until this loads.', 'error');
+      }
     };
     load();
   }, [activeShift]);
 
   // Load this shift's paid invoices from the cloud for reconciliation.
   useEffect(() => {
-    if (!activeShift) { setShiftPaidInvoices([]); return; }
+    if (!activeShift) { setShiftPaidInvoices([]); setInvoicesLoaded(false); return; }
+    setInvoicesLoaded(false);
     const load = async () => {
       try {
         setShiftPaidInvoices(await fetchPaidInvoicesForShift(activeShift.id));
+        setInvoicesLoaded(true);
       } catch (e) {
         if (import.meta.env.DEV) console.error('Shift paid-invoice load failed:', e);
-        showToast('Could not load this shift’s sales from the cloud. Reconciliation totals may be incomplete.', 'error');
+        setInvoicesLoaded(false);
+        showToast('Could not load this shift’s sales from the cloud. Close is blocked until this loads.', 'error');
       }
     };
     load();
@@ -204,6 +221,14 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const handleCloseShift = async () => {
     if (!activeShift) return;
     if (actualClosingInput === '') { showToast('Please enter the actual counted drawer cash.', 'error'); return; }
+
+    // Fail closed: never reconcile on incomplete data. If either the shift's paid
+    // invoices or its cash adjustments did not load from the cloud, block the close
+    // so the drawer cannot be reconciled against partial/empty totals.
+    if (!invoicesLoaded || !adjustmentsLoaded) {
+      showToast('Cannot close: this shift’s sales/adjustments have not fully loaded from the cloud. Reload and retry before closing.', 'error');
+      return;
+    }
 
     const log: ShiftReconciliation = {
       id: crypto.randomUUID(),
