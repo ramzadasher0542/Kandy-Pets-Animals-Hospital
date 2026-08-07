@@ -2,7 +2,9 @@
 
 Last verified: 2026-08-07
 
-Current repository head: `c2507f7`
+Current repository head: `0ccd382`
+
+Last deployed application-code commit: `c2507f7`
 
 Live deployment: `https://kpah-aps.vercel.app/`
 
@@ -33,4 +35,3 @@ The code safety fixes are deployed. The remaining blockers are operational proof
 ## One Next Action
 
 Run `STEP_31_PROMPT.md` with live database inspection access and stop at the first blocked acceptance item.
-
