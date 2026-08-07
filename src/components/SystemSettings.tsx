@@ -1003,7 +1003,7 @@ export default function SystemSettings({
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Data Security & Backups</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Safely back up the full system and restore it from a snapshot. (Bulk stock updates now live in the <span className="font-black">Inventory &amp; Stock</span> tab.)</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Export is available here. Restore is not available for Supabase-backed data yet. (Bulk stock updates now live in the <span className="font-black">Inventory &amp; Stock</span> tab.)</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1013,12 +1013,11 @@ export default function SystemSettings({
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Complete JSON Snapshot</span>
                   </button>
 
-                  <button onClick={handleRestoreBackupTrigger} className="p-6 bg-gradient-to-br from-amber-50 to-white border border-amber-200 hover:border-amber-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                    <input type="file" accept=".json" ref={backupInputRef} onChange={handleBackupFileUpload} className="hidden" />
-                    <div className="w-12 h-12 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform"><UploadCloud className="w-6 h-6"/></div>
-                    <span className="text-sm font-black text-slate-800 mt-1">Restore System from Backup</span>
-                    <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Requires Master PIN</span>
-                  </button>
+                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-center opacity-70 cursor-not-allowed">
+                    <div className="w-12 h-12 bg-slate-400 text-white rounded-full flex items-center justify-center"><UploadCloud className="w-6 h-6"/></div>
+                    <span className="text-sm font-black text-slate-800 mt-1">Restore unavailable</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Provider-managed recovery required</span>
+                  </div>
                 </div>
 
               </div>
