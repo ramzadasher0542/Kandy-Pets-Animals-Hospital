@@ -573,14 +573,32 @@ export async function fetchActiveShiftId(): Promise<string | null> {
 }
 
 export async function fetchActiveShiftDetails(): Promise<{ shift: Shift | null; adjustments: any[] }> {
-  const activeId = await fetchActiveShiftId();
-  if (!activeId || !supabase) return { shift: null, adjustments: [] };
+  if (!supabase) throw new Error('No internet connection');
+  const { data: activeData, error: activeError } = await supabase
+    .from('shifts')
+    .select('id')
+    .eq('isOpen', true)
+    .order('startTime', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (activeError) {
+    console.error('[DB]', activeError.message);
+    throw activeError;
+  }
+  const activeId = activeData?.id;
+  if (!activeId) return { shift: null, adjustments: [] };
   const { data: shiftData, error: shiftError } = await supabase.from('shifts').select('*').eq('id', activeId).maybeSingle();
-  if (shiftError) { console.error('[DB]', shiftError.message); return { shift: null, adjustments: [] }; }
+  if (shiftError) {
+    console.error('[DB]', shiftError.message);
+    throw shiftError;
+  }
   const shift = shiftData as Shift | null;
   if (!shift || !shift.isOpen) return { shift: null, adjustments: [] };
   const { data: adjData, error: adjError } = await supabase.from('cash_adjustments').select('*').eq('shiftId', activeId);
-  if (adjError) console.error('[DB]', adjError.message);
+  if (adjError) {
+    console.error('[DB]', adjError.message);
+    throw adjError;
+  }
   return { shift, adjustments: adjData || [] };
 }
 
