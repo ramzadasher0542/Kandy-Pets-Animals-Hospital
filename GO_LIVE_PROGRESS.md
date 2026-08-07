@@ -23,13 +23,14 @@ Live deployment: `https://kpah-aps.vercel.app/`
 - [x] Restore is honestly marked unavailable instead of reporting false success.
 - [x] Latest Vercel deployment completed successfully.
 - [x] Live root login and shift screen were read-only verified.
+- [x] Supabase backup limitation verified: FREE plan has no scheduled backups; PITR requires Pro.
 
 ## Not Accepted Yet
 
 - [ ] Independent local typecheck and build run.
 - [ ] Live RLS and RPC permission proof.
 - [ ] Keerthi login and action-permission proof.
-- [ ] Supabase backup/PITR recovery proof.
+- [ ] Enable and verify a real Supabase backup/PITR recovery path.
 - [ ] Isolated disposable end-to-end pilot.
 - [ ] Zero-residue proof after the pilot.
 
@@ -37,8 +38,8 @@ Live deployment: `https://kpah-aps.vercel.app/`
 
 `NOT READY FOR REAL CLINIC DATA`
 
-The code safety fixes are deployed. The remaining blockers are operational proof, especially recovery and the disposable pilot. Do not enter real clinic data until the Step 31 acceptance matrix is complete.
+The code safety fixes are deployed. The production project has no included backup plan, and PITR is not enabled on the current plan. Do not enter real clinic data until recovery and the isolated pilot are complete.
 
 ## One Next Action
 
-Run `STEP_31_PROMPT.md` with live database inspection access and stop at the first blocked acceptance item.
+Enable a real recovery path first, then run the delivered acceptance prompt against an isolated staging database.
