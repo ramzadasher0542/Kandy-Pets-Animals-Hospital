@@ -2,7 +2,7 @@
 
 Last verified: 2026-08-07
 
-Current repository head: `0ccd382`
+Guidance state: synced to the latest GitHub `main` checkout.
 
 Last deployed application-code commit: `c2507f7`
 
