@@ -1,10 +1,24 @@
-# Step 29 — Atomic Invoice Voiding — Progress
+Step 30 Rules: Go-Live Data-Safety Gate
+Mission
+Make the current build safe enough for Keerthi to begin real clinic use. Do not attempt to finish the entire product. Fix only the remaining data-loss, money, permission, recovery, and acceptance blockers.
 
-- [x] **preflight** — Supabase MCP ON; execute_sql + apply_migration available; model Opus 4.8. Step 28 pushed (bb29733), not accepted; Step 29 not started.
-- [x] **live schema/RLS audit** — invoices.items=jsonb; InvoiceItem keys itemId/category/quantity. RLS SELECT+UPDATE for BOTH anon+authenticated (qual=true) on invoices/appointments/inventory/inventory_batches/shifts. EXECUTE on all 4 RPCs granted to anon+authenticated. Live invoices=0 rows; 1 open shift. No stop condition (schema/RLS match assumptions).
-- [x] **SQL printed** — see shift_accounting_rpc.sql (void_invoice_and_reverse_revenue redefined: locks invoice, restocks non-service items via atomic_stock_decrement +qty in-txn, requires valid shiftId for paid, flips void, reverts appointment, reverses revenue; returns restocked map + already_void/reversed).
-- [x] **migration applied** — step29_atomic_invoice_void_restock applied to cjpmsjjluqlfcyzuspni ({"success":true}).
-- [x] **client changes** — db.voidInvoiceAndReverseRevenue returns restocked map; App.handleVoidInvoice removed the client pre-RPC restock loop, updates inventory from RPC restocked, gates lifetime decrement on RPC reversed. tsc clean.
-- [x] **tests** — `npx tsc --noEmit` exit 0; `npm run build` exit 0; `npx playwright test tests/example.spec.ts` 1 passed. SQL role-based suite (tests/sql/step29_void_atomicity.test.sql) run live via execute_sql inside BEGIN/ROLLBACK, returning pass/fail RESULT SETS (not RAISE): T1 normal void, T2 retry idempotent, T3 stock-failure rollback, T4 missing-shiftId reject, T5 unpaid void, T6 split reversal — all passed=true; T7 authenticated-role RLS + T8 anon-role RLS — both passed=true (real SET LOCAL ROLE). F2/F3 baseline 3 failed/1 passed (pre-existing fixture mismatch, unrelated). **Playwright UI retry/error test NOT delivered** — see acceptance decision.
-- [x] **push** — intended files: shift_accounting_rpc.sql, src/lib/db.ts, src/App.tsx, tests/sql/step29_void_atomicity.test.sql.
-- [x] **acceptance decision** — NOT self-certifying full completion. The void atomicity defect is FIXED and verified at the DB+RLS layer (real anon+authenticated role execution). The one gap: a Playwright UI retry/error test. The test harness mocks ALL `/rest/v1/**` (incl. `/rpc/`) to empty `[]`, and `void_invoice` is role-gated to owner/manager while the test login resolves to `provider`; a reliable UI test needs new infra (owner/manager seed + invoice route injection + RPC mock) and could only assert client glue against a fabricated RPC response, never the real transaction/RLS. Recommend accepting the SQL role-based verification for the DB guarantees and scoping the Playwright UI test as separate test-infra work.
+Required Work
+Make duplicate checkout retries skip all later client effects when the atomic checkout RPC returns already_committed.
+Make shift reconciliation fail closed: if paid invoices or cash adjustments cannot be loaded, block close instead of saving incomplete totals.
+Verify Keerthi's actual login role, RLS permissions, and void/close permissions in the live deployment.
+Verify a usable backup and recovery path before real data entry. Do not destroy live data during the test.
+Confirm production does not silently seed fake demo records.
+Run one disposable-data pilot covering client, pet, appointment, invoice, stock, void, shift close, reload, and a second-device read.
+Do Not Do
+Do not redesign the UI.
+Do not start offline-sync migration.
+Do not refactor the monolith.
+Do not repair every report, notification, payroll, or schema issue in this task.
+Do not use real clinic data for a test fixture.
+Required Model And Tool Gate
+Model: Claude Opus 4.8 for any code or SQL changes.
+Supabase MCP: ON for live inspection and migration work.
+If MCP is unavailable, stop at read-only review.
+Acceptance
+Keerthi may begin real use only if all six required work items pass and the disposable pilot leaves no unexpected rows or balance changes.
+
