@@ -118,3 +118,31 @@ export async function upsertSystemConfig(config: SystemConfig, currentUser: User
   }
   await db.system.setItem('config', config);
 }
+
+// ---------------------------------------------------------------------------
+// Step 32 — Supabase Auth identity → staff mapping (free-tier login)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the signed-in Supabase Auth identity to its staff record via
+ * public.users.auth_user_id. This is the ONLY authoritative link between an
+ * Auth session and app role — never a PIN, sync header, or client-supplied
+ * role. The PIN column is column-locked at the DB (see 20260808_free_auth_rls)
+ * and is deliberately NOT selected here.
+ *
+ * Returns null when unconfigured, unauthenticated, or when the identity is not
+ * yet linked to an active staff row (OWNER ACTION REQUIRED: set users.auth_user_id
+ * for the real staff Auth account). A null result must be treated as "no access".
+ */
+export async function fetchStaffForAuthUser(authUserId: string | null | undefined): Promise<User | null> {
+  if (!supabase || !authUserId) return null;
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id')
+    .eq('auth_user_id', authUserId)
+    .eq('active', true)
+    .eq('is_deleted', false)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as unknown as User;
+}

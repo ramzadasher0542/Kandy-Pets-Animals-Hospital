@@ -60,6 +60,26 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+/** The current Auth session (for restore-on-load), or null when none/unconfigured. */
+export async function getAuthSession() {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session ?? null;
+}
+
+/**
+ * Subscribe to Supabase Auth state changes (SIGNED_IN / SIGNED_OUT / token
+ * refresh). App uses this to hydrate/clear the current staff user. Returns an
+ * unsubscribe function; a no-op when Supabase is unconfigured.
+ */
+export function onAuthStateChange(
+  cb: (event: string, session: import('@supabase/supabase-js').Session | null) => void
+): () => void {
+  if (!supabase) return () => {};
+  const { data } = supabase.auth.onAuthStateChange((event, session) => cb(event, session));
+  return () => data.subscription.unsubscribe();
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
