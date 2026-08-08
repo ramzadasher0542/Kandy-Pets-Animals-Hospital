@@ -12,11 +12,8 @@ import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase, fetchAppointments, fetchClients, fetchInvoices, fetchMedicalRecords } from '../lib/db';
 import { fetchStaffRegistry } from '../lib/auth';
-import { signInWithPassword } from '../lib/supabase';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
-
-const PROVIDER_EMAIL = 'ramzadasher0542@gmail.com';
 
 export interface SystemConfig {
   appName: string;
@@ -109,23 +106,12 @@ export default function SystemSettings({
   // cloud password) rather than the local masterPin / requireAuth. A correct
   // sign-in is the sole gate before the irreversible cloud + local wipe.
   const handleConfirmCloudWipe = async () => {
-    // Removed — Supabase Auth already verified the provider password above
-    if (!cloudWipePassword) {
-      showToast('Enter the provider password to confirm.', 'error');
-      return;
-    }
-    setCloudWipeBusy(true);
-    try {
-      const { data, error } = await signInWithPassword(PROVIDER_EMAIL, cloudWipePassword);
-      if (error || !data?.user) {
-        showToast('Incorrect password. Erase cancelled.', 'error');
-        return;
-      }
-      if (onWipeCloudAndPurge) await onWipeCloudAndPurge();
-    } finally {
-      setCloudWipeBusy(false);
-      setCloudWipePassword('');
-    }
+    // STEP 31 SECURITY: cloud erase from the browser is permanently disabled.
+    // The trigger button is already disabled; this handler is kept only so any
+    // residual path fails safe instead of erasing. It never calls the purge.
+    showToast('Cloud erase is disabled. Recovery/erase is provider-managed only.', 'error');
+    setShowCloudWipeModal(false);
+    setCloudWipePassword('');
   };
 
   const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates'>('profile');
@@ -1032,11 +1018,11 @@ export default function SystemSettings({
                   <div className="space-y-4">
                     <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
-                        <h4 className="text-sm font-black text-rose-900 flex items-center gap-2"><Database className="w-4 h-4 text-rose-600" /> Erase Cloud + Local</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Permanently deletes every record from both this device and the Supabase cloud backup — affects every device synced to this project. Cannot be undone. Requires the provider's Supabase password.</p>
+                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Database className="w-4 h-4 text-slate-400" /> Erase Cloud + Local — Disabled</h4>
+                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">STEP 31 SECURITY: browser-initiated cloud erase has been removed. This client can no longer wipe the Supabase database, and the cloud is closed to the anon key at the database layer. Cloud erase and recovery are provider-managed only.</p>
                       </div>
-                      <button onClick={() => { setCloudWipePassword(''); setShowCloudWipeModal(true); }} className="px-6 py-3 bg-rose-800 hover:bg-rose-950 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap">
-                        Erase Cloud + Local
+                      <button disabled title="Cloud erase is disabled — provider-managed only" className="px-6 py-3 bg-slate-100 text-slate-400 font-black rounded-xl text-[10px] uppercase tracking-widest whitespace-nowrap cursor-not-allowed">
+                        Disabled
                       </button>
                     </div>
                   </div>

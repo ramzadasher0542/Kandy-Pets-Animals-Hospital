@@ -299,10 +299,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_shifts_single_open
   ON public.shifts ("isOpen")
   WHERE "isOpen" = true;
 
--- Grants: existing app roles only, never PUBLIC.
-REVOKE ALL ON FUNCTION public._invoice_method_cents(jsonb) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public._invoice_method_cents(jsonb) TO anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.apply_shift_revenue(uuid, integer, integer, integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.apply_shift_revenue(uuid, integer, integer, integer) TO anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.void_invoice_and_reverse_revenue(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.void_invoice_and_reverse_revenue(uuid) TO anon, authenticated, service_role;
+-- Grants (Step 31 security): NEVER PUBLIC and NEVER anon. The anon key ships in
+-- the browser bundle, so anon must not execute accounting RPCs. Until a real
+-- Supabase Auth model exists and each RPC enforces the acting user internally,
+-- grant only to service_role (the verified server-side path). Add `authenticated`
+-- here ONLY once a genuine auth session + in-RPC actor check is in place.
+REVOKE ALL ON FUNCTION public._invoice_method_cents(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public._invoice_method_cents(jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.apply_shift_revenue(uuid, integer, integer, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_shift_revenue(uuid, integer, integer, integer) TO service_role;
+REVOKE ALL ON FUNCTION public.void_invoice_and_reverse_revenue(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.void_invoice_and_reverse_revenue(uuid) TO service_role;

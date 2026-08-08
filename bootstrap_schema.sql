@@ -715,3 +715,36 @@ CREATE POLICY "Allow anon write access on inventory_batches"
 -- (not in syncEngine's STORE_MAPPINGS) — authorization records deliberately
 -- never leave the till. Do not add it here without a conscious decision.
 -- =============================================================================
+
+-- =============================================================================
+-- STEP 31 SECURITY HARDENING FOOTER — DO NOT REMOVE
+-- =============================================================================
+-- The "Allow anon write access" policies above rely on a shared `x-sync-secret`
+-- header that ships in the browser bundle — a public secret, not a real security
+-- boundary. Until a genuine Supabase Auth model exists (RLS scoped on auth.uid()
+-- + verified server roles), a freshly-provisioned database must NOT expose the
+-- anon/authenticated roles. This footer closes that surface deny-by-default:
+-- tables stay reachable only by service_role / postgres (RLS on, no anon policy).
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT policyname, tablename FROM pg_policies WHERE schemaname='public'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
+  END LOOP;
+END $$;
+REVOKE ALL ON ALL TABLES    IN SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated;
+DO $$ BEGIN
+  IF to_regprocedure('public.wipe_all_tables()') IS NOT NULL THEN
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.wipe_all_tables() FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF to_regprocedure('public.auto_cancel_expired_bookings()') IS NOT NULL THEN
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.auto_cancel_expired_bookings() FROM PUBLIC, anon, authenticated';
+  END IF;
+END $$;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL     ON TABLES    FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL     ON SEQUENCES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS  FROM anon, authenticated;
+-- =============================================================================

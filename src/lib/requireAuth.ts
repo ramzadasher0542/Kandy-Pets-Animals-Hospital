@@ -48,6 +48,13 @@ export interface ActionPolicy {
  * THE single source of truth for who can do what.
  * AUTH-4 (Provider/Owner/Staff) and the admin-editable matrix replace the
  * VALUES here — the call sites and the gate logic stay untouched.
+ *
+ * SECURITY BOUNDARY NOTE (Step 31): this module is a client-side UX gate only.
+ * It runs in the browser and can be bypassed by anyone who can call Supabase
+ * directly. It is NOT a database security boundary and must never be treated as
+ * one. The real boundary is at the database: Postgres role privileges + RLS.
+ * Keep this gate for good UX (confirm-with-credential, supervisor override,
+ * audit trail), but do not rely on it to protect Supabase data.
  */
 export const ACTION_POLICIES: Record<AuthAction, ActionPolicy> = {
   delete_inventory:      { description: 'delete an inventory item',            allowedRoles: ['owner', 'manager'] },

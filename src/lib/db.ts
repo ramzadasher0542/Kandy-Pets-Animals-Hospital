@@ -867,63 +867,14 @@ export async function fetchFullSystemState(): Promise<any> {
 
 export async function masterSystemPurge(): Promise<string[]> {
   const logs: string[] = [];
-  if (supabase) {
-    // PRIMARY PATH: explicit per-table deletes, children before parents.
-    // The dummy-UUID predicate matches every real row and — unlike neq(pk, '')
-    // — is valid uuid syntax, so Postgres never raises 22P02.
-    const tables: [string, string, string][] = [
-      ['cash_adjustments', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['invoices', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['clinic_queue', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['appointments', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['medical_records', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['vaccinations', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['lab_results', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['grooming_logs', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['boarding_records', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['inventory_batches', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['pets', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['clients', 'client_id', ''],
-      ['inventory', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['shift_reconciliations', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['shifts', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['notifications', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['system_alerts', 'id', '00000000-0000-0000-0000-000000000000'],
-      ['users', 'id', '00000000-0000-0000-0000-000000000000'],
-    ];
-    for (const [table, pk, dummy] of tables) {
-      try {
-        // .select() is required for `data` to come back — without it supabase-js
-        // returns data:null and every row count would falsely log as 0.
-        const { data, error } = await supabase.from(table).delete().neq(pk, dummy).select();
-        if (error) {
-          logs.push(`FAIL ${table}: ${error.message}`);
-          console.error(`[ERASE] ${table}: ${error.message}`);
-        } else {
-          logs.push(`OK ${table}: ${(data || []).length} rows`);
-          console.log(`[ERASE] ${table}: cleared`);
-        }
-      } catch (e: any) {
-        logs.push(`ERR ${table}: ${e.message}`);
-        console.error(`[ERASE] ${table}: ${e.message}`);
-      }
-    }
-    // BACKSTOP: same deletes server-side in one transaction, catching any table
-    // missing from the list above. Only logged when it fails, so the OK count
-    // stays a clean n/18.
-    try {
-      const { error } = await supabase.rpc('wipe_all_tables');
-      if (error) {
-        logs.push(`FAIL rpc wipe_all_tables: ${error.message}`);
-        console.error('[ERASE] rpc wipe_all_tables:', error.message);
-      }
-    } catch (e: any) {
-      logs.push(`ERR rpc wipe_all_tables: ${e.message}`);
-      console.error('[ERASE] rpc wipe_all_tables:', e.message);
-    }
-  } else {
-    logs.push('FAIL: no supabase connection');
-  }
+  // STEP 31 SECURITY: browser-initiated cloud destruction is DISABLED.
+  // The anon key ships in this bundle, so this client must never be able to
+  // erase the Supabase database. The former per-table DELETE loop and the
+  // `supabase.rpc('wipe_all_tables')` backstop have been removed. Cloud data is
+  // additionally closed to the anon role at the DB layer (grants revoked + RLS),
+  // so even a re-added call would be rejected. Cloud erase/recovery is now
+  // provider-managed only. This function clears LOCAL device state only.
+  logs.push('SKIP: cloud erase disabled (provider-managed; browser cannot erase the Supabase cloud)');
 
   // Local clear
   await Promise.all([
