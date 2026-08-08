@@ -28,8 +28,30 @@ import { test as base, expect } from '@playwright/test';
 const PRESERVE = ['system', 'users'];
 const APP_URL = 'http://localhost:3000/';
 
+/**
+ * TEST-ONLY staff identity. Production login is Supabase Auth email/password
+ * only (Step 32). The app has a DEV-only branch that reads window.__KP_TEST_AUTH__
+ * and signs the harness in without a live Auth session — it is guarded by
+ * import.meta.env.DEV and stripped from production builds, so this stub can never
+ * be a real login path. Role 'provider' is root, so every nav panel is visible.
+ */
+const TEST_AUTH_USER = {
+  id: 'kpah_test_provider',
+  name: 'KPAH Test Provider',
+  username: 'kpah_test_provider',
+  role: 'provider',
+  avatarColor: 'bg-indigo-600 text-white border-indigo-700',
+  active: true,
+};
+
 export const test = base.extend({
   page: async ({ page }, use) => {
+    // Inject the test-only signed-in identity before any app script runs, on
+    // every navigation (specs call page.goto again inside each test).
+    await page.addInitScript((user) => {
+      (window as any).__KP_TEST_AUTH__ = user;
+    }, TEST_AUTH_USER);
+
     // 1) Cut the app off from the shared remote Supabase project. The sync
     // engine (src/lib/syncEngine.ts) pulls every mapped table — appointments,
     // clinic_queue, pets, … — and a realtime channel streams remote changes in

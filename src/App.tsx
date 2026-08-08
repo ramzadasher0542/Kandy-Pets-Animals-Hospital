@@ -5,8 +5,6 @@
 
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useCallback } from 'react';
 
-const PROVIDER_EMAIL = 'ramzadasher0542@gmail.com';
-
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
 
@@ -99,7 +97,7 @@ import {
 import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
-  ActiveShift, ClinicQueueItem,
+  ActiveShift, ClinicQueueItem, User,
   Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, Payslip
 } from './types';
 
@@ -168,7 +166,8 @@ import {
   fetchSystemConfig,
   upsertSystemConfig
 } from './lib/db';
-import { SYNC_ENABLED, supabase, signInWithPassword, signOut } from './lib/supabase';
+import { SYNC_ENABLED, supabase, signInWithPassword, signOut, getAuthSession, onAuthStateChange } from './lib/supabase';
+import { fetchStaffForAuthUser } from './lib/auth';
 
 function hashPin(pin: string): string {
   if (!pin) return '';
@@ -461,7 +460,6 @@ function App() {
   }, []);
 
   const [enteredPin, setEnteredPin] = useState('');
-  const [selectedUsername, setSelectedUsername] = useState('');
   const [pinError, setPinError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
@@ -510,40 +508,58 @@ function App() {
     setPolicyOverrides((systemConfig as any).actionPolicies);
   }, [systemConfig]);
 
-  // Phase C1: reflect Supabase Auth state changes. A remote/expired session
-  // sign-out drops the local provider session too.
+  // Phase C2 (Step 32): Supabase Auth is the ONLY production login. Restore an
+  // existing authenticated session on startup, map it to a staff record via
+  // auth_user_id, and clear currentUser on sign-out. There is no local/PIN
+  // login path in production — the PIN survives only as a second-confirmation
+  // gate for sensitive actions (see requireAuth).
   useEffect(() => {
+    // TEST-ONLY: the Playwright harness injects a signed-in staff identity so the
+    // suite can run without a live Supabase Auth session. This branch is guarded
+    // by import.meta.env.DEV and is stripped from production builds — it is never
+    // a login path for real users.
+    if (import.meta.env.DEV && (window as any).__KP_TEST_AUTH__) {
+      setCurrentUser((window as any).__KP_TEST_AUTH__ as User);
+      return;
+    }
     if (!supabase) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
+    let active = true;
+    (async () => {
+      const session = await getAuthSession();
+      if (!active || !session?.user) return;
+      const staff = await fetchStaffForAuthUser(session.user.id);
+      if (!active) return;
+      if (staff) setCurrentUser(staff);
+      else { await signOut(); setCurrentUser(null); }
+    })();
+    const unsubscribe = onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') { setCurrentUser(null); return; }
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        const staff = await fetchStaffForAuthUser(session.user.id);
+        if (staff) setCurrentUser(staff);
       }
     });
-    return () => subscription.unsubscribe();
+    return () => { active = false; unsubscribe(); };
   }, []);
 
-  // Owner / provider-admin sign in with a full alphanumeric password; till roles
-  // (cashier, vet, groomer) keep the fast 4-digit numeric PIN.
-  const selectedRole = selectedUsername === 'ashpoint_owner'
-    ? 'admin'
-    : (users.find(u => u.username === selectedUsername)?.role || '');
-  // AUTH-4: 'manager' is a password role too (it has a Change Password flow), so
-  // its login must accept a full alphanumeric password, not a 4-digit PIN.
-  const isPasswordAccount = selectedUsername === 'ashpoint_owner'
-    || ['admin', 'owner', 'manager'].includes(selectedRole);
+  // Step 32: staff sign in with their Supabase Auth email + password. The email
+  // is the lockout key (there is no staff selector before authentication).
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginMessage, setLoginMessage] = useState('');
 
-  // Live lockout countdown for the selected account — re-enables the form the
+  // Live lockout countdown for the entered email — re-enables the form the
   // moment the lockout expires, without needing a page refresh.
   useEffect(() => {
-    if (!selectedUsername) { setLockoutSeconds(0); return; }
+    const key = loginEmail.trim().toLowerCase();
+    if (!key) { setLockoutSeconds(0); return; }
     const tick = () => {
-      const { locked, secondsRemaining } = isLockedOut(selectedUsername);
+      const { locked, secondsRemaining } = isLockedOut(key);
       setLockoutSeconds(locked ? secondsRemaining : 0);
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [selectedUsername]);
+  }, [loginEmail]);
 
   useEffect(() => {
     if (currentUser && !isViewPermitted(activeView, currentUser)) {
@@ -1490,60 +1506,44 @@ function App() {
     setLockoutSeconds(l.locked ? l.secondsRemaining : 0);
   };
 
-  const handlePinSubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUsername || isVerifying) return;
+    if (isVerifying) return;
+
+    const email = loginEmail.trim();
+    const key = email.toLowerCase();
+    if (!email || !enteredPin) return;
+    if (!supabase) { setLoginMessage('Cloud login is not configured on this device.'); return; }
 
     // Guess limiter — refuse to even attempt while locked out.
-    const lock = isLockedOut(selectedUsername);
+    const lock = isLockedOut(key);
     if (lock.locked) { setLockoutSeconds(lock.secondsRemaining); return; }
 
     setIsVerifying(true);
+    setLoginMessage('');
     try {
-      if (selectedUsername === 'ashpoint_owner') {
-        // Try Supabase Auth first (provider only); fall back to local auth below.
-        if (enteredPin && enteredPin.length >= 8) {
-          const { data, error } = await signInWithPassword(PROVIDER_EMAIL, enteredPin);
-          if (data?.user) {
-            resetAttempts(selectedUsername);
-            setCurrentUser({ id: data.user.id, name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
-            setActiveView('settings');
-            setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
-            return;
-          }
-          if (import.meta.env.DEV && error) console.info('[Auth] Supabase sign-in failed, falling back to local:', error.message);
-        }
-
-        const stored = systemConfig.masterPin;
-        const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
-        if (!ok) { registerFailure(selectedUsername); return; }
-
-        if (upgradedHash) {
-          const nextConfig = { ...systemConfig, masterPin: upgradedHash };
-          await db.system.setItem('config', nextConfig);
-          setSystemConfig(nextConfig);
-        }
-        resetAttempts(selectedUsername);
-        setCurrentUser({ id: crypto.randomUUID(), name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: 'bg-indigo-600 text-white border-indigo-700' });
-        setActiveView('settings');
-        setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
+      // Step 32: Supabase Auth is the ONLY production login. A real authenticated
+      // session is required; there is no local/PIN fallback.
+      const { data, error } = await signInWithPassword(email, enteredPin);
+      if (error || !data?.user) {
+        registerFailure(key);
+        setLoginMessage('Incorrect email or password.');
         return;
       }
-
-      const foundUser = users.find(u => u.username === selectedUsername && u.active !== false);
-      const stored = foundUser?.pin || pinCache[selectedUsername] || '';
-      const { ok, upgradedHash } = await verifyAndUpgrade(stored, enteredPin);
-      if (!foundUser || !ok) { registerFailure(selectedUsername); return; }
-
-      if (upgradedHash) {
-        await upsertUser({ ...foundUser, pin: upgradedHash });
-        setUsers(prev => prev.map(u => u.id === foundUser.id ? { ...u, pin: upgradedHash } : u));
-        setPinCache(prev => ({ ...prev, [selectedUsername]: upgradedHash }));
+      // Map the authenticated identity to exactly one staff record.
+      const staff = await fetchStaffForAuthUser(data.user.id);
+      if (!staff) {
+        // Signed in, but this identity is not linked to a staff record. Do not
+        // grant any access — sign back out and tell them to see an administrator.
+        await signOut();
+        setCurrentUser(null);
+        setLoginMessage('Staff account is not linked. Contact your administrator.');
+        return;
       }
-      resetAttempts(selectedUsername);
-      setCurrentUser(foundUser);
-      setActiveView(getDefaultViewForUser(foundUser));
-      setEnteredPin(''); setSelectedUsername(''); setLockoutSeconds(0);
+      resetAttempts(key);
+      setCurrentUser(staff);
+      setActiveView(getDefaultViewForUser(staff));
+      setEnteredPin(''); setLoginEmail(''); setLockoutSeconds(0); setLoginMessage('');
     } finally {
       setIsVerifying(false);
     }
@@ -1764,15 +1764,20 @@ function App() {
           <div className="w-20 h-20 mx-auto bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20">
             <CloudLightning className="w-10 h-10 text-rose-500" />
           </div>
-          <h1 className="text-2xl font-black text-rose-500 uppercase tracking-widest">Critical Database Corruption Detected</h1>
-          <p className="text-slate-400 font-bold text-sm leading-relaxed">
-            The local IndexedDB vault contains malformed structures preventing hydration. You must purge the local vault to restore system stability. All un-synced local data will be lost.
+          <h1 className="text-2xl font-black text-amber-400 uppercase tracking-widest">Local Cache Needs a Reset</h1>
+          <p className="text-slate-300 font-bold text-sm leading-relaxed">
+            This device's local cache could not be read, so the app can't start here. Resetting rebuilds
+            the local cache on this device only.
+          </p>
+          <p className="text-slate-400 font-bold text-xs leading-relaxed">
+            Your cloud data is safe and untouched — this button never deletes anything from the server.
+            Only unsynced changes made on this device (if any) would need to be re-entered after it reloads.
           </p>
           <button
             onClick={handlePurgeDatabases}
-            className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg transition-all cursor-pointer"
+            className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg transition-all cursor-pointer"
           >
-            PURGE DATABASES & REBOOT
+            Reset Local Cache & Reload
           </button>
         </div>
       </div>
@@ -1830,60 +1835,66 @@ function App() {
                   )}
                   <div>
                     <h3 className="text-lg font-black text-slate-800">Secure Clinician Sign-In</h3>
-                    <p className="text-slate-400 mt-1">{isPasswordAccount ? 'Enter your administrator password to access the terminal.' : 'Select your account and enter your secure 4-digit PIN to access the terminal.'}</p>
+                    <p className="text-slate-400 mt-1">Sign in with your staff email and password. Access is granted only to linked staff accounts.</p>
                   </div>
                 </div>
                 <div className="pt-4 border-t border-slate-100 space-y-4">
-                  <form onSubmit={handlePinSubmit} className="space-y-3">
+                  <form onSubmit={handleLoginSubmit} className="space-y-3">
                     <div className="space-y-1">
-                      <label htmlFor="login-username" className="font-bold text-slate-700 block text-[10px]">Select Staff Member</label>
-                      <select id="login-username" name="username" autoComplete="username" value={selectedUsername} onChange={(e) => setSelectedUsername(e.target.value)} className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-bold text-slate-700" required>
-                        <option value="" disabled>-- Choose Staff --</option>
-                        <option value="ashpoint_owner">Service Provider (System Root Admin)</option>
-                        {users.filter(u => u.active !== false).map((u) => <option key={u.id} value={u.username}>{u.name} ({u.role ? u.role.toUpperCase() : 'UNKNOWN'})</option>)}
-                      </select>
+                      <label htmlFor="login-email" className="font-bold text-slate-700 block text-[10px]">Staff Email</label>
+                      <input
+                        id="login-email"
+                        data-testid="input-email"
+                        name="email"
+                        type="email"
+                        autoComplete="username"
+                        placeholder="you@clinic.example"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        disabled={isVerifying || lockoutSeconds > 0}
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-bold text-slate-700 disabled:opacity-60"
+                        required
+                      />
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
-                        <label htmlFor="login-pin" className="font-bold text-slate-700 block text-[10px]">{isPasswordAccount ? 'Enter Administrator Password' : 'Enter 4-Digit Passcode PIN'}</label>
-                        {pinError && <span data-testid="login-error" className="text-[10px] text-rose-600 font-bold animate-pulse">{isPasswordAccount ? 'Incorrect password.' : 'Incorrect passcode pin.'}</span>}
+                        <label htmlFor="login-password" className="font-bold text-slate-700 block text-[10px]">Password</label>
+                        {(pinError || loginMessage) && <span data-testid="login-error" className="text-[10px] text-rose-600 font-bold animate-pulse">{loginMessage || 'Incorrect email or password.'}</span>}
                       </div>
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <input
-                            id="login-pin"
-                            data-testid="input-pin"
-                            name="pin"
-                            type={isPasswordAccount && showPassword ? 'text' : 'password'}
+                            id="login-password"
+                            data-testid="input-password"
+                            name="password"
+                            type={showPassword ? 'text' : 'password'}
                             autoComplete="current-password"
-                            {...(isPasswordAccount ? { inputMode: 'text' as const } : { inputMode: 'numeric' as const, maxLength: 4, pattern: '[0-9]*' })}
-                            placeholder={isPasswordAccount ? 'Password' : '••••'}
+                            inputMode="text"
+                            placeholder="Password"
                             value={enteredPin}
                             onChange={(e) => setEnteredPin(e.target.value)}
                             disabled={isVerifying || lockoutSeconds > 0}
-                            className={`w-full py-2.5 bg-slate-50 border border-slate-200 font-mono font-bold text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60 ${isPasswordAccount ? 'pl-3 pr-10 text-left tracking-normal' : 'px-3 text-center tracking-widest'}`}
+                            className="w-full py-2.5 pl-3 pr-10 bg-slate-50 border border-slate-200 font-mono font-bold text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60 text-left tracking-normal"
                             required
                           />
-                          {isPasswordAccount && (
-                            <button
-                              type="button"
-                              data-testid="btn-toggle-password"
-                              onClick={() => setShowPassword(v => !v)}
-                              tabIndex={-1}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                              aria-label={showPassword ? 'Hide password' : 'Show password'}
-                            >
-                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            data-testid="btn-toggle-password"
+                            onClick={() => setShowPassword(v => !v)}
+                            tabIndex={-1}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
                         </div>
                         <button
                           type="submit"
-                          data-testid="btn-verify-pin"
+                          data-testid="btn-signin"
                           disabled={isVerifying || lockoutSeconds > 0}
                           className="px-5 bg-slate-800 hover:bg-slate-900 font-bold text-white rounded-xl transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[76px]"
                         >
-                          {isVerifying ? <span data-testid="login-spinner" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Verify'}
+                          {isVerifying ? <span data-testid="login-spinner" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
                         </button>
                       </div>
                       {lockoutSeconds > 0 && (
@@ -1952,9 +1963,12 @@ function App() {
                   </button>
                 )}
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    // Switching users ends the Supabase Auth session so the next
+                    // person must sign in with their own credentials.
+                    await signOut();
                     setCurrentUser(null);
-                    setSelectedUsername('');
+                    setLoginEmail('');
                     setEnteredPin('');
                     setIdleMessage(null);
                     setActiveView('pos');
@@ -1970,7 +1984,7 @@ function App() {
                   onClick={async () => {
                     await signOut();
                     setCurrentUser(null);
-                    setSelectedUsername('');
+                    setLoginEmail('');
                     setEnteredPin('');
                     setIdleMessage(null);
                     setActiveView('pos');

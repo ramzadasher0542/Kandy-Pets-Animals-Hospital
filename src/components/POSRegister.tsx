@@ -632,8 +632,24 @@ export default function POSRegister({
                     <div className="text-[10px] text-slate-400 italic px-2">No patients active.</div>
                   ) : (
                     awaitingCheckoutQueue.map(q => {
-                      const apt = appointments.find(a => a.id === q.appointmentId);
-                      if (!apt) return null;
+                      // A queued patient is physically in the clinic and MUST stay
+                      // checkout-able even when their appointment row is not in the
+                      // currently-loaded window (older date, sync lag, etc.). Fall
+                      // back to a minimal appointment synthesized from the queue
+                      // entry so the card always renders and remains selectable.
+                      const apt: Appointment = appointments.find(a => a.id === q.appointmentId) ?? ({
+                        id: q.appointmentId || q.id,
+                        petName: q.petName,
+                        ownerName: q.ownerName,
+                        ownerPhone: q.ownerPhone,
+                        petType: '',
+                        breed: '',
+                        date: todayStr,
+                        time: '',
+                        veterinarian: q.assignedVet || '',
+                        reason: q.serviceType || '',
+                        status: 'in-progress',
+                      } as unknown as Appointment);
                       const isSelected = selectedAppointment?.id === apt.id;
                       
                       return (
