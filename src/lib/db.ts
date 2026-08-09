@@ -262,7 +262,7 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
  */
 export async function fetchUsers(): Promise<User[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('users').select('*').eq('is_deleted', false);
+  const { data, error } = await supabase.from('users').select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id').eq('is_deleted', false);
   if (error) { console.error('[DB]', error.message); return []; }
   return (data || []).map((u: any) => ({
     id: u.id,
@@ -270,7 +270,6 @@ export async function fetchUsers(): Promise<User[]> {
     username: u.username,
     role: u.role,
     avatarColor: u.avatar_color || '',
-    pin: u.pin,
     active: u.active ?? true
   }));
 }
@@ -303,7 +302,7 @@ export async function fetchVeterinarians(): Promise<User[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('users')
-    .select('*')
+    .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id')
     .eq('role', 'veterinarian')
     .eq('active', true)
     .eq('is_deleted', false);
@@ -314,7 +313,6 @@ export async function fetchVeterinarians(): Promise<User[]> {
     username: u.username,
     role: u.role,
     avatarColor: u.avatar_color || '',
-    pin: u.pin,
     active: u.active ?? true
   }));
   if (vets.length === 0) {
