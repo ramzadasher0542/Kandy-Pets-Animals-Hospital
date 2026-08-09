@@ -139,7 +139,7 @@ export default function SystemSettings({
     (localConfig.actionPolicies?.[action]) ?? ACTION_POLICIES[action].allowedRoles;
 
   const toggleMatrix = (action: AuthAction, role: string) => {
-    if (role === 'provider') return; // provider is root — never editable
+if (ROOT_ROLES.includes(role as any)) return; // full-access roles are never editable
     const current = effectiveRolesFor(action);
     const next = current.includes(role) ? current.filter(r => r !== role) : [...current, role];
     const merged = { ...(localConfig.actionPolicies || {}), [action]: next };
@@ -150,13 +150,13 @@ export default function SystemSettings({
   };
 
   // ---- PROVIDER-1: Panel (view) access matrix — provider ONLY -------------
-  const canEditPanelMatrix = currentUser?.role === 'provider';
+const canEditPanelMatrix = ROOT_ROLES.includes(currentUser?.role as any);
   const effectivePanelsFor = (role: string): string[] =>
     ((localConfig.rolePermissions as any)?.[role]) ?? [];
 
   const togglePanel = (view: string, role: string) => {
-    if (currentUser?.role !== 'provider') return; // guard 1: only provider may edit
-    if (role === 'provider') return;               // guard 2: provider is unremovable
+if (!canEditPanelMatrix) return; // guard 1: only full-access roles may edit
+if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are unremovable
     const current = effectivePanelsFor(role);
     const next = current.includes(view) ? current.filter(v => v !== view) : [...current, view];
     const merged = { ...(localConfig.rolePermissions as any), [role]: next };
@@ -730,7 +730,7 @@ export default function SystemSettings({
                               <div className="text-[10px] font-bold text-slate-400">{ACTION_POLICIES[action].description}</div>
                             </td>
                             {ALL_ACTION_ROLES.map(role => {
-                              const isProvider = role === 'provider';
+const isProvider = ROOT_ROLES.includes(role as any);
                               const checked = isProvider || roles.includes(role);
                               return (
                                 <td key={role} className="py-3 px-3 text-center">
@@ -779,7 +779,7 @@ export default function SystemSettings({
                             <div className="text-[10px] font-bold text-slate-400 font-mono">{panel.id}</div>
                           </td>
                           {ALL_PANEL_ROLES.map(role => {
-                            const isProvider = role === 'provider';
+const isProvider = ROOT_ROLES.includes(role as any);
                             const checked = isProvider || effectivePanelsFor(role).includes(panel.id);
                             return (
                               <td key={role} className="py-3 px-3 text-center">

@@ -127,7 +127,7 @@ export function authorizedRolesFor(action: AuthAction): string[] {
 // permission someone can be granted. So these are constants, not config —
 // otherwise an admin could edit the matrix to hand themselves vendor surfaces.
 
-export const ROOT_ROLES = ['provider'] as const;
+export const ROOT_ROLES = ['admin', 'provider'] as const;
 
 export type SettingsTab = 'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates';
 
@@ -141,7 +141,7 @@ export function isProviderOnlyTab(tab: SettingsTab): boolean {
 /** Only 'provider' may see provider-only tabs — admin is explicitly below it. */
 export function canViewSettingsTab(role: string | undefined, tab: SettingsTab): boolean {
   if (!isProviderOnlyTab(tab)) return true;
-  return role === 'provider';
+return ROOT_ROLES.includes(role as any);
 }
 
 /**
