@@ -1,13 +1,8 @@
 import { test, expect } from './fixtures';
 
 async function login(page: any) {
-  const pin = page.getByTestId('input-pin');
-  const visible = await pin.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
-  if (visible) {
-    await page.locator('select').selectOption('ashpoint_owner');
-    await pin.fill('5692');
-    await page.getByTestId('btn-verify-pin').click();
-  }
+  // Step 32: Supabase Auth is the only login; the DEV test-auth stub in
+  // fixtures.ts signs the harness in automatically, so no PIN flow is needed.
   await page.getByTestId('nav-boarding').waitFor({ state: 'visible', timeout: 15000 });
   await page.getByTestId('nav-boarding').click();
 }
