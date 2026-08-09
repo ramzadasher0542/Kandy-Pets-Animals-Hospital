@@ -2,7 +2,7 @@
 
 Last verified: 2026-08-09 UTC
 
-Latest production code: 8b2c59f (PR #4 merged)
+Enterprise cleanup merged through PR #8.
 Live deployment: https://kpah-aps.vercel.app/
 
 ## Completed
@@ -17,15 +17,15 @@ Live deployment: https://kpah-aps.vercel.app/
 - Vercel production serves the merged build. Lint and production build passed previously; the Vercel preview for PR #4 passed.
 - Browser-initiated cloud erase remains disabled. Data export is available; Supabase restore remains provider-managed.
 - The retired deployment integration was revoked and verified absent from the installed-apps list.
+- Production bundle scan found no browser write-authorizing secret or shared header.
 
-## Remaining Work: 6 Items
+## Remaining Work: 5 Items
 
-1. Merge and deploy the browser sync-secret removal, then confirm the production bundle contains no write-authorizing browser secret. The Vercel `VITE_SUPABASE_SYNC_SECRET` variable has been deleted.
-2. Run one controlled appointment and checkout smoke test without altering real clinic data unexpectedly.
-3. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
-4. Verify second-device reads using an approved device/session.
-5. Establish and verify a real backup/export recovery procedure. Supabase free tier does not provide certified scheduled backups or PITR.
-6. Review the 7 npm audit vulnerabilities: 1 low, 1 moderate, 5 high.
+1. Run one controlled appointment and checkout smoke test without altering real clinic data unexpectedly.
+2. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
+3. Verify second-device reads using an approved device/session.
+4. Establish and verify a real backup/export recovery procedure. Supabase free tier does not provide certified scheduled backups or PITR.
+5. Review the 7 npm audit vulnerabilities: 1 low, 1 moderate, 5 high.
 
 ## Minor Owner Decision
 
