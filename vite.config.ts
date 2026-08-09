@@ -25,6 +25,11 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        maxParallelFileOps: 32,
+      },
+    },
     server: {
       host: '127.0.0.1',
       port: 3000,
