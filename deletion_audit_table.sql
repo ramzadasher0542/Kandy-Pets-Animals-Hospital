@@ -10,7 +10,7 @@
 -- Deletion-audit history is sensitive, so this table is created with RLS ENABLED
 -- and NO anon/authenticated policy: by default that denies all row access to the
 -- app roles (service_role bypasses RLS for admin/backup). The legacy
--- x-sync-secret='__SYNC_SECRET_PLACEHOLDER__' policy from the repo schema is
+-- retired browser shared-secret policy from the historical schema is
 -- intentionally NOT applied. A read policy is deferred to a later step, once the
 -- Supabase auth model for ReportsManager reads is decided (authenticated-only
 -- read vs. accepting anon exposure). No DROP/DELETE/TRUNCATE, no PUBLIC grant.

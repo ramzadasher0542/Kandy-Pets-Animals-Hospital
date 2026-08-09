@@ -39,13 +39,11 @@ desk never stops during a network drop.
    npm install
    ```
 2. Create a `.env.local` file in the project root with your Supabase credentials:
-   ```bash
-   VITE_SUPABASE_URL=your-project-url
-   VITE_SUPABASE_ANON_KEY=your-anon-key
-   # optional: header checked by RLS write policies
-   VITE_SUPABASE_SYNC_SECRET=your-sync-secret
-   ```
-   > Sync is optional. With no credentials the app runs fully offline against the local IndexedDB vault.
+    ```bash
+    VITE_SUPABASE_URL=your-project-url
+    VITE_SUPABASE_ANON_KEY=your-anon-key
+    ```
+    > Authenticated cloud sync is optional. With no credentials the app runs fully offline against the local IndexedDB vault.
 3. Start the dev server:
    ```bash
    npm run dev
@@ -60,7 +58,8 @@ desk never stops during a network drop.
 ## Deployment
 
 The app deploys as a static front end on **Vercel**, backed by a **Supabase**
-project for cloud sync and persistence. Set the same `VITE_SUPABASE_*`
+project for Auth, RLS, cloud sync, and persistence. Set `VITE_SUPABASE_URL` and
+`VITE_SUPABASE_ANON_KEY`
 environment variables in your Vercel project settings, then build with
 `npm run build`.
 
