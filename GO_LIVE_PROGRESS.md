@@ -2,7 +2,7 @@
 
 Last verified: 2026-08-09 UTC
 
-Enterprise cleanup merged through PR #8.
+Enterprise cleanup merged through PR #10.
 Live deployment: https://kpah-aps.vercel.app/
 
 ## Completed
@@ -34,7 +34,7 @@ The administrator session currently displays the existing staff name Keerthi bec
 
 ## Current Decision
 
-NOT READY FOR REAL CLINIC DATA until backup/recovery and controlled checkout verification are complete.
+NOT READY FOR REAL CLINIC DATA until backup/recovery, second-device verification, and real CV-1 coverage are complete.
 
 ## Vercel-Only Deployment
 
