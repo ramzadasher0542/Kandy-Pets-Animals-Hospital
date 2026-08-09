@@ -16,7 +16,7 @@ Live deployment: https://kpah-aps.vercel.app/
 - Fresh live cashier login verified: only POS and Shift & Drawer are visible; Settings and all other panels are hidden.
 - Vercel production serves the merged build. Lint and production build passed previously; the Vercel preview for PR #4 passed.
 - Browser-initiated cloud erase remains disabled. Data export is available; Supabase restore remains provider-managed.
-- The Cloudflare GitHub App integration was revoked and verified absent from the installed-apps list.
+- The retired deployment integration was revoked and verified absent from the installed-apps list.
 
 ## Remaining Work: 6 Items
 
@@ -37,4 +37,4 @@ NOT READY FOR REAL CLINIC DATA until backup/recovery and controlled checkout ver
 
 ## Vercel-Only Deployment
 
-Vercel is the only production target. The Cloudflare integration is revoked; the cleanup change removes the remaining legacy repository traces.
+Vercel is the only production target. The retired deployment integration has been removed from the repository and GitHub account.
