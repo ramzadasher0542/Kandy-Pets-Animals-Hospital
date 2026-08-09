@@ -18,14 +18,15 @@ Live deployment: https://kpah-aps.vercel.app/
 - Browser-initiated cloud erase remains disabled. Data export is available; Supabase restore remains provider-managed.
 - The retired deployment integration was revoked and verified absent from the installed-apps list.
 - Production bundle scan found no browser write-authorizing secret or shared header.
+- Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
+- Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
-## Remaining Work: 5 Items
+## Remaining Work: 4 Items
 
-1. Run one controlled appointment and checkout smoke test without altering real clinic data unexpectedly.
-2. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
-3. Verify second-device reads using an approved device/session.
-4. Establish and verify a real backup/export recovery procedure. Supabase free tier does not provide certified scheduled backups or PITR.
-5. Review the 7 npm audit vulnerabilities: 1 low, 1 moderate, 5 high.
+1. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
+2. Verify second-device reads using an approved device/session.
+3. Establish and verify a real backup/export recovery procedure. Supabase free tier does not provide certified scheduled backups or PITR.
+4. Review the 7 npm audit vulnerabilities: 1 low, 1 moderate, 5 high.
 
 ## Minor Owner Decision
 
