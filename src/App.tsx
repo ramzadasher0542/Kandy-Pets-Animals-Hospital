@@ -299,6 +299,21 @@ function App() {
         // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
         // Boot: load operational data (today's records/invoices via fetchTodays*)
         try {
+          // With production RLS, cloud tables are unreadable until Supabase Auth
+          // resolves to an active staff row. Never misreport that as local DB damage.
+          if (SYNC_ENABLED && !(import.meta.env.DEV && (window as any).__KP_TEST_AUTH__)) {
+            const session = await getAuthSession();
+            if (!session?.user) {
+              if (isMounted) setIsBooting(false);
+              return;
+            }
+            const staff = await fetchStaffForAuthUser(session.user.id);
+            if (!staff) {
+              if (isMounted) setIsBooting(false);
+              return;
+            }
+          }
+
           const [appts, recs, inv, invs, metrics, queue, fetchedPets, fetchedClients, fetchedBoardingRecords] = await Promise.all([
             fetchAppointments(30),
             fetchTodaysRecords(),
@@ -1544,6 +1559,9 @@ function App() {
       setCurrentUser(staff);
       setActiveView(getDefaultViewForUser(staff));
       setEnteredPin(''); setLoginEmail(''); setLockoutSeconds(0); setLoginMessage('');
+      // Boot hydration is deliberately gated on an authenticated session. Reload
+      // once after sign-in so the cloud data path starts from that session.
+      window.location.reload();
     } finally {
       setIsVerifying(false);
     }
