@@ -1,5 +1,40 @@
 # Go-Live Progress
 
+Last verified: 2026-08-09 UTC
+
+Latest main commit: 94fb59a (PR #3 merged)
+Live deployment: https://kpah-aps.vercel.app/
+
+## Completed
+
+- Diagnosed the screenshot's CRITICAL DATABASE CORRUPTION DETECTED screen: unauthenticated RLS failures were mislabeled as local IndexedDB corruption.
+- src/App.tsx now waits for a Supabase Auth session before protected cloud reads and shows staff sign-in when logged out.
+- Local recovery messaging is safe and never implies cloud deletion or database purging.
+- src/lib/db.ts no longer reads the protected users.pin column in staff/veterinarian queries.
+- Production cjpmsjjluqlfcyzuspni verified with 22/22 tables under RLS, 63 policies, anonymous reads denied, and destructive RPC execution denied.
+- Auth account ashersajahan01@gmail.com is linked to Keerthi's staff row, with role owner, active and not deleted.
+- npm run lint and npm run build pass. The Vercel production deployment for 94fb59a is Ready.
+- The public deployment now shows the normal email/password staff sign-in screen instead of the corruption screen.
+
+## Not Yet Proven
+
+- Real owner login, post-login data loading, second-device reads, and checkout smoke test.
+- The two CV-1 Playwright tests were discovered but not executed with real credentials.
+- The separate Cloudflare Workers deployment check failed immediately; Vercel is healthy.
+- npm audit reports 7 dependency vulnerabilities: 1 low, 1 moderate, 5 high.
+
+## Free-Tier Boundary
+
+- Supabase free tier does not provide certified scheduled backups or PITR.
+- Decision remains: NOT READY FOR REAL CLINIC DATA until a verified external or paid recovery path exists.
+
+## Next Owner Action
+
+1. Sign in at the live URL with the linked owner account and verify dashboard reads.
+2. Run one controlled appointment/checkout smoke test.
+3. Establish and verify a backup/export recovery procedure.
+# Go-Live Progress
+
 Last verified: 2026-08-08
 
 Guidance state: synced to the latest GitHub `main` checkout.
