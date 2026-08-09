@@ -1,39 +1,28 @@
 import { test as base, expect } from '@playwright/test';
 
 /**
- * FIX-1 — Per-test IndexedDB isolation.
+ * FIX-1 / Step 36 — Per-test IndexedDB isolation + a PostgREST-over-IndexedDB bridge.
  *
- * The app persists to a single, fixed-name IndexedDB ('CeylonPets_Enterprise_OS',
- * see src/lib/localDb.ts). Playwright does NOT partition that store per test or
- * per run, so records written by one test — or by a previous `playwright test`
- * invocation — leak into later tests. That accumulation is what made the suite's
- * "green" untrustworthy, and it is the real reason f8-emergency-queue failed:
- * it read a STALE emergency queue item left over from an earlier run (matched by
- * petName, whose appointment no longer exists so it can never be cleared), not
- * the item it had just backfilled. The app's queue-clearing logic itself is
- * correct on a clean store.
+ * The app is Supabase-first: every read (fetchAppointments/Inventory/Pets/Clients/
+ * ClinicQueue/…) and write goes through supabase-js -> /rest/v1/. Earlier the
+ * fixture fulfilled all /rest/v1/ with an empty [], so IndexedDB seeds a test
+ * wrote never reached React state (this is why cv1 Test A's queue never rendered).
  *
- * Before every test we load the app once, wipe every data store, and PRESERVE
- * only the auth/config stores ('system', 'users') so the shared login() helper
- * (ashpoint_owner / PIN 5692) keeps working — that account is config-backed and
- * falls back to PIN 5692 when no masterPin is stored (see App.tsx). Demo seeding
- * is already skipped under automation (navigator.webdriver, App.tsx), so the
- * store stays empty until each test seeds its own fixtures. Each spec's own
- * page.goto at the start of the test re-hydrates React state from the clean store.
- *
- * Combined with `workers: 1` in playwright.config.ts (the store is shared across
- * parallel contexts, so concurrent tests would otherwise clear/overwrite each
- * other's data mid-run), every test starts from a clean, isolated store.
+ * The bridge below installs an in-page fetch() shim (before any app code) that
+ * answers /rest/v1/ from the app's OWN localforage stores (window._db, whose
+ * storeName === the Postgres table name). GET reads the store (with basic
+ * eq/neq/is filtering), POST/PATCH/DELETE mutate it, and the checkout RPC is
+ * emulated with the same effects the real SQL function has (insert invoice,
+ * complete the appointment, decrement stock). This makes the seeds visible and
+ * lets real app logic run — without touching any live Supabase project.
  */
 const PRESERVE = ['system', 'users'];
 const APP_URL = 'http://localhost:3000/';
 
 /**
- * TEST-ONLY staff identity. Production login is Supabase Auth email/password
- * only (Step 32). The app has a DEV-only branch that reads window.__KP_TEST_AUTH__
- * and signs the harness in without a live Auth session — it is guarded by
- * import.meta.env.DEV and stripped from production builds, so this stub can never
- * be a real login path. Role 'provider' is root, so every nav panel is visible.
+ * TEST-ONLY staff identity. Production login is Supabase Auth email/password only
+ * (Step 32). App has a DEV-only branch reading window.__KP_TEST_AUTH__, guarded by
+ * import.meta.env.DEV and stripped from production builds. Role 'provider' is root.
  */
 const TEST_AUTH_USER = {
   id: 'kpah_test_provider',
@@ -44,30 +33,154 @@ const TEST_AUTH_USER = {
   active: true,
 };
 
+// This function is serialised into the page via addInitScript. It must be fully
+// self-contained (no external references).
+function installRestBridge() {
+  const PK: Record<string, string> = { clients: 'client_id' }; // default 'id'
+  const origFetch = window.fetch.bind(window);
+
+  function storeFor(table: string): any {
+    const db = (window as any)._db;
+    if (!db) return null;
+    for (const k of Object.keys(db)) {
+      const inst = db[k];
+      try {
+        const cfg = inst && typeof inst.config === 'function' ? inst.config() : null;
+        if (cfg && cfg.storeName === table) return inst;
+      } catch { /* ignore */ }
+    }
+    return null;
+  }
+  async function readAll(store: any): Promise<any[]> {
+    const rows: any[] = [];
+    await store.iterate((v: any) => { if (v && !Array.isArray(v)) rows.push(v); });
+    return rows;
+  }
+  function coerce(v: string): any {
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+    if (v === 'null') return null;
+    return v;
+  }
+  // PostgREST filters: col=eq.x, col=neq.x, col=is.false, col=in.(a,b)
+  function makeFilter(params: URLSearchParams): (row: any) => boolean {
+    const preds: Array<(r: any) => boolean> = [];
+    for (const [col, raw] of params.entries()) {
+      if (['select', 'order', 'limit', 'offset', 'on_conflict'].includes(col)) continue;
+      const m = /^(eq|neq|is|gt|gte|lt|lte)\.(.*)$/.exec(raw);
+      if (!m) continue;
+      const op = m[1]; const val = coerce(m[2]);
+      preds.push((r) => {
+        const cell = r[col];
+        switch (op) {
+          case 'eq': case 'is': return cell === val || String(cell) === String(val);
+          case 'neq': return !(cell === val || String(cell) === String(val));
+          case 'gt': return cell > val; case 'gte': return cell >= val;
+          case 'lt': return cell < val; case 'lte': return cell <= val;
+          default: return true;
+        }
+      });
+    }
+    return (row) => preds.every((p) => p(row));
+  }
+  function json(data: any, status = 200): Response {
+    const n = Array.isArray(data) ? data.length : 1;
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json', 'Content-Range': `0-${Math.max(0, n - 1)}/${n}` },
+    });
+  }
+
+  async function handleRpc(fn: string, body: any): Promise<Response> {
+    if (fn === 'commit_checkout_invoice_and_stock') {
+      const inv = body?.p_invoice || {};
+      const stock: any[] = Array.isArray(body?.p_stock_items) ? body.p_stock_items : [];
+      const invStore = storeFor('invoices');
+      let already = false;
+      if (invStore && inv.id) {
+        const existing = await invStore.getItem(inv.id);
+        if (existing) already = true;
+        else await invStore.setItem(inv.id, { is_deleted: false, _dirty: false, ...inv });
+      }
+      const remaining: Record<string, number> = {};
+      if (!already) {
+        const apptStore = storeFor('appointments');
+        if (apptStore && inv.appointmentId) {
+          const apt = await apptStore.getItem(inv.appointmentId);
+          if (apt) await apptStore.setItem(inv.appointmentId, { ...apt, status: inv.paymentStatus === 'void' ? 'booked' : 'completed' });
+        }
+        const invStore2 = storeFor('inventory');
+        for (const s of stock) {
+          if (invStore2 && s.item_id) {
+            const it = await invStore2.getItem(s.item_id);
+            if (it) { it.stock = Number(it.stock || 0) - Number(s.qty || 0); await invStore2.setItem(s.item_id, it); remaining[s.item_id] = it.stock; }
+          }
+        }
+      }
+      return json({ invoice_id: inv.id, already_committed: already, remaining_stock: remaining });
+    }
+    // Unemulated RPCs: succeed with an empty object so callers do not throw.
+    return json({});
+  }
+
+  window.fetch = async (input: any, init?: any): Promise<Response> => {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (!url.includes('/rest/v1/')) return origFetch(input, init);
+    try {
+      const u = new URL(url, window.location.origin);
+      const method = (init?.method || (typeof input !== 'string' && input?.method) || 'GET').toUpperCase();
+      const path = u.pathname.split('/rest/v1/')[1] || '';
+      const bodyRaw = init?.body ?? (typeof input !== 'string' ? undefined : undefined);
+      const body = bodyRaw ? JSON.parse(bodyRaw) : undefined;
+
+      if (path.startsWith('rpc/')) return await handleRpc(path.slice(4), body);
+
+      const table = path.split('?')[0];
+      const store = storeFor(table);
+      if (!store) return json([]); // unknown table -> empty, never hit the network
+
+      if (method === 'GET') {
+        const rows = (await readAll(store)).filter(makeFilter(u.searchParams));
+        return json(rows);
+      }
+      if (method === 'POST') {
+        const rows = Array.isArray(body) ? body : [body];
+        const pk = PK[table] || 'id';
+        for (const r of rows) { const withDefaults = { is_deleted: false, _dirty: false, ...r }; await store.setItem(String(r[pk]), withDefaults); }
+        return json(rows, 201);
+      }
+      if (method === 'PATCH') {
+        const filter = makeFilter(u.searchParams);
+        const rows = await readAll(store); const pk = PK[table] || 'id'; const updated: any[] = [];
+        for (const r of rows) { if (filter(r)) { const merged = { ...r, ...body }; await store.setItem(String(r[pk]), merged); updated.push(merged); } }
+        return json(updated);
+      }
+      if (method === 'DELETE') {
+        const filter = makeFilter(u.searchParams);
+        const rows = await readAll(store); const pk = PK[table] || 'id'; const del: any[] = [];
+        for (const r of rows) { if (filter(r)) { await store.removeItem(String(r[pk])); del.push(r); } }
+        return json(del);
+      }
+      return json([]);
+    } catch (e) {
+      // On any bridge error, fail closed to an empty result rather than a live call.
+      return json([]);
+    }
+  };
+}
+
 export const test = base.extend({
   page: async ({ page }, use) => {
-    // Inject the test-only signed-in identity before any app script runs, on
-    // every navigation (specs call page.goto again inside each test).
-    await page.addInitScript((user) => {
-      (window as any).__KP_TEST_AUTH__ = user;
-    }, TEST_AUTH_USER);
+    // Install the DEV-only signed-in identity and the REST bridge BEFORE any app
+    // script runs, on every navigation (specs call page.goto again per test).
+    await page.addInitScript((user) => { (window as any).__KP_TEST_AUTH__ = user; }, TEST_AUTH_USER);
+    await page.addInitScript(installRestBridge);
 
-    // 1) Cut the app off from the shared remote Supabase project. The sync
-    // engine (src/lib/syncEngine.ts) pulls every mapped table — appointments,
-    // clinic_queue, pets, … — and a realtime channel streams remote changes in
-    // continuously. Because that project is shared across every run, prior
-    // tests' data flows back and re-pollutes local IndexedDB the moment we
-    // clear it. Fulfilling REST reads with an empty set and blocking realtime
-    // makes each test hermetic and local-only, and stops tests writing more
-    // garbage to the cloud. (Login is a local PIN, not Supabase auth, so this
-    // does not affect authentication.)
-    await page.route('**/rest/v1/**', route =>
-      route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Content-Range': '0-0/0' }, body: '[]' })
-    );
-    await page.routeWebSocket(/realtime/, () => { /* swallow — no realtime in tests */ });
+    // Realtime is swallowed — the bridge is the single source of truth.
+    await page.routeWebSocket(/realtime/, () => { /* no realtime in tests */ });
 
-    // 2) Load the app so window._db exists, then wipe every data store,
-    // preserving only auth/config ('system', 'users') so login() keeps working.
+    // Load the app so window._db exists, then wipe every data store, preserving
+    // only auth/config ('system','users') so seeds start clean per test.
     await page.goto(APP_URL);
     await page.waitForFunction(() => Boolean((window as any)._db), null, { timeout: 20000 });
     await page.evaluate(async (preserve: string[]) => {
@@ -76,13 +189,11 @@ export const test = base.extend({
         if (preserve.includes(key)) continue;
         const store = db[key];
         if (store && typeof store.clear === 'function') {
-          try { await store.clear(); } catch { /* ignore per-store clear errors */ }
+          try { await store.clear(); } catch { /* ignore */ }
         }
       }
     }, PRESERVE);
 
-    // Every spec navigates (page.goto) at the start of each test, which
-    // re-hydrates React state from the now-clean store, so no extra reload here.
     await use(page);
   },
 });
