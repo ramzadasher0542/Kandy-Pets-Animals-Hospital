@@ -16,10 +16,11 @@ Live deployment: https://kpah-aps.vercel.app/
 - Fresh live cashier login verified: only POS and Shift & Drawer are visible; Settings and all other panels are hidden.
 - Vercel production serves the merged build. Lint and production build passed previously; the Vercel preview for PR #4 passed.
 - Browser-initiated cloud erase remains disabled. Data export is available; Supabase restore remains provider-managed.
+- The Cloudflare GitHub App integration was revoked and verified absent from the installed-apps list.
 
 ## Remaining Work: 6 Items
 
-1. Remove the Cloudflare Workers and Pages GitHub app integration. Repository code search found no Cloudflare files or references; the GitHub app installation still exists and requires GitHub email sudo verification to revoke.
+1. Merge and deploy the browser sync-secret removal, then confirm the production bundle contains no write-authorizing browser secret. The Vercel `VITE_SUPABASE_SYNC_SECRET` variable has been deleted.
 2. Run one controlled appointment and checkout smoke test without altering real clinic data unexpectedly.
 3. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
 4. Verify second-device reads using an approved device/session.
@@ -36,4 +37,4 @@ NOT READY FOR REAL CLINIC DATA until backup/recovery and controlled checkout ver
 
 ## Vercel-Only Deployment
 
-Vercel is the only production target. Cloudflare removal is cleanup, not a reason to deploy anywhere else.
+Vercel is the only production target. The Cloudflare integration is revoked; the cleanup change removes the remaining legacy repository traces.
