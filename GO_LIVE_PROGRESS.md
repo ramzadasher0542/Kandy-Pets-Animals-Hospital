@@ -28,18 +28,19 @@ Live deployment: https://kpah-aps.vercel.app/
 - Authenticated production smoke test covered every live navigation panel without a load error. Staff & Security remained visible, while Staff Management remained absent from the primary navigation.
 - Found and fixed a real production defect in invoice reversal: the deployed browser called missing `void_invoice_and_reverse_revenue_auth(uuid)`. Step 35 added the Auth-guarded wrapper and was applied to production. Controlled checkout created invoice `88a9a88c` for Rs. 1,000 and reduced `test 1` stock from 100 to 99; the retry then voided it, restored stock to 100, and restored the active shift cash total to zero.
 - Step 31 security regression was re-run after Step 35 and passed with no rows returned.
+- Daily backup policy is implemented in the shift-close flow: an administrator/provider authorization is required, the final reconciliation is committed first, and a full JSON snapshot download starts immediately afterward. This is a portable browser download, not provider-managed storage; a failed export leaves the shift closed but explicitly reports that the day is not backed up.
 - Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
 ## Remaining Work: 2 Items
 
-1. Establish provider-managed backup/recovery or an approved operational recovery policy.
+1. Operate the daily backup policy with external retention and rehearse a restore before real data use.
 2. Complete manual clinical workflow sign-off.
 
 ## Current Decision
 
-BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until backup/recovery and manual clinical workflow sign-off are complete. Staff Management remains explicitly deferred.
+BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until daily backup retention/recovery and manual clinical workflow sign-off are complete. Staff Management remains explicitly deferred.
 
 ## Deployability Assessment
 
