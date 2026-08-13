@@ -34,6 +34,18 @@ Live deployment: https://kpah-aps.vercel.app/
 
 BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until backup/recovery, second-device verification, and real CV-1 coverage are complete.
 
+## Deployability Assessment
+
+**65% controlled-beta deployable.** This is a weighted engineering readiness score,
+not a safety certification: hosting/release 18/20, authentication and authorization
+15/20, core clinical/financial workflow coverage 12/25, recovery 12/20, and QA/
+operations 8/15.
+
+The system remains **NO-GO as an unrestricted clinical system of record**. The
+controlled export and merge restore works, but Supabase Free has no certified
+provider-managed backups or PITR, live second-device verification is incomplete,
+and the current Playwright fixture does not exercise real Supabase Auth/RLS.
+
 ## Vercel-Only Deployment
 
 Vercel is the only production target. The retired deployment integration has been removed from the repository and GitHub account.
