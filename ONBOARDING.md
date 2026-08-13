@@ -83,6 +83,9 @@ Supabase free tier does not provide certified scheduled backups or PITR. Do not
 claim enterprise recovery readiness until an external export/restore process or
 a paid recovery plan has been verified.
 
+Payroll is intentionally deferred. Do not configure or rely on the dormant
+payslips table until the owner explicitly reopens that feature.
+
 ## 7. Vercel rollback
 
 Use Vercel deployment history to promote the last known-good deployment. After
