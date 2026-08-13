@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
-import { User, StaffProfile, TimeEntry, ScheduleEntry, Payslip, PayslipDeduction } from '../types';
-import { Plus, X, Edit, Trash2, Link, Unlink, ChevronDown, ChevronUp, CheckCircle2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Wallet, FileText, Users} from 'lucide-react';
+import { User, StaffProfile, TimeEntry, ScheduleEntry } from '../types';
+import { Plus, X, Edit, Trash2, Link, Unlink, ChevronDown, ChevronUp, CheckCircle2, Clock, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Users} from 'lucide-react';
 import { showToast } from './Toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { stampRecord } from '../lib/recordMeta';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
@@ -16,18 +14,16 @@ interface StaffManagerProps {
   currentUser: User;
   timeEntries: TimeEntry[];
   scheduleEntries: ScheduleEntry[];
-  payslips: Payslip[];
   onSaveTimeEntry: (entry: TimeEntry) => Promise<void>;
   onSaveScheduleEntry: (entry: ScheduleEntry) => Promise<void>;
   onDeleteScheduleEntry: (id: string) => Promise<void>;
   onSaveProfile: (p: StaffProfile) => Promise<void>;
   onDeactivateProfile: (id: string) => Promise<void>;
-  onSavePayslip: (p: Payslip) => Promise<void>;
   onSaveUser?: (u: User) => Promise<void>;
 }
 
-export default function StaffManager({ staffProfiles, users, currentUser, timeEntries, scheduleEntries, payslips, onSaveTimeEntry, onSaveScheduleEntry, onDeleteScheduleEntry, onSaveProfile, onDeactivateProfile, onSavePayslip, onSaveUser }: StaffManagerProps) {
-  const [activeTab, setActiveTab] = useState<'roster' | 'link' | 'clock' | 'schedule' | 'payslips'>('roster');
+export default function StaffManager({ staffProfiles, users, currentUser, timeEntries, scheduleEntries, onSaveTimeEntry, onSaveScheduleEntry, onDeleteScheduleEntry, onSaveProfile, onDeactivateProfile, onSaveUser }: StaffManagerProps) {
+  const [activeTab, setActiveTab] = useState<'roster' | 'link' | 'clock' | 'schedule'>('roster');
   
   // Roster Tab State
   const [showModal, setShowModal] = useState(false);
@@ -148,195 +144,6 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
   });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleData, setScheduleData] = useState({ staffId: '', date: new Date().toISOString().split('T')[0], startTime: '09:00', endTime: '17:00', role: '', notes: '' });
-
-  // Payslips State
-  const [payslipStaffId, setPayslipStaffId] = useState<string>('');
-  const [payslipPeriodStart, setPayslipPeriodStart] = useState<string>(todayISO);
-  const [payslipPeriodEnd, setPayslipPeriodEnd] = useState<string>(todayISO);
-  const [payslipCalculated, setPayslipCalculated] = useState<{ grossPayCents: number; entries: TimeEntry[]; totalMinutes: number; isHourly: boolean } | null>(null);
-  const [payslipDeductions, setPayslipDeductions] = useState<Array<{ label: string; amountRs: string }>>([]);
-
-  const selectedPayslipStaff = staffProfiles.find(p => p.id === payslipStaffId);
-
-  const handleCalculatePayslip = () => {
-    if (!payslipStaffId) return showToast('Select a staff member first', 'error');
-    if (!payslipPeriodStart || !payslipPeriodEnd) return showToast('Select a period', 'error');
-    const staff = staffProfiles.find(p => p.id === payslipStaffId);
-    if (!staff) return showToast('Staff not found', 'error');
-
-    if (staff.employmentType === 'hourly') {
-      if (!staff.hourlyRate) return showToast('Staff has no hourly rate set', 'error');
-      const inPeriod = (timeEntries || []).filter(t =>
-        t.staffId === payslipStaffId &&
-        t.date >= payslipPeriodStart &&
-        t.date <= payslipPeriodEnd &&
-        t.clockOut &&
-        typeof t.durationMinutes === 'number'
-      );
-      const totalMinutes = inPeriod.reduce((sum, t) => sum + (t.durationMinutes || 0), 0);
-      const totalHours = totalMinutes / 60;
-      const grossPayCents = Math.round(totalHours * staff.hourlyRate);
-      setPayslipCalculated({ grossPayCents, entries: inPeriod, totalMinutes, isHourly: true });
-    } else {
-      const grossPayCents = staff.monthlySalary || 0;
-      if (!grossPayCents) return showToast('Staff has no monthly salary set', 'error');
-      setPayslipCalculated({ grossPayCents, entries: [], totalMinutes: 0, isHourly: false });
-    }
-    setPayslipDeductions([]);
-  };
-
-  const totalDeductionsCents = payslipDeductions.reduce((sum, d) => {
-    const rs = parseFloat(d.amountRs);
-    if (isNaN(rs)) return sum;
-    return sum + Math.round(rs * 100);
-  }, 0);
-  const netPayCents = payslipCalculated ? payslipCalculated.grossPayCents - totalDeductionsCents : 0;
-
-  const handleSavePayslipDraft = async () => {
-    if (!payslipCalculated || !selectedPayslipStaff) return showToast('Calculate first', 'error');
-    const deductionsClean: PayslipDeduction[] = payslipDeductions
-      .filter(d => d.label.trim() && !isNaN(parseFloat(d.amountRs)))
-      .map(d => ({ label: d.label.trim(), amountCents: Math.round(parseFloat(d.amountRs) * 100) }));
-    const nowIso = new Date().toISOString();
-    const payslip: Payslip = {
-      id: crypto.randomUUID(),
-      staffId: selectedPayslipStaff.id,
-      periodStart: payslipPeriodStart,
-      periodEnd: payslipPeriodEnd,
-      grossPayCents: payslipCalculated.grossPayCents,
-      deductions: deductionsClean,
-      netPayCents: payslipCalculated.grossPayCents - deductionsClean.reduce((s, d) => s + d.amountCents, 0),
-      status: 'draft',
-      generatedBy: currentUser.id,
-      generatedAt: nowIso,
-      created_at: nowIso,
-      updated_at: nowIso,
-       is_deleted: false
-    };
-    try {
-      await onSavePayslip(stampRecord(payslip) as Payslip);
-      showToast('Payslip saved as draft', 'success');
-      setPayslipCalculated(null);
-      setPayslipDeductions([]);
-    } catch (e: any) {
-      showToast(`Error saving payslip: ${e.message}`, 'error');
-    }
-  };
-
-  const handleUpdatePayslipStatus = async (p: Payslip, newStatus: 'finalized' | 'paid') => {
-    const updated: Payslip = {
-      ...p,
-      status: newStatus,
-      paidAt: newStatus === 'paid' ? new Date().toISOString() : p.paidAt
-    };
-    try {
-      await onSavePayslip(stampRecord(updated) as Payslip);
-      showToast(`Payslip marked as ${newStatus}`, 'success');
-    } catch (e: any) {
-      showToast(`Error updating payslip: ${e.message}`, 'error');
-    }
-  };
-
-  const generatePayslipPDF = (payslip: Payslip, staff: StaffProfile) => {
-    const doc = new jsPDF();
-    
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(30, 58, 138); // indigo-900
-    doc.text('PAYSLIP', 14, 20);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(71, 85, 105); // slate-600
-    doc.text('Kandy Pets Animal Hospital', 14, 30);
-    doc.setFontSize(10);
-    doc.text(`Pay Period: ${payslip.periodStart} to ${payslip.periodEnd}`, 14, 38);
-    doc.text(`Generated: ${new Date(payslip.generatedAt || new Date()).toLocaleString()}`, 14, 44);
-    
-    // Staff Info
-    doc.setFontSize(14);
-    doc.setTextColor(30, 41, 59); // slate-800
-    doc.text('Staff Details', 14, 58);
-    
-    autoTable(doc, {
-      startY: 62,
-      theme: 'plain',
-      styles: { cellPadding: 1, fontSize: 10 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
-      body: [
-        ['Name:', staff.fullName],
-        ['Position:', `${staff.position || 'N/A'} ${staff.department ? `(${staff.department})` : ''}`],
-        ['Employment Type:', staff.employmentType.charAt(0).toUpperCase() + staff.employmentType.slice(1)],
-      ],
-    });
-    
-    // Earnings
-    let currentY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFontSize(14);
-    doc.text('Earnings', 14, currentY);
-    
-    const earningsBody = [];
-    if (staff.employmentType === 'hourly') {
-        const rateRs = (staff.hourlyRate || 0) / 100;
-        const grossRs = payslip.grossPayCents / 100;
-        const totalHours = rateRs > 0 ? (grossRs / rateRs).toFixed(1) : '0';
-        
-        earningsBody.push(['Total Hours Worked', totalHours]);
-        earningsBody.push(['Hourly Rate', `Rs. ${rateRs.toFixed(2)}`]);
-        earningsBody.push(['Gross Pay', `Rs. ${grossRs.toFixed(2)}`]);
-    } else {
-        const grossRs = payslip.grossPayCents / 100;
-        earningsBody.push(['Monthly Salary', `Rs. ${grossRs.toFixed(2)}`]);
-        earningsBody.push(['Gross Pay', `Rs. ${grossRs.toFixed(2)}`]);
-    }
-    
-    autoTable(doc, {
-      startY: currentY + 4,
-      theme: 'striped',
-      headStyles: { fillColor: [241, 245, 249], textColor: [71, 85, 105] }, // slate-100/slate-600
-      head: [['Description', 'Amount']],
-      body: earningsBody,
-    });
-    
-    currentY = (doc as any).lastAutoTable.finalY + 10;
-    
-    // Deductions
-    const deductions = payslip.deductions || [];
-    if (deductions.length > 0) {
-      doc.setFontSize(14);
-      doc.text('Deductions', 14, currentY);
-      
-      const deductionsBody = deductions.map(d => [d.label, `Rs. ${(d.amountCents/100).toFixed(2)}`]);
-      const totalDeductionsCents = deductions.reduce((sum, d) => sum + d.amountCents, 0);
-      deductionsBody.push(['Total Deductions', `Rs. ${(totalDeductionsCents/100).toFixed(2)}`]);
-      
-      autoTable(doc, {
-        startY: currentY + 4,
-        theme: 'striped',
-        headStyles: { fillColor: [254, 226, 226], textColor: [153, 27, 27] }, // rose-100/rose-800
-        head: [['Description', 'Amount']],
-        body: deductionsBody,
-      });
-      currentY = (doc as any).lastAutoTable.finalY + 10;
-    }
-    
-    // Net Pay
-    doc.setFontSize(18);
-    doc.setTextColor(6, 95, 70); // emerald-800
-    doc.text(`NET PAY: Rs. ${(payslip.netPayCents/100).toFixed(2)}`, 14, currentY + 10);
-    
-    // Footer
-    doc.setFontSize(9);
-    doc.setTextColor(148, 163, 184); // slate-400
-    const pageHeight = doc.internal.pageSize.height;
-    doc.text('This is a computer-generated payslip.', 14, pageHeight - 20);
-    doc.text(`Generated by: ${currentUser.name || currentUser.username}`, 14, pageHeight - 15);
-    doc.text(`Status: ${payslip.status.toUpperCase()}`, 14, pageHeight - 10);
-    
-    const safeName = staff.fullName.replace(/[^a-zA-Z0-9]/g, '_');
-    doc.save(`payslip_${safeName}_${payslip.periodStart}_${payslip.periodEnd}.pdf`);
-  };
-
-  const payslipHistorySorted = [...(payslips || [])].sort((a, b) => (b.generatedAt || '').localeCompare(a.generatedAt || ''));
 
   const openNew = () => {
     setFormData({ active: true, employmentType: 'hourly' });
@@ -547,15 +354,14 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
 
   return (
     <PageShell
-      title="Staff & Payroll"
-      subtitle="Manage team members and user access links"
+      title="Staff Management"
+      subtitle="Manage team members, access links, scheduling, and time clock. Payroll is deferred."
       filters={{
         options: [
           { id: 'roster', label: 'Roster' },
           { id: 'schedule', label: 'Schedule' },
           { id: 'clock', label: 'Time Clock' },
-          { id: 'link', label: 'Link to Login' },
-          { id: 'payslips', label: 'Payslips', testId: 'tab-payslips' }
+           { id: 'link', label: 'Link to Login' }
         ],
         active: activeTab,
         onChange: (id) => setActiveTab(id as any)
@@ -838,132 +644,6 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                   {todaysEntries.length === 0 && <tr><td colSpan={4} className="p-8"><EmptyState icon={<Clock className="w-8 h-8 opacity-50" />} title="No Time Entries" description="No time entries recorded today." /></td></tr>}
                 </tbody>
               </table>
-            </div>
-          </div>
-        ) : activeTab === 'payslips' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* LEFT — Generate New Payslip */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-              <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2"><Wallet className="w-5 h-5 text-indigo-500"/> Generate New Payslip</h2>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Staff Member</label>
-                <select data-testid="payslip-staff-select" value={payslipStaffId} onChange={e => { setPayslipStaffId(e.target.value); setPayslipCalculated(null); }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                  <option value="">-- Select Staff --</option>
-                  {activeProfiles.map(p => <option key={p.id} value={p.id}>{p.fullName} ({p.employmentType})</option>)}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Period Start</label>
-                  <input data-testid="payslip-period-start" type="date" value={payslipPeriodStart} onChange={e => setPayslipPeriodStart(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Period End</label>
-                  <input data-testid="payslip-period-end" type="date" value={payslipPeriodEnd} onChange={e => setPayslipPeriodEnd(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
-                </div>
-              </div>
-
-              <button data-testid="payslip-calculate-btn" onClick={handleCalculatePayslip} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md transition-colors cursor-pointer">Calculate</button>
-
-              {payslipCalculated && selectedPayslipStaff && (
-                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Breakdown</div>
-                  {payslipCalculated.isHourly ? (
-                    <>
-                      <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-1">
-                        {payslipCalculated.entries.length === 0 && <EmptyState icon={<Clock className="w-6 h-6 opacity-50" />} title="No Time Entries" description="No completed time entries in this period." />}
-                        {payslipCalculated.entries.map(t => {
-                          const hours = (t.durationMinutes || 0) / 60;
-                          const rowCents = Math.round(hours * (selectedPayslipStaff.hourlyRate || 0));
-                          return (
-                            <div key={t.id} className="flex justify-between text-xs font-mono bg-white p-2 rounded-xl border border-slate-100">
-                              <span className="font-bold text-slate-600">{t.date}</span>
-                              <span className="text-slate-500">{new Date(t.clockIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}–{t.clockOut ? new Date(t.clockOut).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}</span>
-                              <span className="text-slate-500">{hours.toFixed(2)}h</span>
-                              <span className="font-black text-slate-800">Rs. {(rowCents/100).toFixed(2)}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="text-xs font-bold text-slate-600 flex justify-between pt-2 border-t border-slate-200">
-                        <span>Total Hours Worked</span>
-                        <span data-testid="payslip-total-hours" className="font-mono font-black text-slate-800">{(payslipCalculated.totalMinutes / 60).toFixed(2)}h</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-xs font-bold text-slate-600 flex justify-between">
-                      <span>Monthly flat rate</span>
-                      <span className="font-mono font-black text-slate-800">Rs. {((selectedPayslipStaff.monthlySalary || 0)/100).toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="text-sm font-black text-slate-800 flex justify-between pt-2 border-t border-slate-200">
-                    <span>Gross Pay</span>
-                    <span data-testid="payslip-gross-pay" className="font-mono">Rs. {(payslipCalculated.grossPayCents/100).toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-
-              {payslipCalculated && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deductions</label>
-                    <button data-testid="payslip-add-deduction-btn" onClick={() => setPayslipDeductions(prev => [...prev, { label: '', amountRs: '' }])} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer flex items-center gap-1"><Plus className="w-3 h-3"/> Add Deduction</button>
-                  </div>
-                  {payslipDeductions.map((d, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <input data-testid={`payslip-deduction-label-${i}`} type="text" value={d.label} onChange={e => setPayslipDeductions(prev => prev.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} placeholder="Label (e.g. Advance)" className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                      <input data-testid={`payslip-deduction-amount-${i}`} type="number" step="0.01" min="0" value={d.amountRs} onChange={e => setPayslipDeductions(prev => prev.map((x, idx) => idx === i ? { ...x, amountRs: e.target.value } : x))} placeholder="Rs." className="w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
-                      <button onClick={() => setPayslipDeductions(prev => prev.filter((_, idx) => idx !== i))} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"><X className="w-4 h-4"/></button>
-                    </div>
-                  ))}
-
-                  <div className="pt-4 border-t border-slate-200 flex justify-between items-baseline">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Net Pay</span>
-                    <span data-testid="payslip-net-pay" className="text-3xl font-black text-emerald-700 font-mono">Rs. {(netPayCents/100).toFixed(2)}</span>
-                  </div>
-
-                  <button data-testid="payslip-save-draft-btn" onClick={handleSavePayslipDraft} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md transition-colors cursor-pointer">Save as Draft</button>
-                </div>
-              )}
-            </div>
-
-            {/* RIGHT — Payslip History */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-              <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-indigo-500"/> Payslip History</h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {payslipHistorySorted.length === 0 && <EmptyState icon={<FileText className="w-8 h-8 opacity-50" />} title="No Payslips" description="No payslips generated yet." className="p-8" />}
-                {payslipHistorySorted.map(p => {
-                  const staff = staffProfiles.find(s => s.id === p.staffId);
-                  const badgeCls = p.status === 'draft' ? 'bg-slate-200 text-slate-700' : p.status === 'finalized' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700';
-                  return (
-                    <div key={p.id} data-testid={`payslip-row-${p.id}`} className="p-4 hover:bg-slate-50/50 flex items-center justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-slate-800 truncate">{staff?.fullName || 'Unknown Staff'}</div>
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">{p.periodStart} → {p.periodEnd}</div>
-                        <div className="text-xs font-mono font-bold text-slate-600 mt-1">Gross Rs. {((p.grossPayCents || 0)/100).toFixed(2)} · Net Rs. {((p.netPayCents || 0)/100).toFixed(2)}</div>
-                      </div>
-                      <div className="flex flex-col items-end gap-2 shrink-0">
-                        <span data-testid={`payslip-status-${p.id}`} className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${badgeCls}`}>{p.status}</span>
-                        <div className="flex gap-1">
-                          {p.status === 'draft' && (
-                            <button data-testid={`payslip-finalize-${p.id}`} onClick={() => handleUpdatePayslipStatus(p, 'finalized')} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Finalize</button>
-                          )}
-                          {p.status === 'finalized' && (
-                            <button data-testid={`payslip-mark-paid-${p.id}`} onClick={() => handleUpdatePayslipStatus(p, 'paid')} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Mark Paid</button>
-                          )}
-                          {(p.status === 'finalized' || p.status === 'paid') && (
-                            <button data-testid={`payslip-download-${p.id}`} onClick={() => staff && generatePayslipPDF(p, staff)} className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer">Download PDF</button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         ) : null}
