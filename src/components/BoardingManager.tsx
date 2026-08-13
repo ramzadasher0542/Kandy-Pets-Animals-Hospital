@@ -57,16 +57,17 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const calculateDailyRate = (pet: Pet | undefined, food: 'without_food' | 'with_food', litter: boolean) => {
     if (!pet || !systemConfig?.boardingRates) return 0;
     const rates = systemConfig.boardingRates;
+    const safeRate = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
     let cost = 0;
     const isCat = pet.petType?.toLowerCase() === 'cat' || pet.petType?.toLowerCase() === 'feline';
     const isDog = pet.petType?.toLowerCase() === 'dog' || pet.petType?.toLowerCase() === 'canine';
 
     if (isCat) {
-      cost = food === 'with_food' ? rates.catWithfoodCents : rates.catNofoodCents;
-      if (litter) cost += rates.catLitterCents;
+      cost = safeRate(food === 'with_food' ? rates.catWithfoodCents : rates.catNofoodCents);
+      if (litter) cost += safeRate(rates.catLitterCents);
     } else if (isDog) {
-      cost = food === 'with_food' ? rates.dogWithfoodCents : rates.dogNofoodCents;
-      if (litter) cost += rates.dogLitterCents;
+      cost = safeRate(food === 'with_food' ? rates.dogWithfoodCents : rates.dogNofoodCents);
+      if (litter) cost += safeRate(rates.dogLitterCents);
     }
     return cost;
   };
