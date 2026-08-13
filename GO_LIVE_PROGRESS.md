@@ -1,6 +1,6 @@
 # Go-Live Progress
 
-Last verified: 2026-08-09 UTC
+Last verified: 2026-08-13 UTC
 
 Enterprise cleanup merged through PR #10.
 Live deployment: https://kpah-aps.vercel.app/
@@ -9,13 +9,14 @@ Live deployment: https://kpah-aps.vercel.app/
 
 - Fixed the false CRITICAL DATABASE CORRUPTION DETECTED screen. Unauthenticated RLS failures no longer masquerade as local IndexedDB corruption.
 - Supabase Auth email/password login is live and protected cloud reads wait for an authenticated session.
-- Production cjpmsjjluqlfcyzuspni has 22/22 tables under RLS, 63 policies, anonymous reads denied, and destructive RPC execution denied.
-- The administrator account is linked to the existing active staff row with role admin. No clinical rows were changed.
-- A second Auth account is linked to a new cashier staff row for role testing.
-- Fresh live administrator login verified: all clinic panels, all six Settings tabs, action matrix, and panel access matrix are visible.
+- Production cjpmsjjluqlfcyzuspni has RLS enabled across the application tables, anonymous reads denied, and destructive RPC execution denied.
+- The current administrator Auth identity is linked to an active `public.users` row with role `admin`. No clinical rows were changed.
+- Auth accounts are linked to owner, cashier, veterinarian, and administrator app roles for beta testing.
+- Fresh live administrator login verified: all clinic panels and all six Settings tabs are visible.
 - Fresh live cashier login verified: only POS and Shift & Drawer are visible; Settings and all other panels are hidden.
 - Vercel production serves the merged build. Lint and production build passed previously; the Vercel preview for PR #4 passed.
-- Browser-initiated cloud erase remains disabled. Data export is available; Supabase restore remains provider-managed.
+- Browser-initiated cloud erase remains disabled. Full JSON export and protected beta merge restore are available in the release; provider-managed recovery remains required for catastrophic loss.
+- The application is visibly labelled **Beta / under development**. Payroll is deferred.
 - The retired deployment integration was revoked and verified absent from the installed-apps list.
 - Production bundle scan found no browser write-authorizing secret or shared header.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
@@ -25,16 +26,12 @@ Live deployment: https://kpah-aps.vercel.app/
 
 1. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
 2. Verify second-device reads using an approved device/session.
-3. Establish and verify a real backup/export recovery procedure. Supabase free tier does not provide certified scheduled backups or PITR.
+3. Verify the beta export/merge-restore workflow with a controlled recovery test. Supabase free tier does not provide certified scheduled backups or PITR.
 4. Review the 7 npm audit vulnerabilities: 1 low, 1 moderate, 5 high.
-
-## Minor Owner Decision
-
-The administrator session currently displays the existing staff name Keerthi because that was the only original staff row. Rename it only after the owner confirms the preferred display name.
 
 ## Current Decision
 
-NOT READY FOR REAL CLINIC DATA until backup/recovery, second-device verification, and real CV-1 coverage are complete.
+BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until backup/recovery, second-device verification, and real CV-1 coverage are complete.
 
 ## Vercel-Only Deployment
 
