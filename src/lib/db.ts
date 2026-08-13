@@ -947,10 +947,6 @@ export async function fetchFullSystemState(): Promise<any> {
   return state;
 }
 
-export async function reconstituteSystemState(payload: any): Promise<void> {
-  throw new Error('Restore is unavailable for Supabase-backed data. Use the provider-managed Supabase recovery process.');
-}
-
 // ==========================================
 // THE LIVING FLOOR: Clinic Queue State Machine
 // ==========================================
@@ -1028,38 +1024,162 @@ export async function getQueueItemsByService(serviceType: string): Promise<Clini
 // ==========================================
 // FULL DATABASE EXPORT & RESTORE
 // ==========================================
+const FULL_BACKUP_FORMAT = 'ceylonpets-cloud-backup';
+const FULL_BACKUP_VERSION = 2;
+const RESTORE_BATCH_SIZE = 100;
+
+interface BackupTableDefinition {
+  name: string;
+  conflict: string;
+  select?: string;
+  appendOnly?: boolean;
+}
+
+const BACKUP_TABLES: readonly BackupTableDefinition[] = [
+  { name: 'users', conflict: 'id', select: 'id, name, username, role, avatar_color, active, is_deleted, created_at, updated_at, auth_user_id' },
+  { name: 'clients', conflict: 'client_id' },
+  { name: 'inventory_categories', conflict: 'id' },
+  { name: 'suppliers', conflict: 'id' },
+  { name: 'inventory', conflict: 'id' },
+  { name: 'inventory_batches', conflict: 'id' },
+  { name: 'pets', conflict: 'id' },
+  { name: 'appointments', conflict: 'id' },
+  { name: 'medical_records', conflict: 'id' },
+  { name: 'vaccinations', conflict: 'id' },
+  { name: 'lab_results', conflict: 'id' },
+  { name: 'grooming_logs', conflict: 'id' },
+  { name: 'boarding_records', conflict: 'id' },
+  { name: 'invoices', conflict: 'id' },
+  { name: 'shifts', conflict: 'id' },
+  { name: 'cash_adjustments', conflict: 'id' },
+  { name: 'shift_reconciliations', conflict: 'id' },
+  { name: 'clinic_queue', conflict: 'id' },
+  { name: 'notifications', conflict: 'id' },
+  { name: 'system_alerts', conflict: 'id' },
+  { name: 'system_config', conflict: 'id' },
+  { name: 'staff_profiles', conflict: 'id' },
+  { name: 'time_entries', conflict: 'id' },
+  { name: 'schedule_entries', conflict: 'id' },
+  { name: 'payslips', conflict: 'id' },
+  { name: 'deletion_audit', conflict: 'id', appendOnly: true },
+  { name: 'auth_audit', conflict: 'id', appendOnly: true },
+] as const;
+
+interface FullBackupDocument {
+  format: typeof FULL_BACKUP_FORMAT;
+  version: typeof FULL_BACKUP_VERSION;
+  exportedAt: string;
+  tables: Record<string, unknown[]>;
+}
+
+export interface RestoreSummary {
+  tablesProcessed: number;
+  rowsProcessed: number;
+}
+
 export async function exportFullDatabase(): Promise<string> {
   const unlock = await globalMutex.lock();
   try {
     const client = cloud();
-    const { data: shifts, error: shiftError } = await client.from('shifts').select('*');
-    if (shiftError) throw shiftError;
-    const data: any = {
-      clients: await fetchClients(),
-      inventory: await fetchInventory(),
-      appointments: await fetchAppointments(),
-      medicalRecords: await fetchMedicalRecords(),
-      invoices: await fetchInvoices(),
-      shifts: shifts || [],
-      alerts: await fetchAlerts(),
-      notifications: await fetchNotifications(),
-      clinicQueue: await fetchClinicQueue(),
-      system: await fetchSystemConfig(),
-      pets: await fetchPets(),
-      vaccinations: await fetchVaccinations(),
-      labResults: await fetchLabResults(),
-      groomingLogs: await fetchGroomingLogs(),
-      boardingRecords: await fetchBoardingRecords()
-    };
+    const tables: Record<string, unknown[]> = {};
 
-    return JSON.stringify(data);
+    // Read raw rows so deleted history and database-owned columns survive a round trip.
+    for (const definition of BACKUP_TABLES) {
+      const query = definition.select
+        ? client.from(definition.name).select(definition.select)
+        : client.from(definition.name).select('*');
+      const { data, error } = await query;
+      if (error) throw new Error(`Backup could not read ${definition.name}: ${error.message}`);
+      tables[definition.name] = data || [];
+    }
+
+    const backup: FullBackupDocument = {
+      format: FULL_BACKUP_FORMAT,
+      version: FULL_BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      tables,
+    };
+    return JSON.stringify(backup, null, 2);
   } finally {
     unlock();
   }
 }
 
-export async function restoreFullDatabase(jsonData: string): Promise<void> {
-  throw new Error('Restore is unavailable for Supabase-backed data. Use the provider-managed Supabase recovery process.');
+function parseFullBackup(jsonData: string): FullBackupDocument {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonData);
+  } catch {
+    throw new Error('Backup file is not valid JSON.');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Backup file must contain a JSON object.');
+  }
+
+  const backup = parsed as Partial<FullBackupDocument>;
+  if (backup.format !== FULL_BACKUP_FORMAT || backup.version !== FULL_BACKUP_VERSION) {
+    throw new Error('Unsupported backup format. Download a new Full System Backup first.');
+  }
+  if (!backup.tables || typeof backup.tables !== 'object' || Array.isArray(backup.tables)) {
+    throw new Error('Backup file has no table data.');
+  }
+
+  for (const definition of BACKUP_TABLES) {
+    const rows = backup.tables[definition.name];
+    if (rows === undefined) continue;
+    if (!Array.isArray(rows)) {
+      throw new Error(`Backup table ${definition.name} is not an array.`);
+    }
+    for (const row of rows) {
+      if (!row || typeof row !== 'object' || Array.isArray(row) || !(definition.conflict in row)) {
+        throw new Error(`Backup table ${definition.name} contains an invalid row.`);
+      }
+    }
+  }
+
+  return backup as FullBackupDocument;
+}
+
+export async function restoreFullDatabase(jsonData: string): Promise<RestoreSummary> {
+  const backup = parseFullBackup(jsonData);
+  const client = cloud();
+  let tablesProcessed = 0;
+  let rowsProcessed = 0;
+
+  for (const definition of BACKUP_TABLES) {
+    const rows = backup.tables[definition.name];
+    if (!rows?.length) continue;
+
+    try {
+      for (let start = 0; start < rows.length; start += RESTORE_BATCH_SIZE) {
+        const chunk = rows.slice(start, start + RESTORE_BATCH_SIZE);
+        if (definition.appendOnly) {
+          const ids = chunk.map(row => (row as Record<string, unknown>)[definition.conflict]);
+          const { data: existing, error: existingError } = await client
+            .from(definition.name)
+            .select(definition.conflict)
+            .in(definition.conflict, ids);
+          if (existingError) throw existingError;
+          const existingIds = new Set((existing || []).map((row: any) => row[definition.conflict]));
+          const newRows = chunk.filter(row => !existingIds.has((row as Record<string, unknown>)[definition.conflict]));
+          if (newRows.length) {
+            const { error } = await client.from(definition.name).insert(newRows);
+            if (error) throw error;
+          }
+        } else {
+          const { error } = await client.from(definition.name).upsert(chunk, { onConflict: definition.conflict });
+          if (error) throw error;
+        }
+        rowsProcessed += chunk.length;
+      }
+      tablesProcessed++;
+    } catch (error: any) {
+      throw new Error(`Restore stopped at ${definition.name}: ${error?.message || 'write failed'}`);
+    }
+  }
+
+  return { tablesProcessed, rowsProcessed };
 }
 
 // ==========================================
