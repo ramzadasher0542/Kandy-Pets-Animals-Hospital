@@ -6,7 +6,7 @@ import {
 import PageShell from './ui/PageShell';
 import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
-import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations, fetchDeletionAudits, fetchPayslips } from '../lib/db';
+import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations, fetchDeletionAudits } from '../lib/db';
 import { User, DeletionAudit } from '../types';
 import type { SystemConfig } from './SystemSettings';
 
@@ -159,7 +159,6 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
   const [deletions, setDeletions] = useState<DeletionAudit[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
-  const [payslips, setPayslips] = useState<any[]>([]);
   const [shiftRecons, setShiftRecons] = useState<any[]>([]);
 
   const [rangePreset, setRangePreset] = useState<RangePreset>('this_month');
@@ -232,9 +231,8 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
         showToast('Could not load shift reconciliations from the cloud. Showing last known data.', 'error');
       }
 
-      // Audit and payroll data are cloud-backed as well. Keep each read isolated
-      // so one unavailable report section does not fabricate empty data in the
-      // others.
+      // Audit data is cloud-backed and isolated so one unavailable report section
+      // does not fabricate empty data in the others.
       try {
         const dels = await fetchDeletionAudits() as DeletionAudit[];
         dels.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
@@ -242,12 +240,6 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
       } catch (e) {
         if (import.meta.env.DEV) console.error('Deletion audit read failed:', e);
         showToast('Could not load deletion audits from the cloud. Showing last known data.', 'error');
-      }
-      try {
-        setPayslips(await fetchPayslips());
-      } catch (e) {
-        if (import.meta.env.DEV) console.error('Payslips read failed:', e);
-        showToast('Could not load payslips from the cloud. Showing last known data.', 'error');
       }
     } finally {
       setLoading(false);
@@ -277,15 +269,8 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     const grossProfit = grossRevenue - cogs;
     const grossMargin = grossRevenue > 0 ? (grossProfit / grossRevenue) * 100 : 0;
 
-    // Staff cost: finalized/paid payslips whose period overlaps the range.
-    const overlaps = (aS: number, aE: number, bS: number, bE: number) => aS <= bE && bS <= aE;
-    const staffCost = payslips.reduce((s, p) => {
-      if (p.status !== 'finalized' && p.status !== 'paid') return s;
-      const ps = new Date(p.periodStart).getTime(); const pe = new Date(p.periodEnd).getTime();
-      if (isNaN(ps) || isNaN(pe)) return s;
-      return overlaps(ps, pe, range.start.getTime(), range.end.getTime()) ? s + (p.netPayCents || 0) / 100 : s;
-    }, 0);
-    const netProfit = grossProfit - staffCost;
+    // Payroll is deliberately deferred. Do not present gross profit as net profit.
+    const netProfit = grossProfit;
 
     // Category breakdown (by item revenue, so % sum to 100).
     const catMap: Record<string, number> = {};
@@ -392,7 +377,7 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     const cashOutRange = adjustmentsInRange.filter(a => a.type === 'OUT').reduce((s, a) => s + a.amount, 0);
 
     return {
-      grossRevenue, prevRevenue, cogs, grossProfit, grossMargin, staffCost, netProfit,
+      grossRevenue, prevRevenue, cogs, grossProfit, grossMargin, netProfit,
       categories, catTotal, categoryPctSum,
       rev: pctChange(grossRevenue, prevRevenue),
       patientsSeen, prevPatients, patients: pctChange(patientsSeen, prevPatients),
@@ -407,7 +392,7 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
       openingFloat, expectedClosing, actualClosing, reconDiscrepancy, reconsCount: reconsInRange.length,
       adjustmentsInRange, cashInRange, cashOutRange,
     };
-  }, [invoices, appointments, clients, payslips, adjustments, shiftRecons, range, prevRange]);
+  }, [invoices, appointments, clients, adjustments, shiftRecons, range, prevRange]);
 
   // --- CSV export of the full report ---
   const exportReportCSV = () => {
@@ -421,8 +406,8 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     lines.push(`COGS,${report.cogs.toFixed(2)}`);
     lines.push(`Gross Profit,${report.grossProfit.toFixed(2)}`);
     lines.push(`Gross Margin %,${report.grossMargin.toFixed(1)}`);
-    lines.push(`Staff Cost,${report.staffCost.toFixed(2)}`);
-    lines.push(`Estimated Net Profit,${report.netProfit.toFixed(2)}`);
+    lines.push('Staff Cost,DEFERRED');
+    lines.push(`Gross Profit Before Staff Cost,${report.netProfit.toFixed(2)}`);
     lines.push(`Transactions,${report.txnCount}`);
     lines.push(`Avg Transaction Value,${report.avgTxn.toFixed(2)}`);
     lines.push('');
@@ -565,15 +550,15 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
             </div>
             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Staff Cost</span>
-              <span className="text-xl font-black text-rose-600 font-mono tracking-tight">{formatCurrency(report.staffCost)}</span>
+              <span className="text-sm font-black text-slate-500 tracking-tight">DEFERRED</span>
             </div>
             <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-1.5 h-full bg-indigo-500"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 block mb-2">Est. Net Profit</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 block mb-2">Gross Profit Before Staff Cost</span>
               <span data-testid="metric-net-profit" className={`text-xl font-black font-mono tracking-tight ${report.netProfit >= 0 ? 'text-indigo-700' : 'text-rose-600'}`}>{formatCurrency(report.netProfit)}</span>
             </div>
           </div>
-          <p className="text-[10px] font-bold text-slate-400 mt-2">* Estimated net profit = gross profit − staff cost. Excludes rent, utilities, and other fixed costs not tracked in this system. COGS derived from recorded cost/profit per invoice.</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-2">* Payroll is deferred, so this is gross profit before staff cost, not net profit. Excludes rent, utilities, and other fixed costs not tracked in this system. COGS is derived from recorded cost/profit per invoice.</p>
         </section>
 
         {/* TREND COMPARISON */}
