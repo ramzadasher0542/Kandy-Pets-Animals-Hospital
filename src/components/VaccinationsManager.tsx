@@ -83,9 +83,14 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
       status: 'active' as const
     };
 
-    upsertVaccination(newVaccination).then(() => {
+    try {
+      await upsertVaccination(newVaccination);
       setVaccinations(prev => [...prev, newVaccination]);
-    });
+    } catch (error) {
+      if (import.meta.env.DEV) console.error(error);
+      showToast(`Failed to save ${vaccine.name}.`, 'error');
+      return;
+    }
     
     // Bug #1 Fix: Stock deduction removed. POSRegister.tsx exclusively handles
     // inventory deduction at the moment of financial checkout to prevent double-deduction.
