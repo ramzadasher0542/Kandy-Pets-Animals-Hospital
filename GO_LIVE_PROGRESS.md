@@ -27,7 +27,7 @@ Live deployment: https://kpah-aps.vercel.app/
 ## Remaining Work: 3 Items
 
 1. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
-2. Verify second-device reads using an approved device/session.
+2. Verify authenticated second-device reads using an approved device/session. An independent browser reached the clean production sign-in screen, but no credential was available for the cloud-data check; no password was guessed, reset, or changed.
 3. Review the 6 npm audit vulnerabilities: 1 low and 5 high.
 
 ## Current Decision
