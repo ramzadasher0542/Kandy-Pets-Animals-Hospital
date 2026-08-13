@@ -32,11 +32,15 @@ BEGIN
     RAISE EXCEPTION 'FAIL: anon still holds table privileges on clinic tables';
   END IF;
 
-  -- --- 2. authenticated has NO table privileges either (no real auth yet) ---
-  IF has_table_privilege('authenticated','public.invoices','SELECT')
-     OR has_table_privilege('authenticated','public.users','SELECT')
-     OR has_table_privilege('authenticated','public.invoices','DELETE') THEN
-    RAISE EXCEPTION 'FAIL: authenticated still holds table privileges on clinic tables';
+  -- --- 2. authenticated has only the Free Auth/RLS write surface -------------
+  -- Authenticated staff intentionally receive explicit SELECT/INSERT/UPDATE
+  -- grants; RLS policies then restrict those operations to linked active staff.
+  -- Destructive table privileges must remain closed.
+  IF has_table_privilege('authenticated','public.invoices','DELETE')
+     OR has_table_privilege('authenticated','public.invoices','TRUNCATE')
+     OR has_table_privilege('authenticated','public.users','DELETE')
+     OR has_table_privilege('authenticated','public.users','TRUNCATE') THEN
+    RAISE EXCEPTION 'FAIL: authenticated still holds destructive table privileges';
   END IF;
 
   -- --- 3. Neither anon nor authenticated can execute wipe_all_tables --------
