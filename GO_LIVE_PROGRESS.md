@@ -24,6 +24,7 @@ Live deployment: https://kpah-aps.vercel.app/
 - Production bundle scan found no browser write-authorizing secret or shared header.
 - Read-only Step 31 security-boundary check re-run against production passed after correcting a stale test expectation. The live grants are consistent with the Free Auth/RLS design: anon has no table grants, authenticated has only explicit SELECT/INSERT/UPDATE grants, and destructive DELETE/TRUNCATE privileges remain closed.
 - Supabase log review found one historical PostgREST error at 2026-08-13 04:38:06 UTC requesting the nonexistent `staff_profiles.email` column. The current source and production bundle use `staff_profiles.*`; the stale request was not reproduced, and no schema column was added to mask it.
+- The same log window contains five historical permission-denied reads for pets, lab results, vaccinations, grooming, and boarding. The current grant summary and corrected security check pass; authenticated UI reads were not re-run because no clinic session is currently signed in.
 - Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
