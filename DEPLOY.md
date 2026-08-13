@@ -34,7 +34,7 @@ the browser bundle.
   security boundary.
 - Anonymous table access and destructive RPC execution remain denied.
 - Browser-initiated cloud erase remains disabled.
-- Staff Management is active for roster, login links, scheduling, and time clock. Payroll remains deferred and is not loaded or exposed by the active UI.
+- Staff Management and payroll are deferred from the active beta UI. Their cloud tables remain untouched and are not part of the current release scope.
 - The Data & Operations screen offers a versioned full JSON snapshot and an
   admin-confirmed beta merge restore. Restore never deletes rows or changes
   Supabase Auth passwords. Provider-managed recovery is still required for
