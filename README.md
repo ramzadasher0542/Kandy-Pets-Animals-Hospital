@@ -2,11 +2,15 @@
 
 Built by **ASH POINT SOLUTIONS** for veterinary clinics in Sri Lanka.
 
-CeylonPets VHMS is an offline-first management suite that runs a small animal
-hospital end to end — front-desk billing, clinical records, and back-office
-inventory in one place. It works fully offline on the local device and
-transparently syncs to the cloud when a connection is available, so the front
-desk never stops during a network drop.
+CeylonPets VHMS is a cloud-backed beta management suite for small animal
+hospitals — front-desk billing, clinical records, and back-office inventory in
+one place. It uses Supabase Auth, Postgres, and RLS for authenticated cloud
+access. The browser does not fall back to a local clinical database when cloud
+data is unavailable.
+
+> **Beta / under development:** Do not use this release as the sole system of
+> record for real clinic data until the controlled recovery, second-device, and
+> end-to-end data tests are complete. Payroll remains deferred.
 
 **Live demo:** https://kpah-aps.vercel.app/
 
@@ -21,14 +25,13 @@ desk never stops during a network drop.
 - **Laboratory** — diagnostic tests with configurable reference-range parameters
 - **Vaccinations** — vaccine schedules and history per patient
 - **Staff management** — role-based access control and per-user permissions
-- **Reports & backup** — clinic KPIs plus one-click full data export
+- **Reports & backup** — clinic KPIs plus versioned full JSON export and protected beta restore
 
 ## Tech Stack
 
 - **React 19** + **Vite** + **TypeScript**
 - **Tailwind CSS** for the UI
 - **Supabase** (Postgres) for cloud sync
-- **localForage** (IndexedDB) for the offline-first local vault
 
 ## Getting Started
 
@@ -43,7 +46,7 @@ desk never stops during a network drop.
     VITE_SUPABASE_URL=your-project-url
     VITE_SUPABASE_ANON_KEY=your-anon-key
     ```
-    > Authenticated cloud sync is optional. With no credentials the app runs fully offline against the local IndexedDB vault.
+     > Authenticated Supabase access is required for the cloud application.
 3. Start the dev server:
    ```bash
    npm run dev
