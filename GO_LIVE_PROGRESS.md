@@ -13,6 +13,7 @@ Live deployment: https://kpah-aps.vercel.app/
 - The current administrator Auth identity is linked to an active `public.users` row with role `admin`. No clinical rows were changed.
 - Auth accounts are linked to owner, cashier, veterinarian, and administrator app roles for beta testing.
 - Fresh live administrator login verified: all clinic panels and all six Settings tabs are visible.
+- Independent production administrator session verified with the approved owner credential: cloud sync was active, inventory loaded, and the linked admin identity was visible. The live `staff_profiles` table currently has 0 rows, so Staff Management shows `NO ACTIVE STAFF PROFILES`.
 - Fresh live cashier login verified: only POS and Shift & Drawer are visible; Settings and all other panels are hidden.
 - Vercel production serves the merged build. Lint and production build passed previously; the Vercel preview for PR #4 passed.
 - Browser-initiated cloud erase remains disabled. Full JSON export and protected beta merge restore are available in the release; provider-managed recovery remains required for catastrophic loss.
@@ -25,14 +26,15 @@ Live deployment: https://kpah-aps.vercel.app/
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
-## Remaining Work: 2 Items
+## Remaining Work: 3 Items
 
-1. Run the CV-1 Playwright tests against real Supabase-backed data. The existing fixture suite is now explicitly labelled `simulated-local`; the separate `real-supabase-auth` test requires owner-supplied credentials. The current runner also lacks its Chromium executable, so no test pass is claimed.
-2. Verify authenticated second-device reads using an approved device/session. An independent browser reached the clean production sign-in screen, but no credential was available for the cloud-data check; no password was guessed, reset, or changed.
+1. Populate or formally approve the empty `staff_profiles` roster without inventing employment details. The linked `public.users` identity table has four active linked users, but the roster table has none.
+2. Establish provider-managed backup/recovery or an approved operational recovery policy.
+3. Complete manual clinical workflow sign-off.
 
 ## Current Decision
 
-BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until backup/recovery, second-device verification, and real CV-1 coverage are complete.
+BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until the staff roster, backup/recovery, and manual clinical workflow sign-off are complete.
 
 ## Deployability Assessment
 
@@ -42,9 +44,9 @@ not a safety certification: hosting/release 18/20, authentication and authorizat
 operations 8/15.
 
 The system remains **NO-GO as an unrestricted clinical system of record**. The
-controlled export and merge restore works, but Supabase Free has no certified
-provider-managed backups or PITR, live second-device verification is incomplete,
-and the current Playwright fixture does not exercise real Supabase Auth/RLS.
+controlled export and merge restore works, but the live staff roster is empty,
+Supabase Free has no certified provider-managed backups or PITR, and manual
+workflow sign-off remains incomplete.
 
 ## Vercel-Only Deployment
 
