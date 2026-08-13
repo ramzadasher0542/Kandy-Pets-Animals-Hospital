@@ -21,6 +21,7 @@ Live deployment: https://kpah-aps.vercel.app/
 - Protected non-empty restore verified with the production export: 27 tables and 39 rows merged, followed by a clean reload with inventory, Staff Management, and Reports intact. This verifies the beta merge path, not catastrophic recovery or provider-managed backups.
 - The retired deployment integration was revoked and verified absent from the installed-apps list.
 - Production bundle scan found no browser write-authorizing secret or shared header.
+- Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
