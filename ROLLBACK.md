@@ -1,40 +1,32 @@
-# ROLLBACK — PROVIDER-1 (provider becomes root, admin demoted)
+# Rollback — CeylonPets VHMS
 
-Written **before** demoting admin, in case the provider account can't log in and
-you get locked out of Settings / Data & Operations.
+Vercel is the only production deployment target. Use the Vercel deployment
+history to promote the last known-good deployment if the current release has a
+runtime regression.
 
-## First: you should NOT be locked out
-- `ashpoint_owner` is now synthesised as role **`provider`** (the new sole root).
-- Its password is unchanged in code: the default `masterPin = hashPin('5692')`
-  (App.tsx). So **log in as `ashpoint_owner` with PIN `5692`** → you are provider
-  → you see everything, including Data & Operations and both access matrices.
-- The strong 20-char provider password was printed once to the terminal during
-  this task. It is NOT applied automatically (Option A) — the code default stays
-  `5692` so the 17 tests pass. There is currently **no in-app UI to change the
-  provider/masterPin password** (flagged in the report).
+## Recovery Steps
 
-## If provider login is broken — revert these exact changes
-All edits are uncommitted. Either `git checkout -- <file>` each file, or hand-edit:
+1. In Vercel, open the project deployment history and promote the previous
+   `Ready` production deployment.
+2. Verify the linked administrator can sign in through Supabase Auth.
+3. Verify restricted staff access, Settings visibility, cloud reads, and the
+   controlled checkout smoke test.
+4. If the issue involves data, do not erase rows from the browser. Use the
+   external backup/recovery procedure or provider-managed Supabase recovery.
 
-1. **src/lib/requireAuth.ts**
-   - `export const ROOT_ROLES = ['provider'] as const;`  → back to `['admin', 'provider']`
-   - `ActionRole` and `ALL_ACTION_ROLES`: remove the added `'provider'`
-   - `authorizedRolesFor`: `'provider'` → back to `'admin'`
-   - Remove the added `PanelRole` / `ALL_PANEL_ROLES` / `PANEL_VIEWS` constants
-2. **src/App.tsx**
-   - The two `ashpoint_owner` login literals: `role: 'provider'` → back to `role: 'admin'`
-     (also `name: \`${systemConfig.appName} Provider\`` → `... Admin` if you want)
-   - `rolePermissions` initial block + merge-backfill: remove the added `groomer`/`provider` keys
-3. **src/components/DashboardAnalytics.tsx**
-   - `canSeeFinancials`: remove the added `currentUser?.role === 'provider'`
-4. **src/components/SystemSettings.tsx**
-   - Action matrix: `role === 'provider'` guards → back to `role === 'admin'`; `isProvider` → `isAdmin`
-   - `SystemConfig.rolePermissions` type: back to `{ cashier, veterinarian, admin, owner }`
-   - Remove the new Panel Access Matrix block + `togglePanel`/`effectivePanelsFor` + the requireAuth import additions
+## Identity Safety
 
-Reverting requireAuth.ts (`ROOT_ROLES` back to `['admin','provider']`) alone restores
-admin god-mode, which is the fastest way back in if needed.
+- Auth passwords are managed only by Supabase Auth.
+- Staff roles are linked through `public.users.auth_user_id`.
+- Never add passwords, PINs, service-role keys, database passwords, or deployment
+  tokens to source files, documentation, or browser code.
+- If an Auth identity is missing its app role, link it to an active
+  `public.users` row through the controlled Supabase SQL process, then verify
+  the login before changing any clinical data.
 
-## Emergency floor
-Even with everything reverted, `ashpoint_owner` / `5692` is admin-root again and
-can reach Settings. Nothing here changes that fallback.
+## Beta Recovery Boundary
+
+The Data & Operations screen provides a versioned JSON snapshot and an
+admin-confirmed merge restore. It does not delete rows or change Auth
+passwords. It is a beta convenience tool, not a substitute for a certified
+disaster-recovery plan.
