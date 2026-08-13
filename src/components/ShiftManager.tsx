@@ -50,6 +50,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const [openingFloatInput, setOpeningFloatInput] = useState('');
   const [actualClosingInput, setActualClosingInput] = useState('');
   const [lastClosedShift, setLastClosedShift] = useState<ClosedShiftReport | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<{ json: string; filename: string } | null>(null);
 
   // Cash Adjustment State
   const [showAdjModal, setShowAdjModal] = useState(false);
@@ -307,11 +308,14 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     });
     setActiveShift(null);
 
-    let backupDownloaded = false;
+    let backupReady = false;
     try {
       const json = await exportFullDatabase();
-      downloadJsonFile(json, `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`);
-      backupDownloaded = true;
+      setPendingBackup({
+        json,
+        filename: `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`,
+      });
+      backupReady = true;
     } catch (e) {
       if (import.meta.env.DEV) console.error('Daily shift backup failed:', e);
     }
@@ -322,11 +326,18 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       showToast('Shift reconciled perfectly. Drawer is balanced.', 'success');
     }
     showToast(
-      backupDownloaded
-        ? 'Daily backup download started. Keep the file outside Supabase.'
+      backupReady
+        ? 'Daily backup is ready. Download it before dismissing this Z-report.'
         : 'Shift closed, but the daily backup failed. The day is not backed up; export it from Data & Operations now.',
-      backupDownloaded ? 'success' : 'error'
+      backupReady ? 'success' : 'error'
     );
+  };
+
+  const handleDownloadPendingBackup = () => {
+    if (!pendingBackup) return;
+    downloadJsonFile(pendingBackup.json, pendingBackup.filename);
+    setPendingBackup(null);
+    showToast('Daily backup download started. Keep the file outside Supabase.', 'success');
   };
 
   const handleSaveAdjustment = async (e: React.FormEvent) => {
@@ -585,7 +596,20 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
           <button onClick={() => window.print()} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl cursor-pointer transition-colors print:hidden"><Printer className="w-4 h-4"/></button>
         }
         footer={
-          <button onClick={() => setLastClosedShift(null)} className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-colors cursor-pointer print:hidden">Done</button>
+          <div className="flex gap-2 print:hidden">
+            {pendingBackup && (
+              <button onClick={handleDownloadPendingBackup} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-colors cursor-pointer">
+                Download Daily Backup
+              </button>
+            )}
+            <button
+              onClick={() => setLastClosedShift(null)}
+              disabled={!!pendingBackup}
+              className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg transition-colors cursor-pointer"
+            >
+              {pendingBackup ? 'Download Backup to Finish' : 'Done'}
+            </button>
+          </div>
         }
       >
         <div className="print:p-0 print:bg-white print:block print:static relative -mx-6 -my-4 p-6 text-sm">
