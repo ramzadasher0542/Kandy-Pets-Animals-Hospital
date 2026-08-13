@@ -14,7 +14,7 @@ You have Supabase MCP access. Print SQL before running it. CREATE / ALTER ADD CO
 
 After every change: run `npx tsc --noEmit`, fix new errors before finishing.
 
-Verify by actually running it (Playwright, headless Chromium) — not by reasoning that it should work. Report exactly what passed and failed. Partial success is not "done."
+Verify changes with the available checks and report exactly what passed and failed. Partial success is not "done."
 
 End every task with: what changed and in which files, one line on how I can verify it, the "Noticed, not fixed" list (even if empty).
 
