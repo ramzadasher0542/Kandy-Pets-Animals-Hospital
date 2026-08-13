@@ -11,6 +11,7 @@ import { Building2, Printer, Users, ShieldAlert, Save, Plus,
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
+import { downloadJsonFile } from '../lib/download';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 
@@ -288,15 +289,7 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
     setIsExportingAll(true);
     try {
       const json = await exportFullDatabase();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `kandy-pets-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadJsonFile(json, `kandy-pets-backup-${new Date().toISOString().split('T')[0]}.json`);
       showToast('Backup downloaded successfully.', 'success');
     } catch (error) {
       if (import.meta.env.DEV) console.error(error);
@@ -309,15 +302,7 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
   const handleDownloadBackup = async () => {
     try {
       const json = await exportFullDatabase();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadJsonFile(json, `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`);
       showToast('Full system backup downloaded successfully.', 'success');
     } catch (error) {
       if (import.meta.env.DEV) console.error(error);
