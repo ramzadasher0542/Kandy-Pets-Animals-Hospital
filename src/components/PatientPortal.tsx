@@ -257,7 +257,7 @@ export default function PatientPortal({
                 <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <div className="text-center px-4 border-r border-slate-200">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Sex</div>
-                    <div className="text-xs font-black text-slate-700">{activePet.weight ? `${activePet.weight} kg` : 'N/A'}</div>
+                    <div className="text-xs font-black text-slate-700">{activePet.sex || 'N/A'}</div>
                   </div>
                   <div className="text-center px-4 border-r border-slate-200">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Weight</div>
@@ -396,7 +396,7 @@ export default function PatientPortal({
                       ) : (
                         allPetLabs.map((lab, i) => (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
-                            <td className="py-4 px-6 font-bold text-slate-600">{formatDisplayDate(lab.visitDate)}</td>
+                            <td className="py-4 px-6 font-bold text-slate-600">{formatDisplayDate(lab.requestDate)}</td>
                             <td className="py-4 px-6 font-black text-slate-800">{lab.testName}</td>
                             <td className="py-4 px-6">
                               <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${lab.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
