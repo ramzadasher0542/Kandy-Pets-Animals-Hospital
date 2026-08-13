@@ -46,6 +46,13 @@ The administrator is the only clinic role with all panel and Settings access.
 Use the administrator's Panel Access Matrix to filter other roles. Do not issue
 `admin` or `provider` through the ordinary staff UI.
 
+### Returning browser sessions
+
+Supabase Auth persists a valid session in the browser profile. A returning
+browser may therefore open directly inside the app instead of showing the sign-in
+form. Use **Sign Out** to test the login screen; use a separate browser/profile
+for a clean-device test. This is session restoration, not a bypass of Auth.
+
 ## 4. Configure Vercel
 
 Set only these production variables in the Vercel project:
