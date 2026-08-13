@@ -228,8 +228,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       costPerUnit: receiveFormData.costPerUnit ? Math.round(Number(receiveFormData.costPerUnit) * 100) : undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_deleted: false,
-      _dirty: true
+       is_deleted: false
     };
 
     const updatedItem = { ...receiveStockItem, stock: receiveStockItem.stock + qty };

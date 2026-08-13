@@ -31,12 +31,11 @@ interface ShiftManagerProps {
   currentUser: StaffUser;
   activeShift: ActiveShift | null;
   setActiveShift: (s: ActiveShift | null) => void;
-  onVerifyMasterPin?: (pin: string) => boolean;
 }
 
 const formatCurrency = (v: number) => `Rs. ${v.toFixed(2)}`;
 
-export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift, onVerifyMasterPin }: ShiftManagerProps) {
+export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift }: ShiftManagerProps) {
   const [openingFloatInput, setOpeningFloatInput] = useState('');
   const [actualClosingInput, setActualClosingInput] = useState('');
   const [lastClosedShift, setLastClosedShift] = useState<ShiftReconciliation | null>(null);

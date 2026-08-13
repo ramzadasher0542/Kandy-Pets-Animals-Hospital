@@ -7,17 +7,16 @@
  * Replaces the scattered `window.prompt() + hash compare` gates. Every gate now
  * goes through requireAuth(), which:
  *   1. checks the operator's role against an EXPLICIT per-action allow-list,
- *   2. makes them confirm with THEIR OWN credential (never a shared master PIN),
- *   3. offers a supervisor override when they're not permitted,
- *   4. writes an audit row for every outcome.
+ *   2. relies on the current Supabase Auth session for identity,
+ *   3. writes an audit row for every outcome.
  *
  * Why allow-lists and not a linear rank: clinical seniority is NOT financial
  * authority. A veterinarian outranks a cashier clinically, but has no business
  * adjusting the cash drawer. A single ordered hierarchy cannot express that
  * without over-granting, so each action names exactly who may perform it.
  */
-import { db } from './localDb';
 import { User, AuthAudit } from '../types';
+import { insertAuthAudit } from './db';
 
 export type ActionRole = 'cashier' | 'veterinarian' | 'manager' | 'owner' | 'admin' | 'provider';
 
@@ -49,12 +48,12 @@ export interface ActionPolicy {
  * AUTH-4 (Provider/Owner/Staff) and the admin-editable matrix replace the
  * VALUES here — the call sites and the gate logic stay untouched.
  *
- * SECURITY BOUNDARY NOTE (Step 31): this module is a client-side UX gate only.
+ * SECURITY BOUNDARY NOTE: this module is a client-side UX gate only.
  * It runs in the browser and can be bypassed by anyone who can call Supabase
  * directly. It is NOT a database security boundary and must never be treated as
  * one. The real boundary is at the database: Postgres role privileges + RLS.
- * Keep this gate for good UX (confirm-with-credential, supervisor override,
- * audit trail), but do not rely on it to protect Supabase data.
+ * Keep this gate for good UX and audit logging, but do not rely on it to protect
+ * Supabase data.
  */
 export const ACTION_POLICIES: Record<AuthAction, ActionPolicy> = {
   delete_inventory:      { description: 'delete an inventory item',            allowedRoles: ['owner', 'manager'] },
@@ -197,48 +196,17 @@ export const PANEL_VIEWS: PanelDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Host bridge — lets this module drive a React modal without importing React.
-// ---------------------------------------------------------------------------
-
-export interface AuthPromptRequest {
-  mode: 'confirm' | 'override';
-  action: AuthAction;
-  actionDescription: string;
-  /** Operator at the keyboard. */
-  currentUser: User;
-  /** Roles that may authorize (override mode only). */
-  authorizedRoles: string[];
-}
-
-/** Resolves with the entered credential, or null when the operator cancels. */
-export type AuthPromptFn = (req: AuthPromptRequest) => Promise<{ username: string; credential: string } | null>;
-
-/** Verifies a username's credential. Supplied by App, which owns systemConfig. */
-export type CredentialCheckFn = (
-  username: string,
-  credential: string
-) => Promise<{ valid: boolean; user: User | null }>;
-
-let promptFn: AuthPromptFn | null = null;
-let checkFn: CredentialCheckFn | null = null;
-
-export function registerAuthBridge(prompt: AuthPromptFn, check: CredentialCheckFn): void {
-  promptFn = prompt;
-  checkFn = check;
-}
-
-// ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
 
 async function writeAudit(row: Omit<AuthAudit, 'id' | 'timestamp' | 'created_at' | 'updated_at'>): Promise<void> {
+  const now = new Date().toISOString();
+  const entry: AuthAudit = { id: crypto.randomUUID(), timestamp: now, created_at: now, updated_at: now, ...row };
   try {
-    const now = new Date().toISOString();
-    const entry: AuthAudit = { id: crypto.randomUUID(), timestamp: now, created_at: now, updated_at: now, ...row };
-    await db.authAudit.setItem(entry.id, entry);
+    await insertAuthAudit(entry);
   } catch (err) {
-    // Never let auditing break the action itself — but do surface it.
     if (import.meta.env.DEV) console.error('[requireAuth] Failed to write audit row:', err);
+    throw new Error('Authorization audit is unavailable. The action was blocked.');
   }
 }
 
@@ -246,19 +214,12 @@ async function writeAudit(row: Omit<AuthAudit, 'id' | 'timestamp' | 'created_at'
 // The gate
 // ---------------------------------------------------------------------------
 
-/**
- * Authorize `action` for `currentUser`. Always prompts for a credential — being
- * permitted is not the same as having proven you are still at the keyboard.
- */
+/** Authorize `action` for the already-authenticated staff identity. */
 export async function requireAuth(currentUser: User | null, action: AuthAction): Promise<AuthResult> {
   const policy = ACTION_POLICIES[action];
   const denied: AuthResult = { allowed: false, isOverride: false };
 
   if (!currentUser || currentUser.active === false) return denied;
-  if (!promptFn || !checkFn) {
-    if (import.meta.env.DEV) console.error('[requireAuth] Auth bridge not registered — denying by default.');
-    return denied;
-  }
 
   const base = {
     action,
@@ -269,58 +230,14 @@ export async function requireAuth(currentUser: User | null, action: AuthAction):
   };
 
   const permitted = isRoleAllowed(currentUser.role, action);
-  const mode: 'confirm' | 'override' = permitted ? 'confirm' : 'override';
-
-  const answer = await promptFn({
-    mode,
-    action,
-    actionDescription: policy.description,
-    currentUser,
-    authorizedRoles: authorizedRolesFor(action),
-  });
-
-  if (!answer) {
-    await writeAudit({ ...base, allowed: false, is_override: false, reason: 'cancelled' });
-    return denied;
-  }
-
-  // --- Path A: the operator is permitted — confirm their OWN credential. -----
-  if (permitted) {
-    const { valid } = await checkFn(currentUser.username, answer.credential);
-    if (!valid) {
-      await writeAudit({ ...base, allowed: false, is_override: false, reason: 'bad_credential' });
-      return denied;
-    }
-    await writeAudit({
-      ...base, allowed: true, is_override: false, reason: 'granted',
-      approved_by: currentUser.id, approved_by_name: currentUser.name, approved_by_role: currentUser.role,
-    });
-    return { allowed: true, approvedBy: currentUser.id, isOverride: false };
-  }
-
-  // --- Path B: not permitted — a supervisor may approve on the spot. ---------
-  const { valid, user: supervisor } = await checkFn(answer.username, answer.credential);
-  if (!valid || !supervisor) {
-    await writeAudit({ ...base, allowed: false, is_override: true, reason: 'bad_credential' });
-    return denied;
-  }
-
-  // The supervisor must themselves be permitted, and must be a DIFFERENT account.
-  if (supervisor.username === currentUser.username) {
-    await writeAudit({ ...base, allowed: false, is_override: true, reason: 'role_denied' });
-    return denied;
-  }
-  if (!isRoleAllowed(supervisor.role, action)) {
-    await writeAudit({
-      ...base, allowed: false, is_override: true, reason: 'role_denied',
-      approved_by: supervisor.id, approved_by_name: supervisor.name, approved_by_role: supervisor.role,
-    });
+  if (!permitted) {
+    await writeAudit({ ...base, allowed: false, is_override: false, reason: 'role_denied' });
     return denied;
   }
 
   await writeAudit({
-    ...base, allowed: true, is_override: true, reason: 'granted',
-    approved_by: supervisor.id, approved_by_name: supervisor.name, approved_by_role: supervisor.role,
+    ...base, allowed: true, is_override: false, reason: 'granted',
+    approved_by: currentUser.id, approved_by_name: currentUser.name, approved_by_role: currentUser.role,
   });
-  return { allowed: true, approvedBy: supervisor.id, isOverride: true };
+  return { allowed: true, approvedBy: currentUser.id, isOverride: false };
 }

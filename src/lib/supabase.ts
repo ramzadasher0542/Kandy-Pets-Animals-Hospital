@@ -4,9 +4,8 @@
  *
  * Supabase Client Configuration
  * ---------------------------------------------------------------
- * When VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are present,
- * a real Supabase client is created and SYNC_ENABLED = true.
- * Otherwise the client is null and sync is completely dormant.
+ * The application is cloud-only. A missing configuration is a deployment
+ * error, never a reason to fall back to a local data store.
  */
 /// <reference types="vite/client" />
 
@@ -31,43 +30,48 @@ export const supabase: SupabaseClient | null = hasValidConfig
   ? createClient(url!, key!)
   : null;
 
-if (!SYNC_ENABLED) {
-  if (import.meta.env.DEV) console.info('[Supabase] No credentials detected — cloud sync is dormant.');
+export class CloudConfigurationError extends Error {
+  constructor(message = 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.') {
+    super(message);
+    this.name = 'CloudConfigurationError';
+  }
+}
+
+/** Return the configured cloud client or fail closed. */
+export function requireSupabase(): SupabaseClient {
+  if (!supabase) throw new CloudConfigurationError();
+  return supabase;
 }
 
 // ---------------------------------------------------------------------------
-// Auth helpers (Phase C1) — Supabase Auth as primary login, local as fallback.
+// Auth helpers — Supabase Auth is the only login and session authority.
 // ---------------------------------------------------------------------------
 
 /** Sign in against Supabase Auth. Returns a null-user result when unconfigured. */
 export async function signInWithPassword(email: string, password: string) {
-  if (!supabase) return { data: null, error: new Error('Supabase not configured') };
-  return supabase.auth.signInWithPassword({ email, password });
+  return requireSupabase().auth.signInWithPassword({ email, password });
 }
 
-/** Sign out of the Supabase Auth session (no-op when unconfigured). */
+/** Sign out of the Supabase Auth session. */
 export async function signOut() {
-  if (!supabase) return;
-  await supabase.auth.signOut();
+  await requireSupabase().auth.signOut();
 }
 
-/** The current Auth session (for restore-on-load), or null when none/unconfigured. */
+/** The current Auth session (for restore-on-load). */
 export async function getAuthSession() {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
+  const { data, error } = await requireSupabase().auth.getSession();
+  if (error) throw error;
   return data.session ?? null;
 }
 
 /**
  * Subscribe to Supabase Auth state changes (SIGNED_IN / SIGNED_OUT / token
- * refresh). App uses this to hydrate/clear the current staff user. Returns an
- * unsubscribe function; a no-op when Supabase is unconfigured.
+ * refresh). App uses this to hydrate/clear the current staff user.
  */
 export function onAuthStateChange(
   cb: (event: string, session: import('@supabase/supabase-js').Session | null) => void
 ): () => void {
-  if (!supabase) return () => {};
-  const { data } = supabase.auth.onAuthStateChange((event, session) => cb(event, session));
+  const { data } = requireSupabase().auth.onAuthStateChange((event, session) => cb(event, session));
   return () => data.subscription.unsubscribe();
 }
 
@@ -81,8 +85,14 @@ export const DB_TABLES = {
   INVOICES:      'invoices',
   NOTIFICATIONS: 'notifications',
   ALERTS:        'system_alerts',
-  USERS:         'staff_users',
+  USERS:         'users',
   SYSTEM_CONFIG: 'system_config',
+  STAFF_PROFILES: 'staff_profiles',
+  TIME_ENTRIES: 'time_entries',
+  SCHEDULE_ENTRIES: 'schedule_entries',
+  PAYSLIPS: 'payslips',
+  DELETION_AUDIT: 'deletion_audit',
+  AUTH_AUDIT: 'auth_audit',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -90,18 +100,22 @@ export const DB_TABLES = {
 // ---------------------------------------------------------------------------
 
 /**
- * Uploads a file. In this isolated offline mode, it converts the file to base64
- * so it can be rendered from localStorage instantly without a real bucket.
+ * Upload media to the configured Supabase Storage bucket. The bucket must be
+ * provisioned by an administrator; data is never stored in browser storage.
  */
 export async function uploadImageToStorage(file: File, path: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      resolve(e.target?.result as string);
-    };
-    reader.onerror = (e) => {
-      reject(new Error('Failed to read local file into base64'));
-    };
-    reader.readAsDataURL(file);
+  if (!file || file.size === 0) throw new Error('Cannot upload an empty file.');
+  if (file.size > 5 * 1024 * 1024) throw new Error('Image must be 5 MB or smaller.');
+  if (!file.type.startsWith('image/')) throw new Error('Only image files are supported.');
+
+  const client = requireSupabase();
+  const { error } = await client.storage.from('clinic-assets').upload(path, file, {
+    upsert: true,
+    contentType: file.type,
+    cacheControl: '3600',
   });
+  if (error) throw error;
+
+  const { data } = client.storage.from('clinic-assets').getPublicUrl(path);
+  return data.publicUrl;
 }

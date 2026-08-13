@@ -38,7 +38,6 @@ interface POSProps {
   onAddInvoice?: (invoice: any) => Promise<void>;
   onVoidInvoice?: (id: string) => Promise<void>;
   systemConfig?: any;
-  onVerifyMasterPin?: (pin: string) => boolean;
   onTriggerInventorySync?: () => Promise<void>;
   activeShift?: any;
   incomingClient?: any;
@@ -69,7 +68,6 @@ export default function POSRegister({
   currentUser,
   systemConfig,
   invoices = [],
-  onVerifyMasterPin,
   onNavigateToShift
 }: POSProps) {
   

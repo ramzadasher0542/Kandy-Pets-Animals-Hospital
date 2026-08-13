@@ -9,7 +9,7 @@
 // never issuable from any UI — only the onboarding script (AUTH-7) may mint one.
 export type UserRole = 'provider' | 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin' | 'groomer';
 
-export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; pin?: string; active?: boolean; }
+export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; }
 
 export type ItemCategory = string;
 
@@ -49,7 +49,6 @@ export interface InventoryBatch {
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
-  _dirty: boolean;
 }
 
 export interface Supplier {
@@ -255,8 +254,6 @@ export interface Invoice { id: string; appointmentId?: string; patientId: string
 
 export interface ClientNotification { id: string; petName: string; ownerName: string; recipient: string; type: 'appointment_reminder' | 'vaccine_alert' | 'followup' | 'lab_result'; channel: 'sms' | 'email' | 'push'; message: string; scheduledTime: string; status: 'queued' | 'sent' | 'failed'; }
 export interface SystemAlert { id: string; severity: 'info' | 'warning' | 'urgent'; category: 'inventory' | 'appointment' | 'system' | 'lab'; message: string; timestamp: string; read: boolean; }
-export interface OfflineSyncItem { id: string; action: 'create_appointment' | 'create_invoice' | 'update_medical_record' | 'delete_medical_record' | 'checkout_pos' | 'update_stock' | 'add_inventory' | 'create_alert' | 'create_notification'; collection: 'appointments' | 'invoices' | 'records' | 'inventory' | 'alerts' | 'notifications'; payload: any; timestamp: string; }
-
 export const CATEGORY_DISPLAY_MAP: Record<string, string> = { 'service': 'Clinical Care', 'lab_service': 'Labs & Diagnostics', 'vaccine': 'Vaccinations', 'prescription': 'Pharmacy Rx', 'retail': 'Pet Supplies Shop', 'food': 'Food & Feeding', 'Taxes & Adjustments': 'Taxes & Adjustments', 'other': 'Other / Uncategorized' };
 
 export interface Client { client_id: string; primary_phone: string; alternate_phone?: string; full_name: string; email_address: string; physical_address: string; communication_preference: 'sms' | 'email' | 'both' | 'none'; account_balance: number; lifetime_value: number; client_status: 'active' | 'inactive' | 'flagged_bad_debt'; administrative_notes: string; created_at?: string; updated_at?: string; is_deleted?: boolean; petIds?: string[]; }
@@ -275,7 +272,6 @@ export interface StaffProfile {
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
-  _dirty: boolean;
 }
 
 export interface TimeEntry {
@@ -291,7 +287,6 @@ export interface TimeEntry {
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
-  _dirty: boolean;
 }
 
 export interface ScheduleEntry {
@@ -304,7 +299,6 @@ export interface ScheduleEntry {
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
-  _dirty: boolean;
 }
 
 export interface PayslipDeduction {
@@ -327,7 +321,6 @@ export interface Payslip {
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
-  _dirty: boolean;
 }
 
 // F-3: Audit trail for soft-deletions of clients and pets. Every deletion is
@@ -368,5 +361,4 @@ export interface DeletionAudit {
   created_at?: string;
   updated_at?: string;
   is_deleted?: boolean;
-  _dirty?: boolean;
 }

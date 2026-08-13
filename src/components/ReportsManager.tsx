@@ -6,8 +6,7 @@ import {
 import PageShell from './ui/PageShell';
 import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
-import { db } from '../lib/localDb';
-import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations } from '../lib/db';
+import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations, fetchDeletionAudits, fetchPayslips } from '../lib/db';
 import { User, DeletionAudit } from '../types';
 import type { SystemConfig } from './SystemSettings';
 
@@ -150,11 +149,10 @@ const pctChange = (cur: number, prev: number): { pct: number; isNew: boolean } =
 
 interface ReportsManagerProps {
   currentUser: User;
-  onVerifyMasterPin?: (pin: string) => boolean;
   config?: SystemConfig;
 }
 
-export default function ReportsManager({ currentUser, onVerifyMasterPin, config }: ReportsManagerProps) {
+export default function ReportsManager({ currentUser, config }: ReportsManagerProps) {
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<VaultInvoice[]>([]);
   const [adjustments, setAdjustments] = useState<CashAdjustment[]>([]);
@@ -234,25 +232,22 @@ export default function ReportsManager({ currentUser, onVerifyMasterPin, config 
         showToast('Could not load shift reconciliations from the cloud. Showing last known data.', 'error');
       }
 
-      // ---- Deferred / frozen local reads (no verified cloud contract yet) ----
-      // Always attempted after the cloud attempt regardless of its outcome, and
-      // isolated from each other so one failing store does not block the others.
-      // On failure a section keeps its previous state (no setter, no fabricated
-      // empty result).
+      // Audit and payroll data are cloud-backed as well. Keep each read isolated
+      // so one unavailable report section does not fabricate empty data in the
+      // others.
       try {
-        const dels: DeletionAudit[] = [];
-        await db.deletionAudit.iterate((val: DeletionAudit) => { if (val && !Array.isArray(val)) dels.push(val); });
+        const dels = await fetchDeletionAudits() as DeletionAudit[];
         dels.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
         setDeletions(dels);
       } catch (e) {
         if (import.meta.env.DEV) console.error('Deletion audit read failed:', e);
+        showToast('Could not load deletion audits from the cloud. Showing last known data.', 'error');
       }
       try {
-        const pays: any[] = [];
-        await db.payslips.iterate((v: any) => { if (v && !Array.isArray(v) && !v.is_deleted) pays.push(v); });
-        setPayslips(pays);
+        setPayslips(await fetchPayslips());
       } catch (e) {
         if (import.meta.env.DEV) console.error('Payslips read failed:', e);
+        showToast('Could not load payslips from the cloud. Showing last known data.', 'error');
       }
     } finally {
       setLoading(false);

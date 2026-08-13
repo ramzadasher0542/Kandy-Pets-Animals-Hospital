@@ -6,10 +6,9 @@ import { Plus, X, Edit, Trash2, Link, Unlink, ChevronDown, ChevronUp, CheckCircl
 import { showToast } from './Toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { stampRecord } from '../lib/localDb';
+import { stampRecord } from '../lib/recordMeta';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
-import { hashCredential } from '../lib/credentials';
 
 interface StaffManagerProps {
   staffProfiles: StaffProfile[];
@@ -43,12 +42,12 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
   const unlinkedProfiles = staffProfiles.filter(p => !p.userId && p.active);
 
   const [loginModalState, setLoginModalState] = useState<{ type: 'create' | 'reset', profileId: string } | null>(null);
-  const [loginFormData, setLoginFormData] = useState({ username: '', role: 'cashier', pin: '' });
+  const [loginFormData, setLoginFormData] = useState({ username: '', role: 'cashier' });
 
   const handleOpenCreateLogin = async (profile: StaffProfile) => {
     const auth = await requireAuth(currentUser, 'manage_staff_logins');
     if (!auth.allowed) return;
-    setLoginFormData({ username: '', role: 'cashier', pin: '' });
+    setLoginFormData({ username: '', role: 'cashier' });
     setLoginModalState({ type: 'create', profileId: profile.id });
   };
 
@@ -56,7 +55,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
     const auth = await requireAuth(currentUser, 'manage_staff_logins');
     if (!auth.allowed) return;
     const user = users.find(u => u.id === profile.userId);
-    setLoginFormData({ username: '', role: user?.role || 'cashier', pin: '' });
+    setLoginFormData({ username: user?.username || '', role: user?.role || 'cashier' });
     setLoginModalState({ type: 'reset', profileId: profile.id });
   };
 
@@ -92,7 +91,6 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
     e.preventDefault();
     if (!loginModalState) return;
     
-    if (loginFormData.pin.length !== 4) return showToast('PIN must be 4 digits', 'error');
     if (!onSaveUser) return showToast('User saving not configured', 'error');
 
     const profile = staffProfiles.find(p => p.id === loginModalState.profileId);
@@ -104,19 +102,17 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
         return showToast('Username already taken', 'error');
       }
       try {
-        const hashedPin = await hashCredential(loginFormData.pin);
         const newUser: User = {
           id: crypto.randomUUID(),
           name: profile.fullName,
           username: loginFormData.username,
           role: loginFormData.role as any,
           avatarColor: 'bg-indigo-500',
-          pin: hashedPin,
           active: true
         };
         await onSaveUser(newUser);
         await onSaveProfile(stampRecord({ ...profile, userId: newUser.id }) as StaffProfile);
-        showToast('Login created successfully', 'success');
+        showToast('Staff record created. Link the matching Supabase Auth account before sign-in.', 'success');
         setLoginModalState(null);
       } catch (e: any) {
         showToast(`Error: ${e.message}`, 'error');
@@ -124,14 +120,8 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
     } else {
       const user = users.find(u => u.id === profile.userId);
       if (!user) return showToast('User not found', 'error');
-      try {
-        const hashedPin = await hashCredential(loginFormData.pin);
-        await onSaveUser({ ...user, pin: hashedPin, active: true });
-        showToast('PIN reset successfully', 'success');
-        setLoginModalState(null);
-      } catch (e: any) {
-        showToast(`Error: ${e.message}`, 'error');
-      }
+      showToast('Password resets are managed in Supabase Auth, not in the VHMS browser.', 'error');
+      setLoginModalState(null);
     }
   };
 
@@ -221,8 +211,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
       generatedAt: nowIso,
       created_at: nowIso,
       updated_at: nowIso,
-      is_deleted: false,
-      _dirty: true
+       is_deleted: false
     };
     try {
       await onSavePayslip(stampRecord(payslip) as Payslip);
@@ -435,8 +424,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
       source,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_deleted: false,
-      _dirty: true
+       is_deleted: false
     };
 
     try {
@@ -495,8 +483,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
       notes: manualClockData.notes,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_deleted: false,
-      _dirty: true
+       is_deleted: false
     };
 
     try {
@@ -539,8 +526,7 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
       notes: scheduleData.notes,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      is_deleted: false,
-      _dirty: true
+       is_deleted: false
     };
 
     try {
@@ -1109,13 +1095,13 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
 
       {/* Login Management Modal */}
       {loginModalState && (
-        <Modal open={true} onClose={() => setLoginModalState(null)} title={loginModalState.type === 'create' ? 'Create Login' : 'Reset PIN'}>
+        <Modal open={true} onClose={() => setLoginModalState(null)} title={loginModalState.type === 'create' ? 'Link Supabase Auth Account' : 'Reset Supabase Auth Password'}>
           <form onSubmit={handleSaveLogin} className="space-y-4">
             {loginModalState.type === 'create' && (
               <>
                 <div className="space-y-1">
-                  <label htmlFor="login-username" className="text-xs font-bold text-slate-500 uppercase tracking-widest">Username</label>
-                  <input id="login-username" required type="text" value={loginFormData.username} onChange={e => setLoginFormData({...loginFormData, username: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <label htmlFor="login-username" className="text-xs font-bold text-slate-500 uppercase tracking-widest">Supabase Auth Email</label>
+                  <input id="login-username" required type="email" value={loginFormData.username} onChange={e => setLoginFormData({...loginFormData, username: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="login-role" className="text-xs font-bold text-slate-500 uppercase tracking-widest">Role</label>
@@ -1129,25 +1115,12 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
                 </div>
               </>
             )}
-            <div className="space-y-1">
-              {(() => {
-                const isPasswordAccount = ['admin', 'owner', 'manager'].includes(loginFormData.role);
-                return isPasswordAccount ? (
-                  <>
-                    <label htmlFor="login-pin" className="text-xs font-bold text-slate-500 uppercase tracking-widest">{loginModalState.type === 'create' ? 'Initial Password (min 8 characters)' : 'New Password (min 8 characters)'}</label>
-                    <input id="login-pin" required type="password" minLength={8} value={loginFormData.pin} onChange={e => setLoginFormData({...loginFormData, pin: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="login-pin" className="text-xs font-bold text-slate-500 uppercase tracking-widest">{loginModalState.type === 'create' ? 'Initial PIN (4 digits)' : 'New PIN (4 digits)'}</label>
-                    <input id="login-pin" required type="password" maxLength={4} pattern="\d{4}" value={loginFormData.pin} onChange={e => setLoginFormData({...loginFormData, pin: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-center tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                  </>
-                );
-              })()}
-            </div>
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-relaxed text-amber-800">
+              Password creation and resets are handled by Supabase Auth. This screen only stores the cloud staff-to-account mapping metadata.
+            </p>
             <div className="pt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setLoginModalState(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-xl font-bold transition-colors cursor-pointer text-sm">Cancel</button>
-              <button type="submit" className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm transition-colors cursor-pointer text-sm">Save</button>
+              <button type="submit" className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-sm transition-colors cursor-pointer text-sm">Close</button>
             </div>
           </form>
         </Modal>

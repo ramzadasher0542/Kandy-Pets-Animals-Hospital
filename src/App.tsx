@@ -76,16 +76,9 @@ export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, Pane
   }
 }
 
-import { db, stampRecord } from './lib/localDb';
-import {
-  hashCredential, verifyCredential, verifyCredentialSync, isBcryptHash,
-  migrateOldHash, recordFailedAttempt, isLockedOut, resetAttempts
-} from './lib/credentials';
+import { stampRecord } from './lib/recordMeta';
+import { recordFailedAttempt, isLockedOut, resetAttempts } from './lib/credentials';
 import { requireAuth, setPolicyOverrides, ROOT_ROLES } from './lib/requireAuth';
-import AuthPromptHost from './components/ui/AuthPrompt';
-
-// @ts-ignore
-window._db = db;
 
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
@@ -152,6 +145,7 @@ import {
   upsertLabResult,
   upsertBoardingRecord,
   addToClinicQueue,
+  upsertClinicQueueItem,
   removeFromClinicQueue,
   atomicStockDecrement,
   deleteInventoryItem,
@@ -159,41 +153,24 @@ import {
   deletePet,
   voidInvoiceAndReverseRevenue,
   fetchActiveShiftDetails,
-  nuclearWipeLocal,
   fetchUsers,
   upsertUser,
   deleteUser,
   fetchSystemConfig,
-  upsertSystemConfig
+  upsertSystemConfig,
+  fetchStaffProfiles,
+  fetchTimeEntries,
+  fetchScheduleEntries,
+  fetchPayslips,
+  upsertStaffProfile,
+  upsertTimeEntry,
+  upsertScheduleEntry,
+  deleteScheduleEntry,
+  upsertPayslip,
+  insertDeletionAudit
 } from './lib/db';
-import { SYNC_ENABLED, supabase, signInWithPassword, signOut, getAuthSession, onAuthStateChange } from './lib/supabase';
+import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, getAuthSession, onAuthStateChange } from './lib/supabase';
 import { fetchStaffForAuthUser } from './lib/auth';
-
-function hashPin(pin: string): string {
-  if (!pin) return '';
-  const isPlaintext = /^\d{4}$/.test(pin);
-  if (!isPlaintext) return pin;
-
-  let hash = 5381;
-  const salt = "CeylonPetsSecuritySalt";
-  const combined = pin + salt;
-  for (let i = 0; i < combined.length; i++) {
-    hash = (hash * 33) ^ combined.charCodeAt(i);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-/**
- * True when a db.ts write threw CLOUD_SAVE_FAILED — the local IndexedDB write
- * succeeded but the Supabase (cloud) write failed. The sync engine will retry
- * via the record's _dirty flag, so callers treat this as a soft warning, keep
- * their local state update, and tell the user "Saved locally".
- */
-function isCloudSaveError(error: any): boolean {
-  return typeof error?.message === 'string' && error.message.includes('CLOUD_SAVE_FAILED');
-}
-
-const CLOUD_RETRY_TOAST = 'Saved locally. Cloud sync will retry.';
 
 function App() {
   // SYSTEM BOOT STATE
@@ -214,7 +191,6 @@ function App() {
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
-  const [pinCache, setPinCache] = useState<Record<string, string>>({});
   const [users, setUsers] = useState<any[]>([]);
   const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
@@ -262,53 +238,30 @@ function App() {
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
       provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'staff', 'reminders', 'portal']
     },
-    masterPin: hashPin('5692')
   } as SystemConfig);
 
   // SECURE-1: banner deep-link flag — used to jump Settings straight to the
   // provider password modal when requested.
   const [autoOpenProviderPw, setAutoOpenProviderPw] = useState(false);
 
-  /**
-   * HOTFIX: verify a master-PIN attempt against the stored credential in EITHER
-   * format. AUTH-2 migrates `masterPin` to bcrypt on first owner login, which
-   * silently broke every gate still doing a raw `hashPin(pin) === masterPin`
-   * compare (delete inventory / delete record / void invoice). Declared here,
-   * above those callbacks, so they can all share one correct check.
-   * AUTH-3 replaces these gates with requireAuth() entirely.
-   */
-  const verifyMasterPin = (pin: string): boolean => {
-    const stored = systemConfig.masterPin || hashPin('0000');
-    if (!pin) return false;
-    if (isBcryptHash(stored)) return verifyCredentialSync(pin, stored);
-    return hashPin(pin) === stored;
-  };
-
-  // --- THE INDEXED-DB BOOTLOADER & MIGRATION ENGINE ---
+  // --- CLOUD BOOTLOADER ---
   useEffect(() => {
     let isMounted = true;
     async function bootSequence() {
       try {
-        if (navigator.storage && navigator.storage.persist) {
-          navigator.storage.persist().then(granted => {
-            if (granted) if (import.meta.env.DEV) console.log('[CeylonPets] Persistent storage granted by browser.');
-            else if (import.meta.env.DEV) console.warn('[CeylonPets] Persistent storage denied. Data may be evicted if disk is full.');
-          });
-        }
-
-        // Phase 2: Hydrate Memory from DB (With Corruption Safety Net)
-        // Boot: load operational data (today's records/invoices via fetchTodays*)
+        // Cloud-only boot: every required matrix must come from Supabase.
         try {
           // With production RLS, cloud tables are unreadable until Supabase Auth
           // resolves to an active staff row. Never misreport that as local DB damage.
-          if (SYNC_ENABLED && !(import.meta.env.DEV && (window as any).__KP_TEST_AUTH__)) {
-            const session = await getAuthSession();
+           let bootStaff: User | null = null;
+           if (SYNC_ENABLED && !(import.meta.env.DEV && (window as any).__KP_TEST_AUTH__)) {
+             const session = await getAuthSession();
             if (!session?.user) {
               if (isMounted) setIsBooting(false);
               return;
             }
-            const staff = await fetchStaffForAuthUser(session.user.id);
-            if (!staff) {
+             bootStaff = await fetchStaffForAuthUser(session.user.id);
+             if (!bootStaff) {
               if (isMounted) setIsBooting(false);
               return;
             }
@@ -326,25 +279,14 @@ function App() {
             fetchBoardingRecords()
           ]);
 
-          const hStaffProfiles: any[] = [];
-          await db.staffProfiles.iterate((value: any) => {
-            if (value && !value.is_deleted) hStaffProfiles.push(value);
-          });
-
-          const hTimeEntries: any[] = [];
-          await db.timeEntries.iterate((value: any) => {
-            if (value && !value.is_deleted) hTimeEntries.push(value);
-          });
-
-          const hScheduleEntries: any[] = [];
-          await db.scheduleEntries.iterate((value: any) => {
-            if (value && !value.is_deleted) hScheduleEntries.push(value);
-          });
-
-          const hPayslips: any[] = [];
-          await db.payslips.iterate((value: any) => {
-            if (value && !value.is_deleted) hPayslips.push(value);
-          });
+           const [hStaffProfiles, hTimeEntries, hScheduleEntries] = await Promise.all([
+             fetchStaffProfiles(),
+             fetchTimeEntries(),
+             fetchScheduleEntries(),
+           ]);
+           const hPayslips = bootStaff && ['manager', 'owner', 'admin', 'provider'].includes(bootStaff.role)
+             ? await fetchPayslips()
+             : [];
 
           const hNotifications = await fetchNotifications();
           const hAlerts = await fetchAlerts();
@@ -352,26 +294,15 @@ function App() {
           // Staff login accounts now live in Supabase `users`, not IndexedDB.
           const hUsers: any[] = await fetchUsers();
 
-          // Active-shift source of truth: when Supabase is configured, the cloud
-          // `shifts` table is authoritative — a stale local mirror must never
-          // override it (e.g. after another device closes the shift). The local
-          // db.system mirror is consulted ONLY in genuine offline mode (no config).
-          let hActiveShift: any = null;
-          if (SYNC_ENABLED) {
-            const { shift: cloudShift } = await fetchActiveShiftDetails();
-            if (cloudShift) {
-              hActiveShift = {
-                id: cloudShift.id,
-                openedAt: cloudShift.startTime,
-                openedBy: cloudShift.openedBy,
-                openedByName: cloudShift.openedBy,
-                openingFloat: cloudShift.opening_float || (cloudShift.openingFloatCents || 0) / 100
-              };
-            }
-          } else {
-            hActiveShift = await db.system.getItem('active_shift') || null;
-          }
-          const hConfig = (await fetchSystemConfig()) || (await db.system.getItem('config'));
+          const { shift: cloudShift } = await fetchActiveShiftDetails();
+          const hActiveShift = cloudShift ? {
+            id: cloudShift.id,
+            openedAt: cloudShift.startTime,
+            openedBy: cloudShift.openedBy,
+            openedByName: cloudShift.openedBy,
+            openingFloat: cloudShift.opening_float || (cloudShift.openingFloatCents || 0) / 100
+          } : null;
+          const hConfig = await fetchSystemConfig();
 
           if (isMounted) {
             setInventory(Array.isArray(inv) ? inv as any : []);
@@ -396,13 +327,7 @@ function App() {
             setBoardingRecords(Array.isArray(fetchedBoardingRecords) ? fetchedBoardingRecords as any : []);
             setActiveShift(hActiveShift as any);
 
-            const cache: Record<string, string> = {};
-            (Array.isArray(hUsers) ? hUsers : []).forEach(u => {
-              if (u && u.pin) cache[u.username] = u.pin;
-            });
-            setPinCache(cache);
-
-            if (hConfig) {
+             if (hConfig) {
               setSystemConfig(prev => {
                 const merged = { ...prev, ...(hConfig as any) };
                 if (!merged.rolePermissions) merged.rolePermissions = prev.rolePermissions;
@@ -419,9 +344,7 @@ function App() {
                 // gain them instead of silently falling through to zero panels.
                 if (!merged.rolePermissions.groomer) merged.rolePermissions.groomer = prev.rolePermissions.groomer;
                 if (!merged.rolePermissions.provider) merged.rolePermissions.provider = prev.rolePermissions.provider;
-                if (merged.masterPin === prev.masterPin) merged.masterPin = hashPin(merged.masterPin);
-                if (merged.dummyAdminPin === prev.dummyAdminPin) merged.dummyAdminPin = hashPin(merged.dummyAdminPin);
-                return merged;
+                 return merged;
               });
             }
 
@@ -474,8 +397,8 @@ function App() {
     };
   }, []);
 
-  const [enteredPin, setEnteredPin] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState('');
+  const [loginError, setLoginError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
@@ -489,8 +412,10 @@ function App() {
     const resetTimer = () => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        setCurrentUser(null);
-        setIdleMessage("Logged out due to inactivity");
+        void signOut().finally(() => {
+          setCurrentUser(null);
+          setIdleMessage("Logged out due to inactivity");
+        });
       }, systemConfig.idleLogoutMinutes * 60 * 1000);
     };
 
@@ -588,23 +513,18 @@ function App() {
       setInventory(prev => [product, ...prev]);
       showToast(`${product.name} added to inventory.`);
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        setInventory(prev => [product, ...prev]);
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-      } else {
-        showToast(`Failed: ${error.message}`, 'error');
-      }
+      showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
 
-  // AUDIT FIX: Atomic stock decrement — reads from IndexedDB, not stale React state
+  // Atomic stock decrement is resolved by the Supabase transaction, not React state.
   const handleUpdateStock = useCallback(async (itemId: string, qtyDelta: number, _expectedStock?: number) => {
     let newStock: number | null = null;
     try {
       newStock = await atomicStockDecrement(itemId, qtyDelta);
     } catch (error: any) {
       // Cloud-only: a failed atomic stock operation must never be reconstructed
-      // from a local mirror. Show the failure and leave React stock state unchanged.
+      // from browser state. Show the failure and leave React stock state unchanged.
       if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
       showToast(`Stock update failed: ${error.message}`, 'error');
       return;
@@ -633,12 +553,7 @@ function App() {
         showToast(`Price updated for item.`);
       }
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        setInventory(prev => prev.map(i => i.id === id ? { ...i, price: newPrice } : i));
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-      } else {
-        showToast(`Failed: ${error.message}`, 'error');
-      }
+      showToast(`Failed: ${error.message}`, 'error');
     }
   }, [inventory]);
 
@@ -648,11 +563,6 @@ function App() {
       setAppointments(prev => [appointment, ...prev]);
       showToast(`Appointment scheduled for ${appointment.petName}.`);
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        setAppointments(prev => [appointment, ...prev]);
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-        return;
-      }
       showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
@@ -672,18 +582,13 @@ function App() {
         const queueItem = clinicQueue.find(q => q.appointmentId === updated.id && q.emergencyBackfillRequired);
         if (queueItem) {
           const updatedQueueItem = { ...queueItem, emergencyBackfillRequired: false };
-          await db.clinicQueue.setItem(queueItem.id, stampRecord(updatedQueueItem));
+          await upsertClinicQueueItem(updatedQueueItem);
           setClinicQueue(prev => prev.map(q => q.id === queueItem.id ? updatedQueueItem : q));
         }
       }
 
       showToast(`Appointment for ${updated.petName} updated successfully.`);
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-        return;
-      }
       showToast(`Failed: ${error.message}`, 'error');
     }
   }, [clinicQueue]);
@@ -693,16 +598,8 @@ function App() {
     if (!apt) return;
 
     try {
-      const updated = { ...apt, status: 'completed' as const, updated_at: new Date().toISOString(), _dirty: true };
-      // A cloud-only failure must NOT abort the local visit-close (state update
-      // + queue removal). Complete every local step, then rethrow CLOUD_SAVE_FAILED
-      // at the end so the caller can surface the "saved locally" warning.
-      let cloudFailed = false;
-      try {
-        await upsertAppointment(updated);
-      } catch (e) {
-        if (isCloudSaveError(e)) cloudFailed = true; else throw e;
-      }
+      const updated = { ...apt, status: 'completed' as const, updated_at: new Date().toISOString() };
+      await upsertAppointment(updated);
       setAppointments(prev => prev.map(a => a.id === appointmentId ? updated : a));
 
       const queueItem = clinicQueue.find(q => q.appointmentId === appointmentId);
@@ -710,7 +607,6 @@ function App() {
         await removeFromClinicQueue(queueItem.id, 'completed');
         setClinicQueue(prev => prev.filter(q => q.id !== queueItem.id));
       }
-      if (cloudFailed) throw new Error('CLOUD_SAVE_FAILED: appointment');
     } catch (error) {
       if (import.meta.env.DEV) console.error('[CeylonPets] closeVisit failed:', error);
       throw error;
@@ -732,13 +628,12 @@ function App() {
       apt = data as Appointment | undefined;
     }
     if (apt) {
-      let cloudFailed = false;
       try {
         if (status === 'completed') {
-          try { await closeVisit(id); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
+          await closeVisit(id);
         } else {
           const updated = { ...apt, status, updated_at: new Date().toISOString() };
-          try { await upsertAppointment(updated); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
+          await upsertAppointment(updated);
           setAppointments(prev => prev.map(a => a.id === id ? updated : a));
 
           if (status === 'in-progress') {
@@ -785,7 +680,7 @@ function App() {
           }
         }
 
-        showToast(cloudFailed ? CLOUD_RETRY_TOAST : `Appointment status updated to ${status}.`, cloudFailed ? 'warning' : 'success');
+        showToast(`Appointment status updated to ${status}.`, 'success');
       } catch (error: any) {
         if (import.meta.env.DEV) console.error('[CeylonPets] Appointment status update failed:', error);
         showToast(`Failed to update appointment status: ${error.message}`, 'error');
@@ -799,12 +694,7 @@ function App() {
       setRecords(prev => [newRec, ...prev]);
       showToast(`Medical record added successfully.`);
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        setRecords(prev => [newRec, ...prev]);
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-      } else {
-        showToast(`Failed: ${error.message}`, 'error');
-      }
+      showToast(`Failed: ${error.message}`, 'error');
     }
   }, []);
 
@@ -814,12 +704,7 @@ function App() {
       applyUpdatedRecord();
       showToast(`Medical record updated successfully.`);
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        applyUpdatedRecord();
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-      } else {
-        showToast(`Failed: ${error.message}`, 'error');
-      }
+      showToast(`Failed: ${error.message}`, 'error');
     }
     function applyUpdatedRecord() {
       setRecords(prev => {
@@ -838,7 +723,7 @@ function App() {
       const alert = alerts.find(a => a.id === id);
       if (alert) {
         const updated = { ...alert, read: true, updated_at: new Date().toISOString() };
-        await db.alerts.setItem(id, updated);
+        await upsertAlert(updated);
         setAlerts(prev => prev.map(a => a.id === id ? updated : a));
       }
     } catch (error) {
@@ -869,12 +754,7 @@ function App() {
       await upsertClient(client);
       applyClient();
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        applyClient();
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-      } else {
-        showToast(`Failed: ${error.message}`, 'error');
-      }
+      showToast(`Failed: ${error.message}`, 'error');
     }
     function applyClient() {
       setClients(prev => {
@@ -892,11 +772,6 @@ function App() {
       await upsertInventoryItem(item);
       applyItem();
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        applyItem();
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-        return;
-      }
       showToast(`Failed: ${error.message}`, 'error');
       throw error;
     }
@@ -918,12 +793,7 @@ function App() {
       setInventory(prev => prev.filter(i => i.id !== id));
       showToast('Deleted', 'success');
     } catch (error: any) {
-      if (isCloudSaveError(error)) {
-        setInventory(prev => prev.filter(i => i.id !== id));
-        showToast(CLOUD_RETRY_TOAST, 'warning');
-      } else {
-        showToast(`Failed: ${error.message}`, 'error');
-      }
+      showToast(`Failed: ${error.message}`, 'error');
       throw error; // Re-throw so callers know the delete failed.
     }
   }, []);
@@ -1038,7 +908,7 @@ function App() {
   // Invoices / medical records / financial data are intentionally NOT touched —
   // they must remain intact for reporting integrity. Every deletion is audited.
   const writeDeletionAudit = async (audit: import('./types').DeletionAudit) => {
-    await db.deletionAudit.setItem(audit.id, stampRecord(audit));
+    await insertDeletionAudit(stampRecord(audit));
   };
 
   const handleDeleteClient = useCallback(async (
@@ -1108,15 +978,13 @@ function App() {
   // Added try-catch for error resilience.
   // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
   const handleAddInvoice = useCallback(async (invoice: any) => {
-    let cloudFailed = false;
     try {
-      try { await upsertInvoice(invoice); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
+      await upsertInvoice(invoice);
       setInvoices(prev => [invoice, ...prev]);
 
       if (invoice.appointmentId) {
-        try { await closeVisit(invoice.appointmentId); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
+        await closeVisit(invoice.appointmentId);
       }
-      if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('[CeylonPets] Invoice creation failed:', error);
       showToast(`Checkout failed: ${error.message}`, 'error');
@@ -1188,12 +1056,11 @@ function App() {
   // acquires the mutex internally. Double-locking caused a deadlock that froze checkout.
   // FIX 4: Use functional state updates instead of destructive re-fetches
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
-    let cloudFailed = false;
     try {
       // ATOMIC (invoice + inventory ONLY): persist the invoice and decrement all
       // of its stock items in one DB transaction via the RPC. A failure here means
       // NOTHING committed, so it propagates to the outer catch as a real checkout
-      // error (not a "saved locally" warning). Idempotent by invoice id on retry.
+      // error. Idempotent by invoice id on retry.
       // The post-commit effects below (shift, client value, visit, source billing)
       // are NOT part of this transaction.
       const stockItems = cart
@@ -1232,14 +1099,7 @@ function App() {
               lifetime_value: (client.lifetime_value || 0) + invoice.sales_total,
               updated_at: new Date().toISOString()
             };
-            // Post-commit effect: invoice + stock already committed atomically, so a
-            // failure here must NOT masquerade as a checkout failure. Warn instead.
-            try {
-              await handleUpdateClient(updatedClient);
-            } catch (e) {
-              cloudFailed = true;
-              if (import.meta.env.DEV) console.error('[CeylonPets] Client lifetime update failed:', e);
-            }
+            await handleUpdateClient(updatedClient);
           }
         }
       }
@@ -1249,7 +1109,7 @@ function App() {
 
       // Close visit (appointment complete + queue removal) via unified path
       if (invoice.appointmentId) {
-        try { await closeVisit(invoice.appointmentId); } catch (e) { if (isCloudSaveError(e)) cloudFailed = true; else throw e; }
+        await closeVisit(invoice.appointmentId);
       }
 
       // Mark swept records as billed
@@ -1262,12 +1122,11 @@ function App() {
         }
       }
 
-      // Source records now live in Supabase (the local mirror can be empty on a
-      // fresh cloud-only device). Load each needed collection with its fail-closed
+      // Source records live in Supabase. Load each needed collection with its fail-closed
       // helper, isolated per type so one failed read cannot block the others and
       // cannot void the already-committed sale. Source-billing failures are tracked
-      // separately from `cloudFailed`: these records are NOT saved locally and there
-      // is no sync queue, so the "Saved locally, will retry" message would be false.
+      // separately so a linked-record failure cannot be mistaken for a completed
+      // billing update.
       let sourceBillingFailed = false;
       const refTypes = new Set([...uniqueRefs.values()].map(r => r.type));
       const vaccById = new Map<string, Vaccination>();
@@ -1320,10 +1179,8 @@ function App() {
         }
       }
 
-      // Local sale is fully committed; only the cloud push failed on some rows.
-      if (cloudFailed) showToast(CLOUD_RETRY_TOAST, 'warning');
-      // Source records have no local save/sync queue, so report their failure
-      // accurately and separately (both warnings can appear if both categories fail).
+      // The sale is cloud-committed. Any linked record that could not be marked
+      // billed is reported explicitly; it is never described as locally saved.
       if (sourceBillingFailed) showToast('Sale saved, but one or more linked service records were not billed in the cloud.', 'warning');
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Checkout failed:', error);
@@ -1338,102 +1195,6 @@ function App() {
       throw error;
     }
   }, [closeVisit]);
-
-  const handlePurgeDatabases = useCallback(async () => {
-    try {
-      // 1. Empty every IndexedDB store generically (clients, pets, appointments,
-      //    invoices, inventory, staff, charts, system config — everything).
-      await Promise.all(
-        Object.values(db).map((store: any) =>
-          store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
-        )
-      );
-      // 2. Wipe web storage, then re-mark the deliberate purge so boot does NOT
-      //    auto-repopulate the empty vault with demo data.
-      localStorage.clear(); sessionStorage.clear();
-      localStorage.setItem('kp_purged', '1');
-      // 3. Hard-delete the whole IndexedDB database so nothing can resurrect on
-      //    reload. Never hang if a live connection blocks the delete.
-      await new Promise<void>((resolve) => {
-        let done = false;
-        const finish = () => { if (!done) { done = true; resolve(); } };
-        try {
-          const req = indexedDB.deleteDatabase('CeylonPets_Enterprise_OS');
-          req.onsuccess = finish; req.onerror = finish; req.onblocked = finish;
-        } catch { finish(); }
-        setTimeout(finish, 2000);
-      });
-      window.location.reload();
-    } catch (error: any) {
-      showToast(`Failed: ${error.message}`, 'error');
-    }
-  }, []);
-
-  // Deletes the cloud copy on Supabase FIRST (irreversible, affects every device
-  // sharing this project), then runs the same local purge. Both halves now live
-  // in nuclearWipeLocal(); a failed cloud wipe is logged to the console there and
-  // does NOT abort the local purge.
-  const handleWipeCloudAndPurge = useCallback(async () => {
-    try {
-      // Nuke the cloud AND every local store + reset config to defaults.
-      // db.ts deletes each cloud table explicitly and returns a per-table
-      // log, so a partial failure is visible instead of silent.
-      const wipeLog = await nuclearWipeLocal();
-      console.log('[WIPE RESULT]', wipeLog);
-      showToast(`Wiped ${wipeLog.filter(l => l.startsWith('OK')).length}/18 tables. Check console for details.`, 'success');
-      // 3. Clear web storage, then set flags so boot never reseeds demo data.
-      localStorage.clear();
-      sessionStorage.clear();
-      localStorage.setItem('NEVER_SEED', 'true');
-      localStorage.setItem('kp_purged', '1');
-      // 4. Hold long enough for the toast to actually be read — an immediate
-      //    reload would destroy it in the same tick, defeating the point.
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      // 5. Nuclear reload into an empty, zero-record vault.
-      window.location.reload();
-    } catch (error: any) {
-      showToast(`Cloud wipe failed: ${error.message}`, 'error');
-    }
-  }, []);
-
-  // Single shared implementation — see verifyMasterPin above. Kept as a named
-  // prop-facing wrapper for the panels that receive onVerifyMasterPin.
-  const handleVerifyMasterPin = (pin: string): boolean => verifyMasterPin(pin);
-
-  /**
-   * AUTH-3: resolve + verify a username's OWN credential (never a shared master
-   * PIN). Lives here because App owns systemConfig, which holds the provider's
-   * masterPin including its default fallback.
-   */
-  const checkCredential = useCallback(async (username: string, credential: string) => {
-    if (!username || !credential) return { valid: false, user: null };
-
-    // The provider/admin account is config-backed, not a db.users row.
-    if (username === 'ashpoint_owner') {
-      const stored = systemConfig.masterPin;
-      // Try the new hash format first, then fall back to the legacy djb2 format.
-      // (The old isBcryptHash routing has been dead since Phase 2 removed bcrypt,
-      // which stranded any credential upgraded to the new format.)
-      const valid = (await verifyCredential(credential, stored))
-        || (await migrateOldHash(stored, credential));
-      const user = valid
-        ? ({ id: 'ashpoint_owner', name: `${systemConfig.appName} Provider`, username: 'ashpoint_owner', role: 'provider', avatarColor: '' } as any)
-        : null;
-      return { valid, user };
-    }
-
-    // Staff accounts live in Supabase `users` (fetchUsers already excludes
-    // soft-deleted rows). pinCache remains the offline/legacy fallback.
-    const registry = await fetchUsers();
-    const found: any = registry.find(u => u.username === username && u.active !== false) || null;
-    const stored = found?.pin || pinCache[username] || '';
-    if (!found || !stored) return { valid: false, user: null };
-
-    // Same router as the provider path: new hash format first, legacy djb2 second.
-    const valid = (await verifyCredential(credential, stored))
-      || (await migrateOldHash(stored, credential));
-    return { valid, user: valid ? found : null };
-  }, [systemConfig, pinCache]);
 
   /**
    * AUTH-6: the ONLY roles any UI may mint. 'provider' (vendor root) and 'admin'
@@ -1490,33 +1251,11 @@ function App() {
     return 'portal';
   };
 
-  /**
-   * Verify `attempt` against a stored credential that may still be in the OLD
-   * homemade hash format. Returns whether it matched, plus the freshly-bcrypted
-   * hash to persist when a legacy credential is successfully upgraded.
-   */
-  const verifyAndUpgrade = async (
-    stored: string,
-    attempt: string
-  ): Promise<{ ok: boolean; upgradedHash?: string }> => {
-    if (!stored || !attempt) return { ok: false };
-    // Try the new hash format first; already-upgraded credentials need no re-hash.
-    if (await verifyCredential(attempt, stored)) {
-      return { ok: true };
-    }
-    // Legacy djb2 credential — if it matches, re-hash to the new format so the
-    // user silently upgrades without a manual reset.
-    if (await migrateOldHash(stored, attempt)) {
-      return { ok: true, upgradedHash: await hashCredential(attempt) };
-    }
-    return { ok: false };
-  };
-
   const registerFailure = (username: string) => {
     recordFailedAttempt(username);
-    setPinError(true);
-    setTimeout(() => setPinError(false), 2000);
-    setEnteredPin('');
+    setLoginError(true);
+    setTimeout(() => setLoginError(false), 2000);
+    setEnteredPassword('');
     const l = isLockedOut(username);
     setLockoutSeconds(l.locked ? l.secondsRemaining : 0);
   };
@@ -1527,7 +1266,7 @@ function App() {
 
     const email = loginEmail.trim();
     const key = email.toLowerCase();
-    if (!email || !enteredPin) return;
+    if (!email || !enteredPassword) return;
     if (!supabase) { setLoginMessage('Cloud login is not configured on this device.'); return; }
 
     // Guess limiter — refuse to even attempt while locked out.
@@ -1539,7 +1278,7 @@ function App() {
     try {
       // Step 32: Supabase Auth is the ONLY production login. A real authenticated
       // session is required; there is no local/PIN fallback.
-      const { data, error } = await signInWithPassword(email, enteredPin);
+      const { data, error } = await signInWithPassword(email, enteredPassword);
       if (error || !data?.user) {
         registerFailure(key);
         setLoginMessage('Incorrect email or password.');
@@ -1558,7 +1297,7 @@ function App() {
       resetAttempts(key);
       setCurrentUser(staff);
       setActiveView(getDefaultViewForUser(staff));
-      setEnteredPin(''); setLoginEmail(''); setLockoutSeconds(0); setLoginMessage('');
+       setEnteredPassword(''); setLoginEmail(''); setLockoutSeconds(0); setLoginMessage('');
       // Boot hydration is deliberately gated on an authenticated session. Reload
       // once after sign-in so the cloud data path starts from that session.
       window.location.reload();
@@ -1568,7 +1307,7 @@ function App() {
   };
 
   const handleSaveStaffProfile = useCallback(async (profile: StaffProfile) => {
-    await db.staffProfiles.setItem(profile.id, profile);
+    await upsertStaffProfile(stampRecord(profile));
     setStaffProfiles(prev => {
       const exists = prev.find(p => p.id === profile.id);
       return exists ? prev.map(p => p.id === profile.id ? profile : p)
@@ -1579,14 +1318,14 @@ function App() {
   const handleDeactivateStaffProfile = useCallback(async (id: string) => {
     const profile = staffProfiles.find(p => p.id === id);
     if (!profile) return;
-    const updated = { ...profile, active: false, updated_at: new Date().toISOString(), _dirty: true };
-    await db.staffProfiles.setItem(id, updated);
+    const updated = stampRecord({ ...profile, active: false });
+    await upsertStaffProfile(updated);
     setStaffProfiles(prev => prev.map(p => p.id === id ? updated : p));
   }, [staffProfiles]);
 
   const handleSaveTimeEntry = useCallback(async (entry: TimeEntry) => {
-    const stamped = { ...entry, updated_at: new Date().toISOString(), _dirty: true };
-    await db.timeEntries.setItem(stamped.id, stamped);
+    const stamped = stampRecord(entry);
+    await upsertTimeEntry(stamped);
     setTimeEntries(prev => {
       const exists = prev.find(t => t.id === stamped.id);
       return exists ? prev.map(t => t.id === stamped.id ? stamped : t)
@@ -1595,8 +1334,8 @@ function App() {
   }, []);
 
   const handleSaveScheduleEntry = useCallback(async (entry: ScheduleEntry) => {
-    const stamped = { ...entry, updated_at: new Date().toISOString(), _dirty: true };
-    await db.scheduleEntries.setItem(stamped.id, stamped);
+    const stamped = stampRecord(entry);
+    await upsertScheduleEntry(stamped);
     setScheduleEntries(prev => {
       const exists = prev.find(t => t.id === stamped.id);
       return exists ? prev.map(t => t.id === stamped.id ? stamped : t)
@@ -1607,14 +1346,14 @@ function App() {
   const handleDeleteScheduleEntry = useCallback(async (id: string) => {
     const entry = scheduleEntries.find(e => e.id === id);
     if (!entry) return;
-    const stamped = { ...entry, is_deleted: true, updated_at: new Date().toISOString(), _dirty: true };
-    await db.scheduleEntries.setItem(id, stamped);
+    const stamped = stampRecord({ ...entry, is_deleted: true });
+    await upsertScheduleEntry(stamped);
     setScheduleEntries(prev => prev.filter(e => e.id !== id));
   }, [scheduleEntries]);
 
   const handleSavePayslip = useCallback(async (payslip: Payslip) => {
-    const stamped = { ...payslip, updated_at: new Date().toISOString(), _dirty: true };
-    await db.payslips.setItem(stamped.id, stamped);
+    const stamped = stampRecord(payslip);
+    await upsertPayslip(stamped);
     setPayslips(prev => {
       const exists = prev.find(p => p.id === stamped.id);
       return exists ? prev.map(p => p.id === stamped.id ? stamped : p)
@@ -1644,7 +1383,7 @@ function App() {
   const renderCanvas = () => {
     switch (activeView) {
       case 'pos': {
-        const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
+         const safeSystemConfig = systemConfig;
         return (
           <POSRegister
             inventory={inventory} 
@@ -1653,7 +1392,7 @@ function App() {
             clinicQueue={clinicQueue}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
             onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
-            onVerifyMasterPin={handleVerifyMasterPin} onTriggerInventorySync={async () => { }}
+             onTriggerInventorySync={async () => { }}
             activeShift={activeShift} activeShiftId={activeShift?.id} incomingClient={viewPayload?.client ? { phone: viewPayload.client.primary_phone || '', name: viewPayload.client.full_name || '', id: viewPayload.client.client_id || '' } : null}
             onUpdateRecord={handleUpdateRecord}
             onAtomicCheckout={handleAtomicCheckout}
@@ -1667,59 +1406,43 @@ function App() {
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
-      case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { if (s) { await db.system.setItem('active_shift', s); } else { await db.system.removeItem('active_shift'); } setActiveShift(s); }} onVerifyMasterPin={handleVerifyMasterPin} />;
+       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { setActiveShift(s); }} />;
       case 'dashboard':
         // FIX 8: Pass activeShift and onNavigate props
         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} currentUser={currentUser} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
-        return <ReportsManager onVerifyMasterPin={handleVerifyMasterPin} currentUser={currentUser} config={systemConfig} />;
+         return <ReportsManager currentUser={currentUser} config={systemConfig} />;
       case 'staff': 
         return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
-        const { masterPin, dummyAdminPin, ...safeSystemConfig } = systemConfig;
+         const safeSystemConfig = systemConfig;
         return (
           <SystemSettings
             config={safeSystemConfig}
             onChangeConfig={async (config) => {
-              // SECURE-1: `config` here is safeSystemConfig (masterPin/dummyAdminPin
-              // stripped), so a naive replace would silently reset the provider
-              // password to the shipped default on ANY settings save. Merge onto the
-              // full config so those secrets survive.
+               // Merge the edited cloud settings onto the current config so fields
+               // not visible in the active settings tab are preserved.
               const merged = { ...systemConfig, ...config } as SystemConfig;
               await upsertSystemConfig(merged);
-              await db.system.setItem('config', merged); // local mirror for offline fallback
-              setSystemConfig(merged);
+               setSystemConfig(merged);
             }}
-            users={users.map(({ pin, ...safeU }) => safeU)}
+             users={users}
             onRefreshUsers={async () => { setUsers(await fetchUsers()); }}
             onAddUser={async (user) => {
-              // AUTH-4 FIX: new accounts previously stored their PIN in PLAINTEXT,
-              // which no verifier accepts — so every account made here could never
-              // log in. Hash it with bcrypt on creation, like every other credential.
-              if (!assertIssuableRole(user.role)) return; // AUTH-6 guard
-              const { pin, ...safeUser } = user;
-              const raw = pin || pinCache[user.username];
-              const hashed = raw ? await hashCredential(String(raw)) : undefined;
-              const userToSave = { ...safeUser, pin: hashed };
-              try {
-                await upsertUser(userToSave);
-              } catch (e: any) {
+               // Staff metadata is stored in Supabase. Passwords belong exclusively
+               // to Supabase Auth and are never written to public.users.
+               if (!assertIssuableRole(user.role)) return; // AUTH-6 guard
+               try {
+                 await upsertUser(user);
+               } catch (e: any) {
                 showToast(`Failed to add user: ${e.message}`, 'error');
                 return;
-              }
-              setUsers(await fetchUsers());
-              showToast(`User ${safeUser.name} added successfully.`);
+               }
+               setUsers(await fetchUsers());
+               showToast(`Staff record ${user.name} added. Link its Supabase Auth identity before sign-in.`);
             }}
             onRemoveUser={async (id) => {
-              const userToRemove = users.find(u => u.id === id);
-              if (userToRemove) {
-                setPinCache(prev => {
-                  const next = { ...prev };
-                  delete next[userToRemove.username];
-                  return next;
-                });
-              }
               try {
                 await deleteUser(id);
               } catch (e: any) {
@@ -1735,31 +1458,18 @@ function App() {
             onDeleteInventory={handleDeleteInventoryItem}
             onRestoreSnapshot={async () => true}
             onChangePassword={async (target: any, newPassword: string) => {
-              // AUTH-4/SECURE-1: min length enforced HERE (at set time) and in the
-              // UI — never at login/verify time. The provider (root) account needs
-              // 12+; staff accounts 8+. Always stored bcrypt-hashed.
-              const isProviderTarget = target?.username === 'ashpoint_owner' || target?.id === 'ashpoint_owner';
-              const minLen = isProviderTarget ? 12 : 8;
-              if (!newPassword || newPassword.length < minLen) {
-                showToast(`New password must be at least ${minLen} characters.`, 'error');
-                return;
-              }
-              const hashed = await hashCredential(newPassword);
-              if (isProviderTarget) {
-                const next = { ...systemConfig, masterPin: hashed };
-                await db.system.setItem('config', next);
-                setSystemConfig(next);
-              } else {
-                const persisted = users.find(u => u.id === target.id);
-                await upsertUser({ ...(persisted || target), pin: hashed });
-                setUsers(prev => prev.map(u => u.id === target.id ? { ...u, pin: hashed } : u));
-                setPinCache(prev => ({ ...prev, [target.username]: hashed }));
-              }
+               if (!newPassword || newPassword.length < 12) {
+                 showToast('New password must be at least 12 characters.', 'error');
+                 return;
+               }
+               const isCurrentAccount = target?.id === currentUser?.id
+                 || (currentUser?.role === 'provider' && target?.id === 'ashpoint_owner');
+               if (!currentUser || !isCurrentAccount) {
+                 throw new Error('Only the currently signed-in user may change a password. Manage other Auth users in Supabase.');
+               }
+               const { error } = await requireSupabase().auth.updateUser({ password: newPassword });
+               if (error) throw error;
             }}
-            onPurgeDatabases={handlePurgeDatabases}
-            onWipeCloudAndPurge={handleWipeCloudAndPurge}
-            cloudSyncEnabled={SYNC_ENABLED}
-            onVerifyMasterPin={handleVerifyMasterPin}
             autoOpenProviderPassword={autoOpenProviderPw}
             onAutoOpenHandled={() => setAutoOpenProviderPw(false)}
           />
@@ -1769,7 +1479,7 @@ function App() {
       case 'vaccinations': return <VaccinationsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
       // FIX 8: Pass appointments prop to Lab
       case 'laboratory': return <LaboratoryManager clients={clients} pets={pets} records={records} inventory={inventory as any} appointments={appointments} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} />;
-      case 'customers': return <CustomersManager currentUser={currentUser} clients={clients} pets={pets} records={records} invoices={invoices} appointments={appointments} clinicQueue={clinicQueue} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} onVerifyMasterPin={handleVerifyMasterPin} onDeleteClient={handleDeleteClient} onDeletePet={handleDeletePet} />;
+       case 'customers': return <CustomersManager currentUser={currentUser} clients={clients} pets={pets} records={records} invoices={invoices} appointments={appointments} clinicQueue={clinicQueue} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} onDeleteClient={handleDeleteClient} onDeletePet={handleDeletePet} />;
       default: return null;
     }
   };
@@ -1782,20 +1492,18 @@ function App() {
           <div className="w-20 h-20 mx-auto bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20">
             <CloudLightning className="w-10 h-10 text-rose-500" />
           </div>
-          <h1 className="text-2xl font-black text-amber-400 uppercase tracking-widest">Local Cache Needs a Reset</h1>
-          <p className="text-slate-300 font-bold text-sm leading-relaxed">
-            This device's local cache could not be read, so the app can't start here. Resetting rebuilds
-            the local cache on this device only.
-          </p>
-          <p className="text-slate-400 font-bold text-xs leading-relaxed">
-            Your cloud data is safe and untouched — this button never deletes anything from the server.
-            Only unsynced changes made on this device (if any) would need to be re-entered after it reloads.
-          </p>
-          <button
-            onClick={handlePurgeDatabases}
+           <h1 className="text-2xl font-black text-amber-400 uppercase tracking-widest">Cloud Data Unavailable</h1>
+           <p className="text-slate-300 font-bold text-sm leading-relaxed">
+             The application could not load its cloud data, so it has stopped instead of showing incomplete records.
+           </p>
+           <p className="text-slate-400 font-bold text-xs leading-relaxed">
+             Check the connection and Supabase configuration, then try again. No local copy is used.
+           </p>
+           <button
+             onClick={() => window.location.reload()}
             className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl shadow-lg transition-all cursor-pointer"
           >
-            Reset Local Cache & Reload
+             Retry Cloud Connection
           </button>
         </div>
       </div>
@@ -1877,7 +1585,7 @@ function App() {
                     <div className="space-y-1">
                       <div className="flex justify-between items-center">
                         <label htmlFor="login-password" className="font-bold text-slate-700 block text-[10px]">Password</label>
-                        {(pinError || loginMessage) && <span data-testid="login-error" className="text-[10px] text-rose-600 font-bold animate-pulse">{loginMessage || 'Incorrect email or password.'}</span>}
+                        {(loginError || loginMessage) && <span data-testid="login-error" className="text-[10px] text-rose-600 font-bold animate-pulse">{loginMessage || 'Incorrect email or password.'}</span>}
                       </div>
                       <div className="flex gap-2">
                         <div className="relative flex-1">
@@ -1889,8 +1597,8 @@ function App() {
                             autoComplete="current-password"
                             inputMode="text"
                             placeholder="Password"
-                            value={enteredPin}
-                            onChange={(e) => setEnteredPin(e.target.value)}
+                            value={enteredPassword}
+                            onChange={(e) => setEnteredPassword(e.target.value)}
                             disabled={isVerifying || lockoutSeconds > 0}
                             className="w-full py-2.5 pl-3 pr-10 bg-slate-50 border border-slate-200 font-mono font-bold text-sm rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60 text-left tracking-normal"
                             required
@@ -1987,7 +1695,7 @@ function App() {
                     await signOut();
                     setCurrentUser(null);
                     setLoginEmail('');
-                    setEnteredPin('');
+                    setEnteredPassword('');
                     setIdleMessage(null);
                     setActiveView('pos');
                     setViewPayload(null);
@@ -2003,7 +1711,7 @@ function App() {
                     await signOut();
                     setCurrentUser(null);
                     setLoginEmail('');
-                    setEnteredPin('');
+                    setEnteredPassword('');
                     setIdleMessage(null);
                     setActiveView('pos');
                     setViewPayload(null);
@@ -2074,8 +1782,6 @@ function App() {
           </div>
         )}
         <ToastContainer />
-        {/* AUTH-3: single authorization modal driven by requireAuth() */}
-        <AuthPromptHost checkCredential={checkCredential} />
         <Modal
           open={showNotifications}
           onClose={() => setShowNotifications(false)}

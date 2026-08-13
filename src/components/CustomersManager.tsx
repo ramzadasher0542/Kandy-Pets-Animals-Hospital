@@ -38,7 +38,6 @@ interface CustomersManagerProps {
   onUpdateRecordsBulk?: (records: MedicalRecord[]) => void; // PHASE 3: Bulk Armor Pipe
   onUpdateClient?: (client: any) => Promise<void>;
   onUpdatePet?: (oldPatientId: string, newPetName: string, newDetails: any) => void;
-  onVerifyMasterPin?: (pin: string) => boolean;
   currentUser?: any;
   onDeleteClient?: (client: Client, meta: { hadHistory: boolean; historySummary: string; overrideConfirmed: boolean }) => Promise<void>;
   onDeletePet?: (pet: Pet, meta: { hadHistory: boolean; historySummary: string; overrideConfirmed: boolean }) => Promise<void>;
@@ -61,7 +60,6 @@ export default function CustomersManager({
   onUpdateRecordsBulk,
   onUpdateClient,
   onUpdatePet,
-  onVerifyMasterPin,
   currentUser,
   onDeleteClient,
   onDeletePet

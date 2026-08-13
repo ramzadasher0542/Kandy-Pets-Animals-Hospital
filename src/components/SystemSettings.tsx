@@ -47,7 +47,6 @@ export interface SystemConfig {
     groomer: string[];
     provider: string[];
   };
-  masterPin?: string;
   /** AUTH-4: admin-editable overrides for requireAuth's ACTION_POLICIES.
    *  Shape: { [AuthAction]: ActionRole[] }. Absent action = use the default. */
   actionPolicies?: Record<string, string[]>;
@@ -65,7 +64,6 @@ export interface SystemConfig {
     milkCupCents: number;
   };
   defaultDepositCents?: number;
-  dummyAdminPin?: string;
   idleLogoutMinutes?: number;
   setupModeActive?: boolean;
 }
@@ -83,10 +81,6 @@ interface SettingsProps {
   onUpdateInventory?: (item: any) => Promise<void>;
   onDeleteInventory?: (id: string) => Promise<void>;
   onRestoreSnapshot?: () => Promise<boolean>;
-  onPurgeDatabases: () => void;
-  onWipeCloudAndPurge?: () => Promise<void>;
-  cloudSyncEnabled?: boolean;
-  onVerifyMasterPin?: (pin: string) => boolean;
   onChangePassword?: (target: any, newPassword: string) => Promise<void>;
   // SECURE-1: banner deep-link opens the provider-password modal.
   autoOpenProviderPassword?: boolean;
@@ -94,25 +88,10 @@ interface SettingsProps {
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onPurgeDatabases, onWipeCloudAndPurge, cloudSyncEnabled, onUpdateInventory, onDeleteInventory, onVerifyMasterPin, currentUser, onChangePassword,
+  config, onChangeConfig, users, onAddUser, onRemoveUser, onUpdateInventory, onDeleteInventory, currentUser, onChangePassword,
   autoOpenProviderPassword, onAutoOpenHandled
 }: SettingsProps) {
 
-  const [showCloudWipeModal, setShowCloudWipeModal] = useState(false);
-  const [cloudWipePassword, setCloudWipePassword] = useState('');
-  const [cloudWipeBusy, setCloudWipeBusy] = useState(false);
-
-  // ERASE-FIX: identity is verified against Supabase Auth (the provider's real
-  // cloud password) rather than the local masterPin / requireAuth. A correct
-  // sign-in is the sole gate before the irreversible cloud + local wipe.
-  const handleConfirmCloudWipe = async () => {
-    // STEP 31 SECURITY: cloud erase from the browser is permanently disabled.
-    // The trigger button is already disabled; this handler is kept only so any
-    // residual path fails safe instead of erasing. It never calls the purge.
-    showToast('Cloud erase is disabled. Recovery/erase is provider-managed only.', 'error');
-    setShowCloudWipeModal(false);
-    setCloudWipePassword('');
-  };
 
   const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
@@ -120,7 +99,7 @@ export default function SystemSettings({
   
   // Modal States
   const [showAddStaff, setShowAddStaff] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: '', username: '', role: 'veterinarian', pin: '' });
+  const [newStaff, setNewStaff] = useState({ name: '', username: '', role: 'veterinarian' });
 
   // AUTH-6: never leave the user stranded on a provider-only tab (e.g. a provider
   // signs out and an admin signs in while 'database' was active).
@@ -191,20 +170,16 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
     if (pwNew.length < minLen) { showToast(`New password must be at least ${minLen} characters.`, 'error'); return; }
     if (pwNew !== pwConfirm) { showToast('Passwords do not match.', 'error'); return; }
 
-    // Confirm the OPERATOR's own current credential before setting a new one.
-    // Exception: the provider changing their OWN password is already
-    // authenticated (they're logged in), so re-auth here is redundant.
-    const isProviderSelf = (pwTarget as any)?.__isProvider || pwTarget?.username === 'ashpoint_owner';
-    if (!isProviderSelf) {
-      const auth = await requireAuth(currentUser || null, 'change_password');
-      if (!auth.allowed) { showToast('Authorization failed. Password unchanged.', 'error'); return; }
-    }
+    const auth = await requireAuth(currentUser || null, 'change_password');
+    if (!auth.allowed) { showToast('Authorization failed. Password unchanged.', 'error'); return; }
 
     setPwBusy(true);
     try {
       if (onChangePassword) await onChangePassword(pwTarget, pwNew);
       showToast(`Password updated for ${pwTarget.name}.`, 'success');
       setPwTarget(null); setPwNew(''); setPwConfirm('');
+    } catch (error: any) {
+      showToast(error?.message || 'Password update failed.', 'error');
     } finally {
       setPwBusy(false);
     }
@@ -245,8 +220,8 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
 
   const handleCreateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStaff.name || !newStaff.username || !newStaff.pin) {
-      showToast('Name, username, and PIN are required.', 'error');
+    if (!newStaff.name || !newStaff.username) {
+      showToast('Name and Supabase Auth email are required.', 'error');
       return;
     }
     
@@ -261,12 +236,11 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       name: newStaff.name.trim(),
       username: newStaff.username.trim(),
       role: newStaff.role,
-      pin: newStaff.pin,
       avatarColor
     });
     
     setShowAddStaff(false);
-    setNewStaff({ name: '', username: '', role: 'veterinarian', pin: '' });
+    setNewStaff({ name: '', username: '', role: 'veterinarian' });
   };
 
   // ==========================================
@@ -1013,7 +987,7 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 <div className="absolute -right-12 -top-12 opacity-10"><ShieldAlert className="w-64 h-64 text-rose-500" /></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-black text-rose-800 flex items-center gap-2 mb-2"><ShieldAlert className="w-6 h-6" /> Critical Data Operations</h3>
-                  <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Actions executed in this sector are irreversible. Bypassing these safety interlocks will result in permanent deletion of the IndexedDB vault and local system configurations.</p>
+                   <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Destructive cloud operations are disabled in the browser. Recovery and any permanent erasure must be performed by the provider through a controlled server-side process.</p>
                   
                   <div className="space-y-4">
                     <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
@@ -1028,46 +1002,6 @@ const isProvider = ROOT_ROLES.includes(role as any);
                   </div>
                 </div>
               </div>
-
-              {/* Cloud + local wipe — verified against the provider's Supabase password */}
-              <Modal
-                open={showCloudWipeModal}
-                onClose={() => { if (!cloudWipeBusy) { setShowCloudWipeModal(false); setCloudWipePassword(''); } }}
-                title="Erase Cloud + Local"
-                icon={<ShieldAlert className="w-5 h-5 text-rose-700" />}
-                size="sm"
-                footer={
-                  <div className="flex gap-3 justify-end">
-                    <button onClick={() => { setShowCloudWipeModal(false); setCloudWipePassword(''); }} disabled={cloudWipeBusy} className="px-5 py-2.5 border border-slate-200 text-slate-600 font-bold rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-50 cursor-pointer transition-colors disabled:opacity-50">Cancel</button>
-                    <button
-                      onClick={handleConfirmCloudWipe}
-                      disabled={!cloudWipePassword || cloudWipeBusy}
-                      className={`px-5 py-2.5 font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors ${cloudWipePassword && !cloudWipeBusy ? 'bg-rose-800 hover:bg-rose-950 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
-                    >
-                      {cloudWipeBusy ? 'Erasing…' : 'Permanently Erase Cloud + Local'}
-                    </button>
-                  </div>
-                }
-              >
-                <div className="p-6 space-y-4">
-                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3">
-                    <AlertTriangle className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
-                    <p className="text-xs font-bold text-rose-800 leading-relaxed">This deletes <span className="font-black">every row in the Supabase cloud database</span> and all local data on this device. Any other device or staff member synced to this project loses their data too. There is no undo.</p>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Enter the provider's Supabase password</label>
-                    <input
-                      type="password"
-                      value={cloudWipePassword}
-                      onChange={e => setCloudWipePassword(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && cloudWipePassword && !cloudWipeBusy) handleConfirmCloudWipe(); }}
-                      placeholder="••••••••"
-                      autoFocus
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center text-slate-800 outline-none focus:ring-2 focus:ring-rose-500/30"
-                    />
-                  </div>
-                </div>
-              </Modal>
 
             </div>
           )}
@@ -1337,8 +1271,8 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 <input type="text" required value={newStaff.name} onChange={e => setNewStaff({...newStaff, name: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
               </div>
               <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Login Username *</label>
-                <input type="text" required value={newStaff.username} onChange={e => setNewStaff({...newStaff, username: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Supabase Auth Email *</label>
+                <input type="email" required value={newStaff.username} onChange={e => setNewStaff({...newStaff, username: e.target.value})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Clearance Level (Role)</label>
@@ -1351,10 +1285,9 @@ const isProvider = ROOT_ROLES.includes(role as any);
                   <option value="manager">Manager</option>
                 </select>
               </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5 flex items-center gap-1"><Lock className="w-3 h-3"/> 4-Digit Passcode *</label>
-                <input type="text" required maxLength={4} pattern="\d{4}" placeholder="e.g. 1234" value={newStaff.pin} onChange={e => setNewStaff({...newStaff, pin: e.target.value.replace(/\D/g, '')})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black font-mono tracking-widest text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-              </div>
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-800">
+                Create the Auth user in Supabase, then link its Auth user ID to this staff record. Passwords are never stored in the VHMS database.
+              </p>
         </form>
       </Modal>
 

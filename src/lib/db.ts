@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { db } from './localDb';
-import { supabase } from './supabase';
+import { requireSupabase, supabase } from './supabase';
 import { globalMutex } from './mutex';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
 import {
@@ -31,34 +30,42 @@ import {
 } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 
-// Clients DB is imported from localDb.ts
+const cloudUnavailable = () => new Error('Cloud data is unavailable. Check your connection and try again.');
+
+function cloud() {
+  try {
+    return requireSupabase();
+  } catch {
+    throw cloudUnavailable();
+  }
+}
 
 // ==========================================
 // INVENTORY (DELTA UPDATES)
 // ==========================================
 export async function fetchInventory(): Promise<InventoryItem[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('inventory').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  const client = cloud();
+  const { data, error } = await client.from('inventory').select('*');
+  if (error) throw error;
   const items = (data || []) as InventoryItem[];
   return items.filter(i => !(i as any).is_deleted);
 }
 
 export async function fetchInventoryBatches(): Promise<InventoryBatch[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase.from('inventory_batches').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  const client = cloud();
+  const { data, error } = await client.from('inventory_batches').select('*');
+  if (error) throw error;
   return (data || []).filter((b: any) => !b.is_deleted);
 }
 
 export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
   if (!item) return;
 
-  if (!supabase) throw new Error('No internet connection');
+  const client = cloud();
 
   // SKU duplicate check against Supabase (excludes this item, so edits pass).
   if (item.sku) {
-    const { data: skuData, error: skuError } = await supabase
+    const { data: skuData, error: skuError } = await client
       .from('inventory')
       .select('id')
       .eq('sku', item.sku)
@@ -74,7 +81,7 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
     item.minStock = 0;
   }
 
-  const { error } = await supabase.from('inventory').upsert(item);
+  const { error } = await client.from('inventory').upsert(item);
   if (error) throw error;
 }
 
@@ -90,8 +97,8 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
  * Returns the item's resulting stock level.
  */
 async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
-  if (!supabase) throw new Error('No internet connection');
-  const { data: batchData, error: batchError } = await supabase
+  const client = cloud();
+  const { data: batchData, error: batchError } = await client
     .from('inventory_batches')
     .select('*')
     .eq('inventoryItemId', itemId);
@@ -103,7 +110,7 @@ async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
 
   // No batches → manual-stock item; leave item.stock exactly as-is.
   if (batches.length === 0) {
-    const { data: itemData, error: itemError } = await supabase
+    const { data: itemData, error: itemError } = await client
       .from('inventory')
       .select('*')
       .eq('id', itemId)
@@ -121,7 +128,7 @@ async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
   const lotNumber = activeBatches.length > 0 ? activeBatches[0].lotNumber : null;
 
   // Save to Supabase.
-  const { error } = await supabase
+  const { error } = await client
     .from('inventory')
     .update({ stock: total, expiryDate, lotNumber })
     .eq('id', itemId);
@@ -132,8 +139,8 @@ async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
 
 export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void> {
   if (!batch || !batch.id) return;
-  if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('inventory_batches').upsert(batch);
+  const client = cloud();
+  const { error } = await client.from('inventory_batches').upsert(batch);
   if (error) throw error;
   // Keep item.stock in sync with the batch totals for this item.
   await recomputeItemStockFromBatches(batch.inventoryItemId);
@@ -141,17 +148,17 @@ export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void>
 
 export async function deleteInventoryItem(id: string): Promise<void> {
   if (!id) return;
-  if (!supabase) throw new Error('No internet connection');
+  const client = cloud();
 
   // Soft delete batches first
-  const { error: batchError } = await supabase
+  const { error: batchError } = await client
     .from('inventory_batches')
     .update({ is_deleted: true })
     .eq('inventoryItemId', id);
   if (batchError) throw batchError;
 
   // Soft delete inventory item
-  const { error } = await supabase
+  const { error } = await client
     .from('inventory')
     .update({ is_deleted: true })
     .eq('id', id);
@@ -166,14 +173,14 @@ export async function deleteInventoryItem(id: string): Promise<void> {
 export async function atomicStockDecrement(itemId: string, qtyDelta: number): Promise<number> {
   const unlock = await globalMutex.lock();
   try {
-    if (!supabase) throw new Error('No internet connection');
+    const client = cloud();
     // Atomicity is now enforced by the Postgres RPC public.atomic_stock_decrement
     // (single transaction + FOR UPDATE row locks on the inventory row and affected
     // batches), not by this browser-only mutex. The RPC preserves the previous
     // semantics — FEFO consumption for negative deltas, newest-batch return for
     // positive deltas, manual-stock items without batches, soft-deleted batches
     // ignored, expiry/lot recomputed — and returns the resulting numeric stock.
-    const { data, error } = await supabase.rpc('atomic_stock_decrement', {
+    const { data, error } = await client.rpc('atomic_stock_decrement_auth', {
       p_item_id: itemId,
       p_qty_delta: qtyDelta,
     });
@@ -215,7 +222,7 @@ export async function fetchHistoricalAppointmentsArchive(
   limit = 50,
   search?: string
 ): Promise<{ appointments: Appointment[]; count: number }> {
-  if (!supabase) return { appointments: [], count: 0 };
+  if (!supabase) throw cloudUnavailable();
 
   let query = supabase
     .from('appointments')
@@ -235,7 +242,7 @@ export async function fetchHistoricalAppointmentsArchive(
   }
 
   const { data, error, count } = await query;
-  if (error) { console.error('[DB]', error.message); return { appointments: [], count: 0 }; }
+  if (error) throw error;
 
   return { appointments: (data || []) as Appointment[], count: count || 0 };
 }
@@ -261,9 +268,9 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
  * `avatarColor`. Map in both directions — never leak the raw column name.
  */
 export async function fetchUsers(): Promise<User[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase.from('users').select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id').eq('is_deleted', false);
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []).map((u: any) => ({
     id: u.id,
     name: u.name,
@@ -282,7 +289,6 @@ export async function upsertUser(user: User): Promise<void> {
     name: user.name,
     username: user.username,
     role: user.role,
-    pin: user.pin,
     avatar_color: user.avatarColor,
     active: user.active ?? true,
     is_deleted: false
@@ -299,14 +305,14 @@ export async function deleteUser(id: string): Promise<void> {
 }
 
 export async function fetchVeterinarians(): Promise<User[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('users')
     .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id')
     .eq('role', 'veterinarian')
     .eq('active', true)
     .eq('is_deleted', false);
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const vets = (data || []).map((u: any) => ({
     id: u.id,
     name: u.name,
@@ -319,6 +325,82 @@ export async function fetchVeterinarians(): Promise<User[]> {
     return [{ id: 'fallback-vet', name: 'Attending Doctor', username: 'attending', role: 'veterinarian', avatarColor: '', active: true }];
   }
   return vets.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ==========================================
+// STAFF OPERATIONS & AUDIT TRAILS
+// ==========================================
+export async function fetchStaffProfiles(): Promise<any[]> {
+  const client = cloud();
+  const { data, error } = await client.from('staff_profiles').select('*').eq('is_deleted', false);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertStaffProfile(profile: any): Promise<void> {
+  if (!profile?.id) return;
+  const { error } = await cloud().from('staff_profiles').upsert(profile);
+  if (error) throw error;
+}
+
+export async function fetchTimeEntries(): Promise<any[]> {
+  const { data, error } = await cloud().from('time_entries').select('*').eq('is_deleted', false);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertTimeEntry(entry: any): Promise<void> {
+  if (!entry?.id) return;
+  const { error } = await cloud().from('time_entries').upsert(entry);
+  if (error) throw error;
+}
+
+export async function fetchScheduleEntries(): Promise<any[]> {
+  const { data, error } = await cloud().from('schedule_entries').select('*').eq('is_deleted', false);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertScheduleEntry(entry: any): Promise<void> {
+  if (!entry?.id) return;
+  const { error } = await cloud().from('schedule_entries').upsert(entry);
+  if (error) throw error;
+}
+
+export async function deleteScheduleEntry(id: string): Promise<void> {
+  if (!id) return;
+  const { error } = await cloud().from('schedule_entries').update({ is_deleted: true }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchPayslips(): Promise<any[]> {
+  const { data, error } = await cloud().from('payslips').select('*').eq('is_deleted', false);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertPayslip(payslip: any): Promise<void> {
+  if (!payslip?.id) return;
+  const { error } = await cloud().from('payslips').upsert(payslip);
+  if (error) throw error;
+}
+
+export async function fetchDeletionAudits(): Promise<any[]> {
+  const { data, error } = await cloud().from('deletion_audit').select('*').eq('is_deleted', false).order('deleted_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function insertDeletionAudit(audit: any): Promise<void> {
+  if (!audit?.id) return;
+  const { error } = await cloud().from('deletion_audit').insert(audit);
+  if (error) throw error;
+}
+
+export async function insertAuthAudit(audit: any): Promise<void> {
+  if (!audit?.id) return;
+  const { error } = await cloud().from('auth_audit').insert(audit);
+  if (error) throw error;
 }
 
 // ==========================================
@@ -420,9 +502,9 @@ export async function commitCheckoutInvoiceAndStock(
 // NOTIFICATIONS
 // ==========================================
 export async function fetchNotifications(): Promise<ClientNotification[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase.from('notifications').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   const notifs = (data || []) as ClientNotification[];
   return notifs;
 }
@@ -441,9 +523,9 @@ export async function upsertNotification(notif: ClientNotification): Promise<voi
 // ALERTS
 // ==========================================
 export async function fetchAlerts(): Promise<SystemAlert[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase.from('system_alerts').select('*');
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []).filter((a: any) => !a.is_deleted);
 }
 
@@ -488,13 +570,13 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
   let retailRevenue = 0;
 
   // Read this shift's paid invoices from Supabase.
-  if (!supabase) return null;
+  if (!supabase) throw cloudUnavailable();
   const { data: invoiceRows, error: invoiceError } = await supabase
     .from('invoices')
     .select('*')
     .eq('shiftId', shiftId)
     .eq('paymentStatus', 'paid');
-  if (invoiceError) { console.error('[DB]', invoiceError.message); return null; }
+  if (invoiceError) throw invoiceError;
 
   for (const inv of ((invoiceRows || []) as Invoice[])) {
     grossSales += Math.round(inv.sales_total || 0);
@@ -543,19 +625,19 @@ export async function fetchShiftMetrics(): Promise<ShiftMetrics | null> {
 }
 
 export async function fetchLowStockCount(): Promise<number> {
-  if (!supabase) return 0;
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('inventory')
     .select('*')
     .lte('stock', 20)
     .neq('category', 'service')
     .neq('category', 'lab_service');
-  if (error) { console.error('[DB]', error.message); return 0; }
+  if (error) throw error;
   return (data || []).filter((item: any) => !item.is_deleted && item.stock <= item.minStock).length;
 }
 
 export async function fetchActiveShiftId(): Promise<string | null> {
-  if (!supabase) return null;
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('shifts')
     .select('id')
@@ -563,7 +645,7 @@ export async function fetchActiveShiftId(): Promise<string | null> {
     .order('startTime', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) { console.error('[DB]', error.message); return null; }
+  if (error) throw error;
   if (data?.id) {
     return data.id;
   }
@@ -698,7 +780,7 @@ export async function closeShiftAndReconcile(
   if (!supabase) throw new Error('No internet connection');
   if (!shiftId) throw new Error('INVALID_SHIFT_ID');
   if (!reconciliation || !reconciliation.id) throw new Error('INVALID_SHIFT_RECONCILIATION');
-  const { data, error } = await supabase.rpc('close_shift_and_reconcile', {
+  const { data, error } = await supabase.rpc('close_shift_and_reconcile_auth', {
     p_shift_id: shiftId,
     p_actual_cash_cents: actualCashCents,
     p_expected_cash_cents: expectedCashCents,
@@ -721,7 +803,7 @@ export async function voidInvoiceAndReverseRevenue(
 ): Promise<{ already_void: boolean; reversed: boolean; restocked: Record<string, number> }> {
   if (!supabase) throw new Error('No internet connection');
   if (!invoiceId) throw new Error('INVALID_INVOICE_ID');
-  const { data, error } = await supabase.rpc('void_invoice_and_reverse_revenue', {
+  const { data, error } = await supabase.rpc('void_invoice_and_reverse_revenue_auth', {
     p_invoice_id: invoiceId,
   });
   if (error) throw error;
@@ -802,7 +884,8 @@ export async function fetchClients(): Promise<Client[]> {
       lifetime_value: 0,
       administrative_notes: 'Permanent default account for anonymous over-the-counter retail sales.'
     };
-    await supabase.from('clients').upsert(walkInClient);
+    const { error: walkInError } = await supabase.from('clients').upsert(walkInClient);
+    if (walkInError) throw walkInError;
     clients.unshift(walkInClient);
   }
   return clients;
@@ -836,8 +919,9 @@ export async function deleteClient(id: string): Promise<void> {
 // SYSTEM MAINTENANCE
 // ==========================================
 export async function fetchFullSystemState(): Promise<any> {
-  // FIXED: Read ALL collections from Supabase (was reading empty local IndexedDB)
-  const shifts = supabase ? ((await supabase.from('shifts').select('*')).data || []) : [];
+  const client = cloud();
+  const { data: shifts, error: shiftError } = await client.from('shifts').select('*');
+  if (shiftError) throw shiftError;
 
   const state: any = {
     app: 'CeylonPets',
@@ -848,7 +932,7 @@ export async function fetchFullSystemState(): Promise<any> {
       appointments: await fetchAppointments(),
       records: await fetchMedicalRecords(),
       invoices: await fetchInvoices(),
-      pos_shifts: shifts,
+       pos_shifts: shifts || [],
       clients: await fetchClients(),
       clinicQueue: await fetchClinicQueue(),
       system_alerts: await fetchAlerts(),
@@ -863,123 +947,20 @@ export async function fetchFullSystemState(): Promise<any> {
   return state;
 }
 
-export async function masterSystemPurge(): Promise<string[]> {
-  const logs: string[] = [];
-  // STEP 31 SECURITY: browser-initiated cloud destruction is DISABLED.
-  // The anon key ships in this bundle, so this client must never be able to
-  // erase the Supabase database. The former per-table DELETE loop and the
-  // `supabase.rpc('wipe_all_tables')` backstop have been removed. Cloud data is
-  // additionally closed to the anon role at the DB layer (grants revoked + RLS),
-  // so even a re-added call would be rejected. Cloud erase/recovery is now
-  // provider-managed only. This function clears LOCAL device state only.
-  logs.push('SKIP: cloud erase disabled (provider-managed; browser cannot erase the Supabase cloud)');
-
-  // Local clear
-  await Promise.all([
-    db.inventory.clear(),
-    db.appointments.clear(),
-    db.records.clear(),
-    db.invoices.clear(),
-    db.alerts.clear(),
-    db.notifications.clear(),
-    db.clients.clear(),
-    db.pets.clear(),
-    db.vaccinations.clear(),
-    db.labResults.clear(),
-    db.groomingLogs.clear(),
-    db.boardingRecords.clear()
-  ]);
-  return logs;
-}
-
-/**
- * NUCLEAR-ERASE: same cloud + local wipe as masterSystemPurge, plus a sweep of
- * EVERY remaining localforage store — including the `system` store that holds
- * SystemConfig — so nothing survives locally. Config is "reset to minimal
- * defaults" by emptying db.system: on the next boot the app re-applies its
- * built-in default SystemConfig (App.tsx useState) because there is no stored
- * config to hydrate from. Iterating every store also covers newly-added ones
- * automatically. Pairs with the NEVER_SEED flag to block any demo reseed.
- *
- * Returns masterSystemPurge's per-table log so callers can report real results.
- */
-export async function nuclearWipeLocal(): Promise<string[]> {
-  const logs = await masterSystemPurge(); // same cloud + local wipe
-  await Promise.all(
-    Object.values(db).map((store: any) =>
-      store && typeof store.clear === 'function' ? store.clear() : Promise.resolve()
-    )
-  );
-  return logs;
-}
-
 export async function reconstituteSystemState(payload: any): Promise<void> {
   throw new Error('Restore is unavailable for Supabase-backed data. Use the provider-managed Supabase recovery process.');
-  if (!payload || !payload.collections) {
-    throw new Error("Invalid backup payload. Ensure this file is a valid CeylonPets JSON export.");
-  }
-
-  await masterSystemPurge();
-
-  const writePromises = [];
-
-  if (payload.collections.inventory) {
-    payload.collections.inventory.forEach((i: any) => writePromises.push(db.inventory.setItem(i.id, i)));
-  }
-  if (payload.collections.appointments) {
-    payload.collections.appointments.forEach((a: any) => writePromises.push(db.appointments.setItem(a.id, a)));
-  }
-  if (payload.collections.records) {
-    payload.collections.records.forEach((r: any) => writePromises.push(db.records.setItem(r.id, r)));
-  }
-  if (payload.collections.invoices) {
-    payload.collections.invoices.forEach((i: any) => writePromises.push(db.invoices.setItem(i.id, i)));
-  }
-  if (payload.collections.system_alerts) {
-    payload.collections.system_alerts.forEach((a: any) => writePromises.push(db.alerts.setItem(a.id, a)));
-  }
-  if (payload.collections.notifications) {
-    payload.collections.notifications.forEach((n: any) => writePromises.push(db.notifications.setItem(n.id, n)));
-  }
-  if (payload.collections.clinicQueue) {
-    payload.collections.clinicQueue.forEach((q: any) => writePromises.push(db.clinicQueue.setItem(q.id, q)));
-  }
-  // FIXED: Restore clients and shifts (was missing)
-  if (payload.collections.clients) {
-    payload.collections.clients.forEach((c: any) => writePromises.push(db.clients.setItem(c.client_id || c.id, c)));
-  }
-  if (payload.collections.pos_shifts) {
-    payload.collections.pos_shifts.forEach((s: any) => writePromises.push(db.shifts.setItem(s.id, s)));
-  }
-  if (payload.collections.pets) {
-    payload.collections.pets.forEach((p: any) => writePromises.push(db.pets.setItem(p.id, p)));
-  }
-  if (payload.collections.vaccinations) {
-    payload.collections.vaccinations.forEach((v: any) => writePromises.push(db.vaccinations.setItem(v.id, v)));
-  }
-  if (payload.collections.labResults) {
-    payload.collections.labResults.forEach((l: any) => writePromises.push(db.labResults.setItem(l.id, l)));
-  }
-  if (payload.collections.groomingLogs) {
-    payload.collections.groomingLogs.forEach((g: any) => writePromises.push(db.groomingLogs.setItem(g.id, g)));
-  }
-  if (payload.collections.boardingRecords) {
-    payload.collections.boardingRecords.forEach((b: any) => writePromises.push(db.boardingRecords.setItem(b.id, b)));
-  }
-
-  await Promise.all(writePromises);
 }
 
 // ==========================================
 // THE LIVING FLOOR: Clinic Queue State Machine
 // ==========================================
 export async function fetchClinicQueue(): Promise<ClinicQueueItem[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('clinic_queue')
     .select('*')
     .eq('is_deleted', false);
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   // BUG #6 FIX: soft-deleted rows are now excluded server-side.
   return ((data || []) as ClinicQueueItem[])
     .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
@@ -989,6 +970,13 @@ export async function addToClinicQueue(item: ClinicQueueItem): Promise<void> {
   if (!item || !item.id) return;
   if (!supabase) throw new Error('No internet connection');
   const { error } = await supabase.from('clinic_queue').insert(item);
+  if (error) throw error;
+}
+
+export async function upsertClinicQueueItem(item: ClinicQueueItem): Promise<void> {
+  if (!item || !item.id) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.from('clinic_queue').upsert(item);
   if (error) throw error;
 }
 
@@ -1014,26 +1002,26 @@ export async function removeFromClinicQueue(
 }
 
 export async function getActiveQueueItems(): Promise<ClinicQueueItem[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('clinic_queue')
     .select('*')
     .eq('is_deleted', false)
     .eq('status', 'active')
     .order('checkInTime', { ascending: false });
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []) as ClinicQueueItem[];
 }
 
 export async function getQueueItemsByService(serviceType: string): Promise<ClinicQueueItem[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('clinic_queue')
     .select('*')
     .eq('is_deleted', false)
     .eq('serviceType', serviceType)
     .order('checkInTime', { ascending: false });
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []) as ClinicQueueItem[];
 }
 
@@ -1043,28 +1031,26 @@ export async function getQueueItemsByService(serviceType: string): Promise<Clini
 export async function exportFullDatabase(): Promise<string> {
   const unlock = await globalMutex.lock();
   try {
-    // FIXED: Read cloud collections from Supabase (was reading empty local IndexedDB).
-    // `system` (SystemConfig) has no cloud table and stays local.
-    const shifts = supabase ? ((await supabase.from('shifts').select('*')).data || []) : [];
+    const client = cloud();
+    const { data: shifts, error: shiftError } = await client.from('shifts').select('*');
+    if (shiftError) throw shiftError;
     const data: any = {
       clients: await fetchClients(),
       inventory: await fetchInventory(),
       appointments: await fetchAppointments(),
       medicalRecords: await fetchMedicalRecords(),
       invoices: await fetchInvoices(),
-      shifts,
+      shifts: shifts || [],
       alerts: await fetchAlerts(),
       notifications: await fetchNotifications(),
       clinicQueue: await fetchClinicQueue(),
-      system: [],
+      system: await fetchSystemConfig(),
       pets: await fetchPets(),
       vaccinations: await fetchVaccinations(),
       labResults: await fetchLabResults(),
       groomingLogs: await fetchGroomingLogs(),
       boardingRecords: await fetchBoardingRecords()
     };
-
-    await db.system.iterate((value: any, key: string) => { data.system.push({ key, value }); });
 
     return JSON.stringify(data);
   } finally {
@@ -1074,77 +1060,6 @@ export async function exportFullDatabase(): Promise<string> {
 
 export async function restoreFullDatabase(jsonData: string): Promise<void> {
   throw new Error('Restore is unavailable for Supabase-backed data. Use the provider-managed Supabase recovery process.');
-  const data = JSON.parse(jsonData);
-  const unlock = await globalMutex.lock();
-  try {
-    await db.clients.clear();
-    await db.inventory.clear();
-    await db.appointments.clear();
-    await db.records.clear();
-    await db.invoices.clear();
-    await db.shifts.clear();
-    await db.alerts.clear();
-    await db.notifications.clear();
-    await db.clinicQueue.clear();
-    await db.system.clear();
-    await db.pets.clear();
-    await db.vaccinations.clear();
-    await db.labResults.clear();
-    await db.groomingLogs.clear();
-    await db.boardingRecords.clear();
-
-    const writePromises: Promise<any>[] = [];
-
-    if (data.clients) {
-      data.clients.forEach((item: any) => writePromises.push(db.clients.setItem(item.client_id || item.id, item)));
-    }
-    if (data.inventory) {
-      data.inventory.forEach((item: any) => writePromises.push(db.inventory.setItem(item.id, item)));
-    }
-    if (data.appointments) {
-      data.appointments.forEach((item: any) => writePromises.push(db.appointments.setItem(item.id, item)));
-    }
-    if (data.medicalRecords) {
-      data.medicalRecords.forEach((item: any) => writePromises.push(db.records.setItem(item.id, item)));
-    }
-    if (data.invoices) {
-      data.invoices.forEach((item: any) => writePromises.push(db.invoices.setItem(item.id, item)));
-    }
-    if (data.shifts) {
-      data.shifts.forEach((item: any) => writePromises.push(db.shifts.setItem(item.id, item)));
-    }
-    if (data.alerts) {
-      data.alerts.forEach((item: any) => writePromises.push(db.alerts.setItem(item.id, item)));
-    }
-    if (data.notifications) {
-      data.notifications.forEach((item: any) => writePromises.push(db.notifications.setItem(item.id, item)));
-    }
-    if (data.clinicQueue) {
-      data.clinicQueue.forEach((item: any) => writePromises.push(db.clinicQueue.setItem(item.id, item)));
-    }
-    if (data.system) {
-      data.system.forEach((item: any) => writePromises.push(db.system.setItem(item.key, item.value)));
-    }
-    if (data.pets) {
-      data.pets.forEach((item: any) => writePromises.push(db.pets.setItem(item.id, item)));
-    }
-    if (data.vaccinations) {
-      data.vaccinations.forEach((item: any) => writePromises.push(db.vaccinations.setItem(item.id, item)));
-    }
-    if (data.labResults) {
-      data.labResults.forEach((item: any) => writePromises.push(db.labResults.setItem(item.id, item)));
-    }
-    if (data.groomingLogs) {
-      data.groomingLogs.forEach((item: any) => writePromises.push(db.groomingLogs.setItem(item.id, item)));
-    }
-    if (data.boardingRecords) {
-      data.boardingRecords.forEach((item: any) => writePromises.push(db.boardingRecords.setItem(item.id, item)));
-    }
-
-    await Promise.all(writePromises);
-  } finally {
-    unlock();
-  }
 }
 
 // ==========================================
@@ -1157,14 +1072,14 @@ export async function restoreFullDatabase(jsonData: string): Promise<void> {
  * Returns today's medical records from Supabase using server-side date filter.
  */
 export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const today = formatDisplayDate(new Date());
   const { data, error } = await supabase
     .from('medical_records')
     .select('*')
     .eq('visitDate', today)
     .eq('is_deleted', false);
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []).sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
 }
 
@@ -1172,13 +1087,13 @@ export async function fetchTodaysRecords(): Promise<MedicalRecord[]> {
  * Returns today's invoices from Supabase using server-side date filter.
  */
 export async function fetchTodaysInvoices(): Promise<Invoice[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const today = formatDisplayDate(new Date());
   const { data, error } = await supabase
     .from('invoices')
     .select('*')
     .eq('date', today);
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
@@ -1192,7 +1107,7 @@ export async function fetchPaginatedInvoices(
   search?: string,
   statusFilter?: string
 ): Promise<{ invoices: Invoice[]; total: number }> {
-  if (!supabase) return { invoices: [], total: 0 };
+  if (!supabase) throw cloudUnavailable();
   let query = supabase.from('invoices').select('*', { count: 'exact' });
 
   if (statusFilter && statusFilter !== 'All') {
@@ -1206,7 +1121,7 @@ export async function fetchPaginatedInvoices(
   query = query.order('date', { ascending: false }).range(start, start + limit - 1);
 
   const { data, error, count } = await query;
-  if (error) { console.error('[DB]', error.message); return { invoices: [], total: 0 }; }
+  if (error) throw error;
   return { invoices: (data || []) as Invoice[], total: count || 0 };
 }
 
@@ -1218,7 +1133,7 @@ export async function fetchPaginatedRecords(
   limit = 50,
   search?: string
 ): Promise<{ records: MedicalRecord[]; total: number }> {
-  if (!supabase) return { records: [], total: 0 };
+  if (!supabase) throw cloudUnavailable();
   let query = supabase.from('medical_records').select('*', { count: 'exact' })
     .eq('is_deleted', false);
 
@@ -1230,7 +1145,7 @@ export async function fetchPaginatedRecords(
   query = query.order('visitDate', { ascending: false }).range(start, start + limit - 1);
 
   const { data, error, count } = await query;
-  if (error) { console.error('[DB]', error.message); return { records: [], total: 0 }; }
+  if (error) throw error;
   return { records: (data || []) as MedicalRecord[], total: count || 0 };
 }
 
@@ -1238,7 +1153,7 @@ export async function fetchPaginatedRecords(
  * Aggregate invoice KPIs using server-side count and selective column fetch.
  */
 export async function fetchInvoiceStats(): Promise<{ total: number; revenue: number; voided: number }> {
-  if (!supabase) return { total: 0, revenue: 0, voided: 0 };
+  if (!supabase) throw cloudUnavailable();
   const { count: total, error: totalError } = await supabase
     .from('invoices').select('*', { count: 'exact', head: true });
   const { data: paidData, error: paidError } = await supabase
@@ -1246,9 +1161,9 @@ export async function fetchInvoiceStats(): Promise<{ total: number; revenue: num
   const { count: voided, error: voidedError } = await supabase
     .from('invoices').select('*', { count: 'exact', head: true }).eq('paymentStatus', 'void');
 
-  if (totalError) console.error('[DB]', totalError.message);
-  if (paidError) console.error('[DB]', paidError.message);
-  if (voidedError) console.error('[DB]', voidedError.message);
+  if (totalError) throw totalError;
+  if (paidError) throw paidError;
+  if (voidedError) throw voidedError;
 
   const revenue = (paidData || []).reduce((s, inv) => s + (inv.sales_total || 0), 0);
   return { total: total || 0, revenue: Math.round(revenue * 100) / 100, voided: voided || 0 };
@@ -1357,15 +1272,14 @@ export async function upsertBoardingRecord(record: BoardingRecord): Promise<void
 // ==========================================
 
 export async function fetchSystemConfig(): Promise<SystemConfig | null> {
-  if (!supabase) return null;
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('system_config')
     .select('*')
     .eq('id', 'global')
     .maybeSingle();
   if (error) {
-    console.error('[DB] fetchSystemConfig error:', error.message);
-    return null;
+    throw error;
   }
   if (!data) return null;
 
@@ -1393,15 +1307,13 @@ export async function fetchSystemConfig(): Promise<SystemConfig | null> {
     recipientEmails: data.recipient_emails || [],
     digestSchedule: data.digest_schedule || 'daily_end',
     rolePermissions: data.role_permissions || {},
-    masterPin: data.master_pin || '',
-    actionPolicies: data.action_policies || {},
+     actionPolicies: data.action_policies || {},
     emailjsServiceId: data.emailjs_service_id || '',
     emailjsTemplateId: data.emailjs_template_id || '',
     emailjsPublicKey: data.emailjs_public_key || '',
     boardingRates: data.boarding_rates || {},
     defaultDepositCents: Number(data.default_deposit_cents) || 0,
-    dummyAdminPin: data.dummy_admin_pin || '',
-    idleLogoutMinutes: data.idle_logout_minutes ?? 15,
+     idleLogoutMinutes: data.idle_logout_minutes ?? 15,
     setupModeActive: data.setup_mode_active ?? false,
   } as SystemConfig;
 }
@@ -1433,19 +1345,17 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
     recipient_emails: config.recipientEmails,
     digest_schedule: config.digestSchedule,
     role_permissions: config.rolePermissions,
-    master_pin: config.masterPin,
     action_policies: config.actionPolicies,
     emailjs_service_id: config.emailjsServiceId,
     emailjs_template_id: config.emailjsTemplateId,
     emailjs_public_key: config.emailjsPublicKey,
     boarding_rates: config.boardingRates,
     default_deposit_cents: config.defaultDepositCents,
-    dummy_admin_pin: config.dummyAdminPin,
     idle_logout_minutes: config.idleLogoutMinutes,
     setup_mode_active: config.setupModeActive,
   };
   const { error } = await supabase.from('system_config').upsert(payload);
-  if (error) throw new Error(`CLOUD_SAVE_FAILED: ${error.message}`);
+  if (error) throw error;
 }
 
 // ==========================================
@@ -1453,13 +1363,13 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
 // ==========================================
 
 export async function fetchSuppliers(): Promise<Supplier[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('suppliers')
     .select('*')
     .eq('is_deleted', false)
     .order('name', { ascending: true });
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []) as Supplier[];
 }
 
@@ -1482,13 +1392,13 @@ export async function deleteSupplier(id: string): Promise<void> {
 // ==========================================
 
 export async function fetchInventoryCategories(): Promise<InventoryCategory[]> {
-  if (!supabase) return [];
+  if (!supabase) throw cloudUnavailable();
   const { data, error } = await supabase
     .from('inventory_categories')
     .select('*')
     .eq('is_deleted', false)
     .order('sort_order', { ascending: true });
-  if (error) { console.error('[DB]', error.message); return []; }
+  if (error) throw error;
   return (data || []) as InventoryCategory[];
 }
 

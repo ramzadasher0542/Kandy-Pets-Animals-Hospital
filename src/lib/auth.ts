@@ -1,7 +1,13 @@
 import { User } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
-import { db } from './localDb';
 import { supabase } from './supabase';
+import {
+  fetchUsers,
+  fetchSystemConfig as dbFetchSystemConfig,
+  upsertUser,
+  deleteUser as dbDeleteUser,
+  upsertSystemConfig as dbUpsertSystemConfig,
+} from './db';
 
 // ---------------------------------------------------------------------------
 // Supabase Auth (Phase C1)
@@ -20,74 +26,13 @@ export async function isSupabaseAuthenticated(): Promise<boolean> {
 }
 
 export async function fetchStaffRegistry(): Promise<User[]> {
-  const users: User[] = [];
-  try {
-    await db.users.iterate((value: User) => {
-      if (value && !Array.isArray(value)) users.push(value);
-    });
-  } catch (err) {
-    if (import.meta.env.DEV) {
-      console.error('[CeylonPets POS] Corrupted storage payload encountered during user registry parse:', err);
-    }
-  }
-  return users;
+  return fetchUsers();
 }
 
 export async function fetchSystemConfig(): Promise<SystemConfig> {
-  try {
-    const config = await db.system.getItem<SystemConfig>('config');
-    if (config && typeof config === 'object') return config;
-  } catch (err) {
-    if (import.meta.env.DEV) {
-      console.error('[CeylonPets POS] Corrupted storage payload encountered during config parse:', err);
-    }
-  }
-  
-  // Immutable constitutional fallback state to guarantee runtime continuity
-  return {
-    appName: 'Ceylon Pets POS',
-    resellerName: 'Ash Point Solutions',
-    hospitalName: 'Ceylon Pets Animal Hospital',
-    hospitalAddress: 'Kandy, Sri Lanka',
-    hospitalPhone: '+94 81 234 5678',
-    hospitalEmail: 'contact@ceylonpets.lk',
-    invoiceLogo: '🐾',
-    invoiceFooterMessage: 'Thank you for choosing Ceylon Pets!',
-    invoiceSubFooterMessage: '* OFFICIAL RECEIPT *',
-    invoiceExtraFooterMessage: 'POWERED BY ASH POINT SOLUTIONS',
-    taxRate: 0.0825,
-    currencySymbol: 'Rs. ',
-    masterPin: '',
-    selectedReceiptPrinter: '',
-    selectedReportPrinter: '',
-    receiptPaperSize: '58mm',
-    connectionType: 'usb',
-    localAutosaveInterval: 15,
-    cloudEndpoint: '',
-    cloudBackupEnabled: false,
-    emailDigestEnabled: false,
-    recipientEmails: [],
-    digestSchedule: 'daily_end',
-    rolePermissions: {
-      cashier: [],
-      veterinarian: [],
-      manager: [],
-      owner: [],
-      admin: [],
-      groomer: [],
-      provider: []
-    },
-    boardingRates: {
-      catNofoodCents: 100000,
-      catWithfoodCents: 190000,
-      dogNofoodCents: 180000,
-      dogWithfoodCents: 260000,
-      catLitterCents: 30000,
-      dogLitterCents: 40000,
-      milkCupCents: 10000,
-    },
-    defaultDepositCents: 1500000,
-  };
+  const config = await dbFetchSystemConfig();
+  if (!config) throw new Error('Cloud system configuration is missing. Contact an administrator.');
+  return config;
 }
 
 export async function fetchStaffUsers(): Promise<User[]> {
@@ -99,7 +44,7 @@ export async function upsertStaffUser(user: User, currentUser: User): Promise<vo
     throw new Error('Unauthorized: Only administrators can modify staff records.');
   }
   if (!user || !user.id) return;
-  await db.users.setItem(user.id, user);
+  await upsertUser(user);
 }
 
 export async function deleteStaffUser(userId: string, currentUser: User): Promise<void> {
@@ -107,16 +52,14 @@ export async function deleteStaffUser(userId: string, currentUser: User): Promis
     throw new Error('Unauthorized: Only administrators can delete staff records.');
   }
   if (!userId) return;
-  await db.users.removeItem(userId);
+  await dbDeleteUser(userId);
 }
-
-// Deprecated async wrapper - no longer needed since fetchSystemConfig provides synchronous immutable fallbacks
 
 export async function upsertSystemConfig(config: SystemConfig, currentUser: User): Promise<void> {
   if (currentUser.role !== 'admin' && currentUser.role !== 'owner') {
     throw new Error('Unauthorized: Only administrators can update global configuration.');
   }
-  await db.system.setItem('config', config);
+  await dbUpsertSystemConfig(config);
 }
 
 // ---------------------------------------------------------------------------
