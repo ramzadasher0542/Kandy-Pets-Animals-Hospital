@@ -336,7 +336,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
       patientHistory: history,
       physicalExam: exam,
       assessment,
-      treatmentNotes: editingRecord.treatmentNotes,
+      treatmentNotes,
       prescribedMeds: prescribedMeds,
       inpatientLogs: editingRecord.inpatientLogs,
       subjectiveTags: editingRecord.subjectiveTags,
