@@ -34,13 +34,18 @@ the browser bundle.
   security boundary.
 - Anonymous table access and destructive RPC execution remain denied.
 - Browser-initiated cloud erase remains disabled.
-- The Data & Operations screen offers export; Supabase restore is provider-managed.
+- The Data & Operations screen offers a versioned full JSON snapshot and an
+  admin-confirmed beta merge restore. Restore never deletes rows or changes
+  Supabase Auth passwords. Provider-managed recovery is still required for
+  catastrophic database loss.
 
 ## Recovery Boundary
 
-Supabase free tier does not provide certified scheduled backups or PITR. Do not
-claim enterprise recovery readiness until a verified external export/restore
-procedure or a paid recovery plan exists.
+Supabase free tier does not provide certified scheduled backups or PITR. Keep
+weekly exports outside Supabase. The browser restore is a convenience merge,
+not a certified disaster-recovery system; do not claim enterprise recovery
+readiness until an external restore procedure is verified or a paid recovery
+plan exists.
 
 ## Rollback
 
