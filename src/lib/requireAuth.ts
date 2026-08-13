@@ -24,6 +24,7 @@ export type AuthAction =
   | 'delete_inventory'
   | 'delete_medical_record'
   | 'void_invoice'
+  | 'daily_backup'
   | 'discount_override'
   | 'cash_adjustment'
   | 'system_restore'
@@ -59,6 +60,7 @@ export const ACTION_POLICIES: Record<AuthAction, ActionPolicy> = {
   delete_inventory:      { description: 'delete an inventory item',            allowedRoles: ['owner', 'manager'] },
   delete_medical_record: { description: 'delete a medical record',             allowedRoles: ['owner', 'manager', 'veterinarian'] },
   void_invoice:          { description: 'void an invoice',                     allowedRoles: ['owner', 'manager'] },
+  daily_backup:          { description: 'create the daily shift backup',       allowedRoles: [] },
   discount_override:     { description: 'approve an over-threshold discount',  allowedRoles: ['owner', 'manager'] },
   cash_adjustment:       { description: 'adjust the cash drawer',              allowedRoles: ['cashier', 'owner', 'manager'] },
   system_restore:        { description: 'restore the system from a backup',    allowedRoles: [] },
@@ -152,6 +154,7 @@ return ROOT_ROLES.includes(role as any);
  */
 export const PROVIDER_ONLY_ACTIONS: AuthAction[] = [
   'system_restore',
+  'daily_backup',
   'wipe_cloud_database',
   'erase_local_database',
 ];
