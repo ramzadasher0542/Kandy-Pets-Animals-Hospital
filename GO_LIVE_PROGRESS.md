@@ -24,11 +24,10 @@ Live deployment: https://kpah-aps.vercel.app/
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
-## Remaining Work: 3 Items
+## Remaining Work: 2 Items
 
 1. Run the CV-1 Playwright tests against real Supabase-backed data. The existing fixture suite is now explicitly labelled `simulated-local`; the separate `real-supabase-auth` test requires owner-supplied credentials. The current runner also lacks its Chromium executable, so no test pass is claimed.
 2. Verify authenticated second-device reads using an approved device/session. An independent browser reached the clean production sign-in screen, but no credential was available for the cloud-data check; no password was guessed, reset, or changed.
-3. Review the 6 npm audit vulnerabilities: 1 low and 5 high.
 
 ## Current Decision
 
