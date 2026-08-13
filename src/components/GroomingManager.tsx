@@ -161,7 +161,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
     setHasSignature(false);
   };
 
-  const processFinalization = () => {
+  const processFinalization = async () => {
     if (!selectedPatient || selectedServices.length === 0) return;
 
     let totalBilled = 0;
@@ -209,9 +209,14 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
       consentOwnerName: consentOwnerName || undefined
     };
 
-    upsertGroomingLog(newLog).then(() => {
+    try {
+      await upsertGroomingLog(newLog);
       setGroomingLogs(prev => [...prev, newLog]);
-    });
+    } catch (error) {
+      if (import.meta.env.DEV) console.error(error);
+      showToast('Failed to save grooming session.', 'error');
+      return;
+    }
     showToast(`Grooming session completed & pushed to POS Queue.`, 'success');
     setSelectedServices([]);
     clearSignature();
