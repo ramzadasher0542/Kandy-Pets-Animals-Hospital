@@ -45,10 +45,16 @@ export default defineConfig({
     headless: true,
   },
 
-  /* Configure projects for major browsers */
+  /* Keep simulated fixture coverage separate from real Supabase Auth proof. */
   projects: [
     {
-      name: 'chromium',
+      name: 'simulated-local',
+      testIgnore: '**/staging-auth-login.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'real-supabase-auth',
+      testMatch: '**/staging-auth-login.spec.ts',
       use: { ...devices['Desktop Chrome'] },
     },
   ],
