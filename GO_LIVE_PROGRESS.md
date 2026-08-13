@@ -18,17 +18,17 @@ Live deployment: https://kpah-aps.vercel.app/
 - Browser-initiated cloud erase remains disabled. Full JSON export and protected beta merge restore are available in the release; provider-managed recovery remains required for catastrophic loss.
 - The application is visibly labelled **Beta / under development**. Payroll is deferred.
 - Staff Management currently covers roster, login links, scheduling, and time clock only. Payroll UI and runtime payslip reads are disabled; the existing dormant payslips table is retained and untouched.
+- Protected non-empty restore verified with the production export: 27 tables and 39 rows merged, followed by a clean reload with inventory, Staff Management, and Reports intact. This verifies the beta merge path, not catastrophic recovery or provider-managed backups.
 - The retired deployment integration was revoked and verified absent from the installed-apps list.
 - Production bundle scan found no browser write-authorizing secret or shared header.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
-## Remaining Work: 4 Items
+## Remaining Work: 3 Items
 
 1. Run the CV-1 Playwright tests against real Supabase-backed data. The current fixture still stubs Supabase empty for data-dependent cases.
 2. Verify second-device reads using an approved device/session.
-3. Verify the beta export/merge-restore workflow with a controlled recovery test. Supabase free tier does not provide certified scheduled backups or PITR.
-4. Review the 6 npm audit vulnerabilities: 1 low and 5 high.
+3. Review the 6 npm audit vulnerabilities: 1 low and 5 high.
 
 ## Current Decision
 
