@@ -24,19 +24,23 @@ Live deployment: https://kpah-aps.vercel.app/
 - Production bundle scan found no browser write-authorizing secret or shared header.
 - Read-only Step 31 security-boundary check re-run against production passed after correcting a stale test expectation. The live grants are consistent with the Free Auth/RLS design: anon has no table grants, authenticated has only explicit SELECT/INSERT/UPDATE grants, and destructive DELETE/TRUNCATE privileges remain closed.
 - Supabase log review found one historical PostgREST error at 2026-08-13 04:38:06 UTC requesting the nonexistent `staff_profiles.email` column. The current source and production bundle use `staff_profiles.*`; the stale request was not reproduced, and no schema column was added to mask it.
-- The same log window contains five historical permission-denied reads for pets, lab results, vaccinations, grooming, and boarding. The current grant summary and corrected security check pass; authenticated UI reads were not re-run because no clinic session is currently signed in.
+- The same log window contains five historical permission-denied reads for pets, lab results, vaccinations, grooming, and boarding. The current grant summary and corrected security check pass; a fresh authenticated smoke test subsequently loaded every live panel without reproducing those errors.
 - Authenticated production smoke test covered every live navigation panel without a load error. Staff & Security remained visible, while Staff Management remained absent from the primary navigation.
 - Found and fixed a real production defect in invoice reversal: the deployed browser called missing `void_invoice_and_reverse_revenue_auth(uuid)`. Step 35 added the Auth-guarded wrapper and was applied to production. Controlled checkout created invoice `88a9a88c` for Rs. 1,000 and reduced `test 1` stock from 100 to 99; the retry then voided it, restored stock to 100, and restored the active shift cash total to zero.
 - Step 31 security regression was re-run after Step 35 and passed with no rows returned.
-- Daily backup policy is implemented in the shift-close flow: an administrator/provider authorization is required, the final reconciliation is committed first, and a full JSON snapshot download starts immediately afterward. This is a portable browser download, not provider-managed storage; a failed export leaves the shift closed but explicitly reports that the day is not backed up.
+- Daily backup policy is implemented in the shift-close flow: administrator/provider authorization is required, the final reconciliation is committed first, and a full JSON snapshot is prepared in the Z-report. The operator must explicitly click **Download Daily Backup** before dismissing the report, preserving a real browser user gesture for the portable file. This is not provider-managed storage; a failed export leaves the shift closed but explicitly reports that the day is not backed up.
+- Step 36 added the Auth-guarded `close_shift_and_reconcile_auth(uuid,numeric,numeric,numeric,text,jsonb)` wrapper, applied it to production, and published `supabase/migrations/20260813_auth_shift_close_rpc_guard.sql`.
+- Production shift-close verification passed with a synthetic Rs. 5,000 drawer: the Z-report showed the correct shift ID, valid open/close timestamps, Rs. 5,000 starting float, Rs. 5,000 actual cash, and a balanced result. The cloud runner's download bridge did not expose the browser-created file, so external retention must still be confirmed on the operator's browser.
+- A fresh authenticated full export is retained at `outputs/ceylonpets_backup_FULL_2026-08-13_05-25.json` with 27 tables and 43 rows.
 - Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
-## Remaining Work: 2 Items
+## Remaining Work: 3 Items
 
 1. Operate the daily backup policy with external retention and rehearse a restore before real data use.
 2. Complete manual clinical workflow sign-off.
+3. Rotate the temporary beta-test password before entering any real clinic data.
 
 ## Current Decision
 
