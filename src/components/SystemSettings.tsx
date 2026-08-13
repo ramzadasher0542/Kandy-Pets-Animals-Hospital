@@ -10,8 +10,7 @@ import { Building2, Printer, Users, ShieldAlert, Save, Plus,
   FileText, Download, Upload, Layers, AlertTriangle, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
-import { fetchInventory, exportFullDatabase, restoreFullDatabase, fetchAppointments, fetchClients, fetchInvoices, fetchMedicalRecords } from '../lib/db';
-import { fetchStaffRegistry } from '../lib/auth';
+import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 
@@ -283,31 +282,13 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
   };
 
   const [isExportingAll, setIsExportingAll] = useState(false);
+  const [isRestoringAll, setIsRestoringAll] = useState(false);
 
   const handleExportAllData = async () => {
     setIsExportingAll(true);
     try {
-      const [inventory, appointments, clients, invoices, medicalRecords, staff] = await Promise.all([
-        fetchInventory(),
-        fetchAppointments(),
-        fetchClients(),
-        fetchInvoices(),
-        fetchMedicalRecords(),
-        fetchStaffRegistry()
-      ]);
-
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        version: '1.0-pilot',
-        inventory,
-        appointments,
-        clients,
-        invoices,
-        medicalRecords,
-        staff
-      };
-
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const json = await exportFullDatabase();
+      const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -350,6 +331,9 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       showToast('Authorization failed. Restore cancelled.', 'error');
       return;
     }
+    if (!window.confirm('Restore this backup into the cloud database? Matching records may be replaced. No rows will be deleted, and Supabase Auth passwords are not changed.')) {
+      return;
+    }
     backupInputRef.current?.click();
   };
 
@@ -361,13 +345,16 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
     reader.onload = async (event) => {
       const text = event.target?.result as string;
       if (!text) return;
+      setIsRestoringAll(true);
       try {
-        await restoreFullDatabase(text);
-        showToast('System successfully restored from backup! Rebooting...', 'success');
+        const summary = await restoreFullDatabase(text);
+        showToast(`Backup merged: ${summary.rowsProcessed} rows across ${summary.tablesProcessed} tables.`, 'success');
         setTimeout(() => window.location.reload(), 1500);
       } catch (error) {
         if (import.meta.env.DEV) console.error(error);
-        showToast('Failed to restore backup. Invalid or corrupt file.', 'error');
+        showToast(error instanceof Error ? error.message : 'Failed to restore backup.', 'error');
+      } finally {
+        setIsRestoringAll(false);
       }
     };
     reader.readAsText(file);
@@ -947,8 +934,8 @@ const isProvider = ROOT_ROLES.includes(role as any);
               {/* SECTION: Data Backup (portable JSON export) */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-rose-500" /> Data Backup</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Download a complete backup of your clinic data. Do this weekly.</p>
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-rose-500" /> Data Backup <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-1 rounded-full tracking-widest">BETA</span></h3>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Download a complete cloud snapshot weekly and keep a copy outside Supabase.</p>
                 </div>
                 <button
                   onClick={handleExportAllData}
@@ -963,7 +950,7 @@ const isProvider = ROOT_ROLES.includes(role as any);
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Data Security & Backups</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Export is available here. Restore is not available for Supabase-backed data yet. (Bulk stock updates now live in the <span className="font-black">Inventory &amp; Stock</span> tab.)</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">Beta recovery tools merge validated rows into Supabase. They never delete rows or change Auth passwords. (Bulk stock updates now live in the <span className="font-black">Inventory &amp; Stock</span> tab.)</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -973,11 +960,26 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Complete JSON Snapshot</span>
                   </button>
 
-                  <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-center opacity-70 cursor-not-allowed">
-                    <div className="w-12 h-12 bg-slate-400 text-white rounded-full flex items-center justify-center"><UploadCloud className="w-6 h-6"/></div>
-                    <span className="text-sm font-black text-slate-800 mt-1">Restore unavailable</span>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Provider-managed recovery required</span>
-                  </div>
+                  <>
+                    <input
+                      ref={backupInputRef}
+                      data-testid="input-restore-backup"
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={handleBackupFileUpload}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={handleRestoreBackupTrigger}
+                      disabled={isRestoringAll}
+                      data-testid="btn-restore-backup"
+                      className="p-6 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="w-12 h-12 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-md"><UploadCloud className="w-6 h-6"/></div>
+                      <span className="text-sm font-black text-slate-800 mt-1">{isRestoringAll ? 'Restoring...' : 'Restore Full Backup'}</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Admin confirmation required</span>
+                    </button>
+                  </>
                 </div>
 
               </div>
@@ -987,13 +989,13 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 <div className="absolute -right-12 -top-12 opacity-10"><ShieldAlert className="w-64 h-64 text-rose-500" /></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-black text-rose-800 flex items-center gap-2 mb-2"><ShieldAlert className="w-6 h-6" /> Critical Data Operations</h3>
-                   <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Destructive cloud operations are disabled in the browser. Recovery and any permanent erasure must be performed by the provider through a controlled server-side process.</p>
+                    <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Permanent erasure remains disabled in the browser. Backup restore is a separately protected beta merge; provider-managed recovery is still required for catastrophic database loss.</p>
                   
                   <div className="space-y-4">
                     <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
                         <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Database className="w-4 h-4 text-slate-400" /> Erase Cloud + Local — Disabled</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">STEP 31 SECURITY: browser-initiated cloud erase has been removed. This client can no longer wipe the Supabase database, and the cloud is closed to the anon key at the database layer. Cloud erase and recovery are provider-managed only.</p>
+                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Browser-initiated cloud erase has been removed. This client cannot wipe the Supabase database, and the cloud is closed to the anon key at the database layer.</p>
                       </div>
                       <button disabled title="Cloud erase is disabled — provider-managed only" className="px-6 py-3 bg-slate-100 text-slate-400 font-black rounded-xl text-[10px] uppercase tracking-widest whitespace-nowrap cursor-not-allowed">
                         Disabled
