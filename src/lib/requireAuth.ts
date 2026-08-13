@@ -192,7 +192,6 @@ export const PANEL_VIEWS: PanelDef[] = [
   { id: 'inventory',    label: 'Inventory' },
   { id: 'invoices',     label: 'Invoices' },
   { id: 'shift',        label: 'Shift & Drawer' },
-  { id: 'staff',        label: 'Staff Management' },
 ];
 
 // ---------------------------------------------------------------------------
