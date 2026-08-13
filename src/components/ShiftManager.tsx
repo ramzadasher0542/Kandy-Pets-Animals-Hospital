@@ -8,7 +8,7 @@ import { Modal } from './ui/Modal';
 import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2 } from 'lucide-react';
 import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
 import { showToast } from './Toast';
-import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile, fetchPaidInvoicesForShift, fetchActiveShiftState } from '../lib/db';
+import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile, fetchPaidInvoicesForShift, fetchActiveShiftState, exportFullDatabase } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
@@ -229,6 +229,15 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       return;
     }
 
+    // Supabase Free has no managed backups. A shift close therefore requires a
+    // root-authorized portable backup download, generated after the financial
+    // close so the final reconciliation is included in the snapshot.
+    const backupAuth = await requireAuth(currentUser || null, 'daily_backup');
+    if (!backupAuth.allowed) {
+      showToast('Shift close cancelled: daily backup requires administrator/provider access.', 'error');
+      return;
+    }
+
     const log: ShiftReconciliation = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
@@ -278,11 +287,34 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     setLastClosedShift(log);
     setActiveShift(null);
 
+    let backupDownloaded = false;
+    try {
+      const json = await exportFullDatabase();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      backupDownloaded = true;
+    } catch (e) {
+      if (import.meta.env.DEV) console.error('Daily shift backup failed:', e);
+    }
+
     if (drawerMath.discrepancy !== 0) {
       showToast(`Warning: Drawer discrepancy of Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)} detected.`, 'warning');
     } else {
       showToast('Shift reconciled perfectly. Drawer is balanced.', 'success');
     }
+    showToast(
+      backupDownloaded
+        ? 'Daily backup download started. Keep the file outside Supabase.'
+        : 'Shift closed, but the daily backup failed. The day is not backed up; export it from Data & Operations now.',
+      backupDownloaded ? 'success' : 'error'
+    );
   };
 
   const handleSaveAdjustment = async (e: React.FormEvent) => {
