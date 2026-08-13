@@ -1643,7 +1643,10 @@ function App() {
                 <div className="flex items-center gap-3">
                   <div className="bg-indigo-600 p-1.5 rounded-xl shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
                   <div>
-                    <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full">Beta</span>
+                    </div>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
                   </div>
                 </div>
