@@ -6,6 +6,9 @@
 
 export function formatDisplayDate(date: Date | string): string {
   if (!date) return '';
+  // Date inputs are calendar dates, not UTC instants. Parsing YYYY-MM-DD with
+  // new Date() can shift the displayed day in a non-UTC browser timezone.
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) {
     // If invalid Date but string matches YYYY-MM-DD, return as is
