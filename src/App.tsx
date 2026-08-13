@@ -84,7 +84,7 @@ import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
   Stethoscope, TestTube, Package, FileText,
   BarChart3, Settings, LogOut, CloudLightning, Lock,
-  ChevronLeft, Home, Scissors, Activity, Bell, UserCog, Eye, EyeOff, AlertTriangle, Truck, Menu
+  ChevronLeft, Home, Scissors, Activity, Bell, Eye, EyeOff, AlertTriangle, Truck, Menu
 } from 'lucide-react';
 
 import {
@@ -233,7 +233,7 @@ function App() {
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
-      provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'staff', 'reminders', 'portal']
+       provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'reminders', 'portal']
     },
   } as SystemConfig);
 
@@ -446,10 +446,8 @@ function App() {
   // login path in production — the PIN survives only as a second-confirmation
   // gate for sensitive actions (see requireAuth).
   useEffect(() => {
-    // TEST-ONLY: the Playwright harness injects a signed-in staff identity so the
-    // suite can run without a live Supabase Auth session. This branch is guarded
-    // by import.meta.env.DEV and is stripped from production builds — it is never
-    // a login path for real users.
+    // Development-only harness support is stripped from production builds and is
+    // never a login path for real users.
     if (import.meta.env.DEV && (window as any).__KP_TEST_AUTH__) {
       setCurrentUser((window as any).__KP_TEST_AUTH__ as User);
       return;
@@ -1204,6 +1202,9 @@ function App() {
 
   const isViewPermitted = (viewName: string, user: any): boolean => {
     if (!user) return false;
+    // Staff operations are deferred from the active beta release. Keep the
+    // underlying records and handlers intact without exposing this view.
+    if (viewName === 'staff') return false;
     // AUTH-6: root tier = admin (vendor-root today) and provider (above it).
     // Deliberate and explicit — not the accidental bypass this used to be.
     if (ROOT_ROLES.includes(user.role)) return true;
@@ -1221,7 +1222,7 @@ function App() {
       groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'staff', 'reminders', 'portal']
+       provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
     };
     // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
     // TypeScript — it is why the missing 'manager' key compiled cleanly instead of
@@ -1358,8 +1359,7 @@ function App() {
     { id: 'suppliers', label: 'Suppliers', icon: Truck, isLive: true },
     { id: 'invoices', label: 'Invoices', icon: FileText, isLive: true }, // ACTIVATED
     { id: 'shift', label: 'Shift & Drawer', icon: Lock, isLive: true },
-    { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true },
-     { id: 'staff', label: 'Staff Management', icon: UserCog, isLive: true }
+     { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true }
   ];
 
   const renderCanvas = () => {
