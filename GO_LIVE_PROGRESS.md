@@ -27,6 +27,7 @@ Live deployment: https://kpah-aps.vercel.app/
 - The same log window contains five historical permission-denied reads for pets, lab results, vaccinations, grooming, and boarding. The current grant summary and corrected security check pass; authenticated UI reads were not re-run because no clinic session is currently signed in.
 - Authenticated production smoke test covered every live navigation panel without a load error. Staff & Security remained visible, while Staff Management remained absent from the primary navigation.
 - Found and fixed a real production defect in invoice reversal: the deployed browser called missing `void_invoice_and_reverse_revenue_auth(uuid)`. Step 35 added the Auth-guarded wrapper and was applied to production. Controlled checkout created invoice `88a9a88c` for Rs. 1,000 and reduced `test 1` stock from 100 to 99; the retry then voided it, restored stock to 100, and restored the active shift cash total to zero.
+- Step 31 security regression was re-run after Step 35 and passed with no rows returned.
 - Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
