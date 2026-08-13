@@ -91,7 +91,7 @@ import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
   ActiveShift, ClinicQueueItem, User,
-  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, Payslip
+  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry
 } from './types';
 
 import DashboardAnalytics from './components/DashboardAnalytics';
@@ -161,12 +161,10 @@ import {
   fetchStaffProfiles,
   fetchTimeEntries,
   fetchScheduleEntries,
-  fetchPayslips,
-  upsertStaffProfile,
+   upsertStaffProfile,
   upsertTimeEntry,
   upsertScheduleEntry,
   deleteScheduleEntry,
-  upsertPayslip,
   insertDeletionAudit
 } from './lib/db';
 import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, getAuthSession, onAuthStateChange } from './lib/supabase';
@@ -195,7 +193,6 @@ function App() {
   const [staffProfiles, setStaffProfiles] = useState<StaffProfile[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
-  const [payslips, setPayslips] = useState<Payslip[]>([]);
 
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({
     appName: 'Ceylon Pets POS',
@@ -284,11 +281,7 @@ function App() {
              fetchTimeEntries(),
              fetchScheduleEntries(),
            ]);
-           const hPayslips = bootStaff && ['manager', 'owner', 'admin', 'provider'].includes(bootStaff.role)
-             ? await fetchPayslips()
-             : [];
-
-          const hNotifications = await fetchNotifications();
+           const hNotifications = await fetchNotifications();
           const hAlerts = await fetchAlerts();
 
           // Staff login accounts now live in Supabase `users`, not IndexedDB.
@@ -321,8 +314,7 @@ function App() {
             setStaffProfiles(hStaffProfiles);
             setTimeEntries(hTimeEntries);
             setScheduleEntries(hScheduleEntries);
-            setPayslips(hPayslips);
-            setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
+             setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
             setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
             setBoardingRecords(Array.isArray(fetchedBoardingRecords) ? fetchedBoardingRecords as any : []);
             setActiveShift(hActiveShift as any);
@@ -1351,16 +1343,6 @@ function App() {
     setScheduleEntries(prev => prev.filter(e => e.id !== id));
   }, [scheduleEntries]);
 
-  const handleSavePayslip = useCallback(async (payslip: Payslip) => {
-    const stamped = stampRecord(payslip);
-    await upsertPayslip(stamped);
-    setPayslips(prev => {
-      const exists = prev.find(p => p.id === stamped.id);
-      return exists ? prev.map(p => p.id === stamped.id ? stamped : p)
-                    : [...prev, stamped];
-    });
-  }, []);
-
   const navItems = [
     { id: 'pos', label: 'POS', icon: Calculator, isLive: true },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, isLive: true },
@@ -1377,7 +1359,7 @@ function App() {
     { id: 'invoices', label: 'Invoices', icon: FileText, isLive: true }, // ACTIVATED
     { id: 'shift', label: 'Shift & Drawer', icon: Lock, isLive: true },
     { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true },
-    { id: 'staff', label: 'Staff & Payroll', icon: UserCog, isLive: true }
+     { id: 'staff', label: 'Staff Management', icon: UserCog, isLive: true }
   ];
 
   const renderCanvas = () => {
@@ -1413,7 +1395,7 @@ function App() {
       case 'reports':
          return <ReportsManager currentUser={currentUser} config={systemConfig} />;
       case 'staff': 
-        return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} payslips={payslips} onSavePayslip={handleSavePayslip} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
+         return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
          const safeSystemConfig = systemConfig;
