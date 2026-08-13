@@ -32,14 +32,16 @@ Live deployment: https://kpah-aps.vercel.app/
 - Step 36 added the Auth-guarded `close_shift_and_reconcile_auth(uuid,numeric,numeric,numeric,text,jsonb)` wrapper, applied it to production, and published `supabase/migrations/20260813_auth_shift_close_rpc_guard.sql`.
 - Production shift-close verification passed with a synthetic Rs. 5,000 drawer: the Z-report showed the correct shift ID, valid open/close timestamps, Rs. 5,000 starting float, Rs. 5,000 actual cash, and a balanced result. The cloud runner's download bridge did not expose the browser-created file, so external retention must still be confirmed on the operator's browser.
 - A fresh authenticated full export is retained at `outputs/ceylonpets_backup_FULL_2026-08-13_05-25.json` with 27 tables and 43 rows.
+- Before manual clinical sign-off, fixed five source-level blockers found by review: Patient Portal now displays sex correctly, lab history uses `requestDate`, treatment notes persist from the editor state, and vaccination/grooming success is shown only after the cloud write succeeds. Type-check, build, and audit pass after these changes.
+- The retained backup is valid but stale for replay: it contains an old open synthetic shift and pre-test operational state. It was not restored into production because doing so could reopen or overwrite current operational records. A fresh post-test export and a restore rehearsal against a safe target are still required.
 - Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 
 ## Remaining Work: 3 Items
 
-1. Operate the daily backup policy with external retention and rehearse a restore before real data use.
-2. Complete manual clinical workflow sign-off.
+1. Operate the daily backup policy with external retention and rehearse a restore against a safe target; do not replay the stale retained file into production.
+2. Complete manual clinical workflow sign-off after an authenticated browser session is available; this has not been completed in this run.
 3. Rotate the temporary beta-test password before entering any real clinic data.
 
 ## Current Decision
