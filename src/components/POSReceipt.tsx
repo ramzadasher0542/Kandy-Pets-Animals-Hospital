@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Invoice } from '../types';
+import { formatRupees } from '../utils/currency';
 
 interface POSReceiptProps {
   invoice: Invoice | null;
@@ -114,7 +115,7 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
             <div key={idx} style={{ marginBottom: '4px' }}>
               <div style={{ textAlign: 'left', fontWeight: 'normal' }}>{item.name}</div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '11px' }}>
-                <span>{item.quantity} x {currency}{(item.unitPrice || 0).toFixed(2)} = {currency}{(item.totalPrice || 0).toFixed(2)}</span>
+                <span>{item.quantity} x {currency}{formatRupees(item.unitPrice || 0)} = {currency}{formatRupees(item.totalPrice || 0)}</span>
               </div>
             </div>
           ))}
@@ -127,12 +128,12 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
         <div style={{ margin: '4px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Subtotal</span>
-            <span>{currency}{invoice.subtotal.toFixed(2)}</span>
+            <span>{currency}{formatRupees(invoice.subtotal)}</span>
           </div>
           {invoice.discount > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Discount</span>
-              <span>-{currency}{invoice.discount.toFixed(2)}</span>
+              <span>-{currency}{formatRupees(invoice.discount)}</span>
             </div>
           )}
           <div style={{ fontSize: '10px', letterSpacing: '-0.5px', overflow: 'hidden', whiteSpace: 'nowrap', margin: '4px 0' }}>
@@ -140,7 +141,7 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px' }}>
             <span>TOTAL</span>
-            <span>{currency}{invoice.sales_total.toFixed(2)}</span>
+            <span>{currency}{formatRupees(invoice.sales_total)}</span>
           </div>
         </div>
 
@@ -155,7 +156,7 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
               {invoice.splitPayments.map((sp, idx) => (
                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>  {capitalizeFirst(sp.method.replace('_', ' '))}</span>
-                  <span>{currency}{sp.amount.toFixed(2)}</span>
+                  <span>{currency}{formatRupees(sp.amount)}</span>
                 </div>
               ))}
             </>
