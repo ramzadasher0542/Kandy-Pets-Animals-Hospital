@@ -9,6 +9,7 @@ import { showToast } from './Toast';
 import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations, fetchDeletionAudits } from '../lib/db';
 import { User, DeletionAudit } from '../types';
 import type { SystemConfig } from './SystemSettings';
+import { formatRupees } from '../utils/currency';
 
 // --- Types ---
 interface CashAdjustment {
@@ -168,7 +169,7 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
   // Vault metrics (all-time cash position — intentionally NOT range-scoped)
   const [metrics, setMetrics] = useState({ cashSales: 0, cashIn: 0, cashOut: 0, vaultBalance: 0 });
 
-  const formatCurrency = (val: number) => 'Rs. ' + new Intl.NumberFormat('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
+  const formatCurrency = (val: number) => 'Rs. ' + formatRupees(val);
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const formatPct = (n: number) => `${n >= 0 ? '' : ''}${n.toFixed(1)}%`;
   const normPhone = (p: string) => (p || '').replace(/\D/g, '').slice(-9);
@@ -402,17 +403,17 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     lines.push(`Range,${esc(range.label)},${range.start.toISOString().slice(0, 10)},${range.end.toISOString().slice(0, 10)}`);
     lines.push('');
     lines.push('SUMMARY');
-    lines.push(`Gross Revenue,${report.grossRevenue.toFixed(2)}`);
-    lines.push(`COGS,${report.cogs.toFixed(2)}`);
-    lines.push(`Gross Profit,${report.grossProfit.toFixed(2)}`);
+    lines.push(`Gross Revenue,${formatRupees(report.grossRevenue)}`);
+    lines.push(`COGS,${formatRupees(report.cogs)}`);
+    lines.push(`Gross Profit,${formatRupees(report.grossProfit)}`);
     lines.push(`Gross Margin %,${report.grossMargin.toFixed(1)}`);
     lines.push('Staff Cost,DEFERRED');
-    lines.push(`Gross Profit Before Staff Cost,${report.netProfit.toFixed(2)}`);
+    lines.push(`Gross Profit Before Staff Cost,${formatRupees(report.netProfit)}`);
     lines.push(`Transactions,${report.txnCount}`);
-    lines.push(`Avg Transaction Value,${report.avgTxn.toFixed(2)}`);
+    lines.push(`Avg Transaction Value,${formatRupees(report.avgTxn)}`);
     lines.push('');
     lines.push('REVENUE BY CATEGORY,Revenue,% of total');
-    report.categories.forEach(c => lines.push(`${esc(c.name)},${c.rev.toFixed(2)},${c.pct.toFixed(1)}`));
+    report.categories.forEach(c => lines.push(`${esc(c.name)},${formatRupees(c.rev)},${c.pct.toFixed(1)}`));
     lines.push('');
     lines.push('OPERATIONAL');
     lines.push(`Patients Seen,${report.patientsSeen}`);
@@ -425,10 +426,10 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     lines.push(`Busiest Hour,${esc(report.busiestHour)}`);
     lines.push('');
     lines.push('TOP ITEMS BY REVENUE,Qty,Revenue');
-    report.topByRevenue.forEach(i => lines.push(`${esc(i.name)},${i.qty},${i.revenue.toFixed(2)}`));
+    report.topByRevenue.forEach(i => lines.push(`${esc(i.name)},${i.qty},${formatRupees(i.revenue)}`));
     lines.push('');
     lines.push('PAYMENT METHODS');
-    Object.entries(report.methodTotals as Record<string, number>).forEach(([m, v]) => lines.push(`${esc(m)},${v.toFixed(2)}`));
+    Object.entries(report.methodTotals as Record<string, number>).forEach(([m, v]) => lines.push(`${esc(m)},${formatRupees(v)}`));
 
     const csv = lines.join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
