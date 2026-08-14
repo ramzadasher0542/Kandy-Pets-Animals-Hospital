@@ -7,6 +7,7 @@ import { showToast } from './Toast';
 import { stampRecord } from '../lib/recordMeta';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
+import { parseWholeRupees } from '../utils/currency';
 
 interface StaffManagerProps {
   staffProfiles: StaffProfile[];
@@ -693,13 +694,13 @@ export default function StaffManager({ staffProfiles, users, currentUser, timeEn
               {formData.employmentType === 'hourly' && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Hourly Rate (Rs.)</label>
-                  <input type="number" step="0.01" min="0" value={formData.hourlyRate || ''} onChange={e => setFormData({...formData, hourlyRate: e.target.value ? Number(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input type="number" step="1" inputMode="numeric" min="0" value={formData.hourlyRate || ''} onChange={e => setFormData({...formData, hourlyRate: e.target.value ? parseWholeRupees(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               )}
               {formData.employmentType === 'monthly' && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Monthly Salary (Rs.)</label>
-                  <input type="number" step="0.01" min="0" value={formData.monthlySalary || ''} onChange={e => setFormData({...formData, monthlySalary: e.target.value ? Number(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
+                  <input type="number" step="1" inputMode="numeric" min="0" value={formData.monthlySalary || ''} onChange={e => setFormData({...formData, monthlySalary: e.target.value ? parseWholeRupees(e.target.value) : undefined})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" />
                 </div>
               )}
 
