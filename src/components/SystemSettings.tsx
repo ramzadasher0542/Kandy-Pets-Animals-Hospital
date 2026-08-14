@@ -14,6 +14,7 @@ import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/
 import { downloadJsonFile } from '../lib/download';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
+import { parseWholeRupees } from '../utils/currency';
 
 export interface SystemConfig {
   appName: string;
@@ -1012,10 +1013,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.catNofoodCents ? (localConfig.boardingRates.catNofoodCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.catNofoodCents ? String(Math.round(localConfig.boardingRates.catNofoodCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), catNofoodCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1031,10 +1032,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.catWithfoodCents ? (localConfig.boardingRates.catWithfoodCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.catWithfoodCents ? String(Math.round(localConfig.boardingRates.catWithfoodCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), catWithfoodCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1050,10 +1051,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.dogNofoodCents ? (localConfig.boardingRates.dogNofoodCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.dogNofoodCents ? String(Math.round(localConfig.boardingRates.dogNofoodCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), dogNofoodCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1069,10 +1070,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.dogWithfoodCents ? (localConfig.boardingRates.dogWithfoodCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.dogWithfoodCents ? String(Math.round(localConfig.boardingRates.dogWithfoodCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), dogWithfoodCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1088,10 +1089,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.catLitterCents ? (localConfig.boardingRates.catLitterCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.catLitterCents ? String(Math.round(localConfig.boardingRates.catLitterCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), catLitterCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1107,10 +1108,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.dogLitterCents ? (localConfig.boardingRates.dogLitterCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.dogLitterCents ? String(Math.round(localConfig.boardingRates.dogLitterCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), dogLitterCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1126,10 +1127,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input 
-                        type="number" step="0.01" min="0"
-                        value={localConfig.boardingRates?.milkCupCents ? (localConfig.boardingRates.milkCupCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.boardingRates?.milkCupCents ? String(Math.round(localConfig.boardingRates.milkCupCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, boardingRates: { ...(prev.boardingRates || {} as any), milkCupCents: Math.round(val * 100) }}));
                           setHasChanges(true);
                         }}
@@ -1151,10 +1152,10 @@ const isProvider = ROOT_ROLES.includes(role as any);
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">{localConfig.currencySymbol}</span>
                       <input
                         data-testid="default-deposit-input"
-                        type="number" step="0.01" min="0"
-                        value={localConfig.defaultDepositCents ? (localConfig.defaultDepositCents / 100).toFixed(2) : ''}
+                        type="number" step="1" inputMode="numeric" min="0"
+                        value={localConfig.defaultDepositCents ? String(Math.round(localConfig.defaultDepositCents / 100)) : ''}
                         onChange={e => {
-                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          const val = parseWholeRupees(e.target.value);
                           setLocalConfig(prev => ({...prev, defaultDepositCents: Math.round(val * 100)}));
                           setHasChanges(true);
                         }}
