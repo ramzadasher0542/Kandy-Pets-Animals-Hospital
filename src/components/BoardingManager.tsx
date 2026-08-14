@@ -13,6 +13,7 @@ import { showToast } from './Toast';
 import { fetchBoardingRecords, upsertBoardingRecord } from '../lib/db';
 import PageShell from './ui/PageShell';
 import { sortQueueByUrgency } from '../lib/queueUtils';
+import { formatRupees, parseWholeRupees } from '../utils/currency';
 
 interface BoardingProps {
   systemConfig: any;
@@ -128,7 +129,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     const nextItems = [...(b.billingItems || []), item];
     const updated: BoardingRecord = { ...b, billingItems: nextItems, totalChargesCents: computeCharges({ ...b, billingItems: nextItems }) };
     await persistBoarding(updated);
-    showToast(`Doctor round logged (Rs. ${(fee / 100).toFixed(2)}).`, 'success');
+    showToast(`Doctor round logged (Rs. ${formatRupees(fee / 100)}).`, 'success');
   };
 
   const openMedModal = (cage: string) => {
@@ -154,7 +155,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       return;
     }
 
-    const billingItem = { itemId: item.id, name: item.name, price: item.price, quantity: medQty, category: item.category };
+    const billingItem = { itemId: item.id, name: item.name, price: Math.round(item.price * 100), quantity: medQty, category: item.category };
     const b = occupant.boarding;
     const nextItems = [...(b.billingItems || []), billingItem];
     const updated: BoardingRecord = { ...b, billingItems: nextItems, totalChargesCents: computeCharges({ ...b, billingItems: nextItems }) };
@@ -204,7 +205,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     if (!onUpdateStock) { showToast('Stock handler unavailable.', 'error'); return; }
 
     const invItem = inventory.find(i => i.id === plan.inventoryItemId);
-    const unitPrice = invItem?.price ?? (systemConfig?.boardingRates?.milkCupCents ?? 10000);
+    const unitPrice = invItem ? Math.round(invItem.price * 100) : (systemConfig?.boardingRates?.milkCupCents ?? 10000);
 
     try {
       await onUpdateStock(plan.inventoryItemId, -plan.quantityPerMeal);
@@ -245,9 +246,9 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     let toastMsg: string;
     if (balance < 0) {
       nextItems = [...nextItems, { itemId: 'additional_charges', name: 'Additional Charges Beyond Deposit', price: Math.abs(balance), quantity: 1 }];
-      toastMsg = `Discharged. Collect Rs. ${(Math.abs(balance) / 100).toFixed(2)} additional.`;
+      toastMsg = `Discharged. Collect Rs. ${formatRupees(Math.abs(balance) / 100)} additional.`;
     } else if (balance > 0) {
-      toastMsg = `Discharged. Refund: Rs. ${(balance / 100).toFixed(2)}`;
+      toastMsg = `Discharged. Refund: Rs. ${formatRupees(balance / 100)}`;
     } else {
       toastMsg = 'Discharged. Settled exactly — no balance.';
     }
@@ -414,15 +415,15 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
         {/* Billing type badge + estimated stay */}
         <div className="flex items-center gap-1.5">
           <span data-testid={`type-badge-${cage}`} className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded shadow-sm ${isAdmission ? 'bg-white text-rose-700' : 'bg-sky-500 text-white'}`}>{isAdmission ? 'Admission' : 'Boarding'}</span>
-          <span className="text-[10px] font-bold text-rose-100">~{b.estimatedStayDays ?? 1}d · deposit Rs. {(deposit / 100).toFixed(0)}</span>
+          <span className="text-[10px] font-bold text-rose-100">~{b.estimatedStayDays ?? 1}d · deposit Rs. {formatRupees(deposit / 100)}</span>
         </div>
 
         {/* Running settlement tab */}
         <div data-testid={`billing-tab-${cage}`} className="text-[10px] font-bold text-white bg-black/25 rounded-xl p-2 border border-white/10 space-y-0.5">
-          <div>Deposit held: Rs. {(deposit / 100).toFixed(2)}</div>
-          <div data-testid={`charges-${cage}`}>Charges to date: Rs. {(charges / 100).toFixed(2)}</div>
+          <div>Deposit held: Rs. {formatRupees(deposit / 100)}</div>
+          <div data-testid={`charges-${cage}`}>Charges to date: Rs. {formatRupees(charges / 100)}</div>
           <div data-testid={`balance-${cage}`} className={balance < 0 ? 'text-rose-300 font-black' : 'text-emerald-200 font-black'}>
-            Balance: Rs. {(balance / 100).toFixed(2)} {balance < 0 ? '(owes more)' : balance > 0 ? '(refund)' : ''}
+            Balance: Rs. {formatRupees(balance / 100)} {balance < 0 ? '(owes more)' : balance > 0 ? '(refund)' : ''}
           </div>
         </div>
 
@@ -481,7 +482,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                         <div className="font-black text-white text-lg tracking-tight truncate drop-shadow-sm">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate opacity-90">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-rose-200 truncate mt-0.5">Owner: {occupant.ownerName || 'Unknown'}</div>
-                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {formatRupees(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100)}/day</div>
                         {occupant.boarding.feedingPlan && (
                           <div data-testid={`feeding-plan-${cage}`} className="text-[10px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-xl inline-block mt-1 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
                         )}
@@ -531,7 +532,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                         <div className="font-black text-white text-xl tracking-tight truncate drop-shadow-md">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate mb-1 opacity-90 drop-shadow-sm">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-white/80 bg-black/20 px-2 py-0.5 rounded-full inline-block mb-1 border border-white/10 w-max mt-1">Owner: {occupant.ownerName}</div>
-                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mb-3 border border-white/10 w-max">Rs. {(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100).toFixed(2)}/day</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mb-3 border border-white/10 w-max">Rs. {formatRupees(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100)}/day</div>
                         {occupant.boarding.feedingPlan && (
                           <div data-testid={`feeding-plan-${cage}`} className="text-[10px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-xl inline-block mb-2 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
                         )}
@@ -669,9 +670,9 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                     <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest block">Doctor Fee per Round (Rs.)</label>
                     <input
                       data-testid="doctor-fee-input"
-                      type="number" step="0.01" min={0}
+                      type="number" step="1" inputMode="numeric" min={0}
                       value={doctorFeeRupees || ''}
-                      onChange={e => setDoctorFeeRupees(Math.max(0, parseFloat(e.target.value) || 0))}
+                      onChange={e => setDoctorFeeRupees(parseWholeRupees(e.target.value))}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
                     />
                   </div>
@@ -679,9 +680,9 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                     <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest block">Cleaning Fee per Day (Rs.)</label>
                     <input
                       data-testid="cleaning-fee-input"
-                      type="number" step="0.01" min={0}
+                      type="number" step="1" inputMode="numeric" min={0}
                       value={cleaningFeeRupees || ''}
-                      onChange={e => setCleaningFeeRupees(Math.max(0, parseFloat(e.target.value) || 0))}
+                      onChange={e => setCleaningFeeRupees(parseWholeRupees(e.target.value))}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
                     />
                   </div>
@@ -689,7 +690,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               )}
 
               <div data-testid="deposit-display" className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
-                <p className="text-sm font-black text-emerald-800">Deposit to collect: Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="font-bold text-emerald-600">(standard admission deposit)</span></p>
+                <p className="text-sm font-black text-emerald-800">Deposit to collect: Rs. {formatRupees(depositCents / 100)} <span className="font-bold text-emerald-600">(standard admission deposit)</span></p>
                 <p className="text-xs text-emerald-700 font-bold mt-1">All charges will run against this deposit at discharge.</p>
               </div>
 
@@ -730,7 +731,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
           <p className="text-slate-500 text-xs font-bold px-2">System protocol requires a deposit to secure {selectedCage} and lock the patient into the ward flowsheet.</p>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount Required</div>
-            <div className="text-3xl font-mono font-black text-slate-800 mt-1">Rs. {(depositCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-3xl font-mono font-black text-slate-800 mt-1">Rs. {formatRupees(depositCents / 100)}</div>
           </div>
         </div>
       </Modal>
@@ -825,13 +826,13 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
             <p className="text-slate-500 text-xs font-bold px-2">Settle the account for {occ?.pet?.name || 'this patient'} in {dischargeModalCage} and free the cage.</p>
             
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="font-bold text-slate-500">Deposit held</span><span data-testid="settle-deposit" className="font-mono font-black text-slate-800">Rs. {(deposit / 100).toFixed(2)}</span></div>
-              <div className="flex justify-between"><span className="font-bold text-slate-500">Charges to date</span><span data-testid="settle-charges" className="font-mono font-black text-slate-800">Rs. {(charges / 100).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="font-bold text-slate-500">Deposit held</span><span data-testid="settle-deposit" className="font-mono font-black text-slate-800">Rs. {formatRupees(deposit / 100)}</span></div>
+              <div className="flex justify-between"><span className="font-bold text-slate-500">Charges to date</span><span data-testid="settle-charges" className="font-mono font-black text-slate-800">Rs. {formatRupees(charges / 100)}</span></div>
               <div className="border-t border-slate-200 my-1"></div>
               {balance >= 0 ? (
-                <div className="flex justify-between"><span className="font-black text-emerald-700">Refund to owner</span><span data-testid="settle-balance" className="font-mono font-black text-emerald-700">Rs. {(balance / 100).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="font-black text-emerald-700">Refund to owner</span><span data-testid="settle-balance" className="font-mono font-black text-emerald-700">Rs. {formatRupees(balance / 100)}</span></div>
               ) : (
-                <div className="flex justify-between"><span className="font-black text-rose-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-rose-600">Rs. {(Math.abs(balance) / 100).toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="font-black text-rose-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-rose-600">Rs. {formatRupees(Math.abs(balance) / 100)}</span></div>
               )}
             </div>
           </div>
@@ -869,7 +870,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               >
                 <option value="">— Select item —</option>
                 {inventory.map(i => (
-                  <option key={i.id} value={i.id}>{i.name} (stock {i.stock}) — Rs. {(i.price / 100).toFixed(2)}</option>
+                  <option key={i.id} value={i.id}>{i.name} (stock {i.stock}) — Rs. {formatRupees(i.price)}</option>
                 ))}
               </select>
             </div>
