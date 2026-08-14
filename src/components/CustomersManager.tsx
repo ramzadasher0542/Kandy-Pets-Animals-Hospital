@@ -20,6 +20,7 @@ import { formatDisplayDate } from '../utils/time';
 import PageShell from './ui/PageShell';
 import MasterDetailLayout from './ui/MasterDetailLayout';
 import { requireAuth } from '../lib/requireAuth';
+import { formatRupees } from '../utils/currency';
 
 interface CustomersManagerProps {
   clients: Client[];
@@ -514,10 +515,10 @@ export default function CustomersManager({
             <div className="flex flex-col items-end gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-100 min-w-[200px]">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Account Balance</div>
               <div className={`text-2xl font-black font-mono tracking-tight ${selectedClient.account_balance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {(selectedClient.account_balance / 100).toFixed(2)}
+                {formatRupees(selectedClient.account_balance / 100)}
               </div>
               <div className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-1">
-                <Activity className="w-3 h-3" /> LTV: {(selectedClient.lifetime_value / 100).toFixed(2)}
+                <Activity className="w-3 h-3" /> LTV: {formatRupees(selectedClient.lifetime_value / 100)}
               </div>
             </div>
           </div>
@@ -596,7 +597,7 @@ export default function CustomersManager({
                         <div className="text-[10px] font-black text-slate-500 mt-0.5">{inv.petName || 'Retail Purchase'}</div>
                       </div>
                       <div className="text-right">
-                        <div className="font-mono text-xs font-black text-slate-800">{(inv.sales_total).toFixed(2)}</div>
+                        <div className="font-mono text-xs font-black text-slate-800">{formatRupees(inv.sales_total)}</div>
                         <div className={`text-[10px] font-black uppercase mt-0.5 ${inv.paymentStatus === 'paid' ? 'text-emerald-500' : inv.paymentStatus === 'void' ? 'text-slate-400' : 'text-rose-500'}`}>
                           {inv.paymentStatus}
                         </div>
