@@ -325,6 +325,8 @@ export default function POSRegister({
     if (import.meta.env.DEV) console.log('[POS] Passed stock validation. Building invoice...');
     
     const isWalkIn = !selectedAppointment;
+    const selectedQueueItem = selectedAppointment as (Appointment & Partial<ClinicQueueItem>) | null;
+    const linkedAppointmentId = selectedQueueItem?.appointmentId || selectedQueueItem?.id;
     const clientName = isWalkIn ? (customClientName || 'Walk-in Client') : selectedAppointment.ownerName;
     const clientPhone = isWalkIn ? (customClientPhone || '0000000000') : selectedAppointment.ownerPhone;
     const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
@@ -348,7 +350,7 @@ export default function POSRegister({
 
     const invoice: Invoice = {
       id: crypto.randomUUID(),
-      appointmentId: selectedAppointment?.id,
+      appointmentId: linkedAppointmentId,
       patientId,
       petName,
       ownerName: clientName,
