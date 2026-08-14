@@ -12,6 +12,7 @@ import { formatDisplayDate } from '../utils/time';
 import { fetchLabResults, upsertLabResult } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
+import { formatRupees } from '../utils/currency';
 import MasterDetailLayout from './ui/MasterDetailLayout';
 import EmptyState from './ui/EmptyState';
 import ClinicQueue from './ui/ClinicQueue';
@@ -310,7 +311,7 @@ export default function LaboratoryManager({ clients, pets, records, inventory, a
                         {availableLabTests.map(test => (
                           <div key={test.id} className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow flex flex-col h-full">
                             <div className="font-black text-slate-800 text-sm mb-1">{test.name}</div>
-                            <div className="text-[10px] font-bold text-slate-400 font-mono mb-4">Rs. {test.price.toFixed(2)}</div>
+                            <div className="text-[10px] font-bold text-slate-400 font-mono mb-4">Rs. {formatRupees(test.price)}</div>
                             
                             {test.labParameters && test.labParameters.length > 0 && (
                               <div className="mb-4 flex flex-wrap gap-1">
