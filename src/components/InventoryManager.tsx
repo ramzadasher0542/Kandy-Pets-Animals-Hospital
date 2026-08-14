@@ -14,6 +14,7 @@ import { InventoryItem, ItemCategory, InventoryBatch, Supplier, InventoryCategor
 import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch, fetchSuppliers, upsertSupplier, fetchInventoryCategories, upsertInventoryCategory, deleteInventoryCategory } from '../lib/db';
 import { showToast } from './Toast';
 import PageShell from './ui/PageShell';
+import { formatRupees, parseWholeRupees } from '../utils/currency';
 
 const UNIT_PRESETS = [
   'Tablet', 'Bottle', 'Vial', 'Box', 'Pack', 'Sachet', 'Tube',
@@ -370,7 +371,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
         {
           icon: <DollarSign className="w-6 h-6" />,
           label: 'Physical Asset Value',
-          value: <span className="font-mono">{(totalValue).toFixed(2)}</span>,
+          value: <span className="font-mono">{formatRupees(totalValue)}</span>,
           iconBg: 'bg-emerald-50 text-emerald-600',
         },
       ]}
@@ -465,8 +466,8 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-600">{catInfo?.label || item.category}</td>
                         <td className="px-4 py-3 text-xs font-mono text-slate-700">
-                          <div className="text-emerald-700 font-bold">{(item.price || 0).toFixed(2)}</div>
-                          <div className="text-slate-400">Cost: {(item.cost || 0).toFixed(2)}</div>
+                          <div className="text-emerald-700 font-bold">{formatRupees(item.price || 0)}</div>
+                          <div className="text-slate-400">Cost: {formatRupees(item.cost || 0)}</div>
                         </td>
                         <td className="px-4 py-3">
                           {isService ? (
@@ -546,11 +547,11 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
                 </div>
                 <div className="bg-emerald-50 rounded-xl p-3">
                   <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Selling</div>
-                  <div className="text-lg font-black text-emerald-800">Rs. {(selectedItem.price || 0).toFixed(2)}</div>
+                  <div className="text-lg font-black text-emerald-800">Rs. {formatRupees(selectedItem.price || 0)}</div>
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cost</div>
-                  <div className="text-lg font-black text-slate-800">Rs. {(selectedItem.cost || 0).toFixed(2)}</div>
+                  <div className="text-lg font-black text-slate-800">Rs. {formatRupees(selectedItem.cost || 0)}</div>
                 </div>
               </div>
 
@@ -671,11 +672,11 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Selling Price (Rs.) *</label>
           <input
             type="number"
-            step="0.01"
+            step="1" inputMode="numeric"
             min="0"
             required
             value={formData.price || 0}
-            onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})}
+            onChange={e => setFormData({...formData, price: parseWholeRupees(e.target.value)})}
             className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
@@ -920,7 +921,7 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
             </div>
             <div className="col-span-1">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1.5">Cost Price per Unit</label>
-              <input type="number" step="0.01" min="0" required value={receiveFormData.costPerUnit || ""} onChange={e => setReceiveFormData({...receiveFormData, costPerUnit: Number(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+              <input type="number" step="1" inputMode="numeric" min="0" required value={receiveFormData.costPerUnit || ""} onChange={e => setReceiveFormData({...receiveFormData, costPerUnit: parseWholeRupees(e.target.value)})} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             </div>
             <div className="col-span-2 space-y-2">
               <div>
