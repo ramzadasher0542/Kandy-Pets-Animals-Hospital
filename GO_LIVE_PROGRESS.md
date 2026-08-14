@@ -1,6 +1,6 @@
 # Go-Live Progress
 
-Last verified: 2026-08-13 UTC
+Last verified: 2026-08-14 UTC
 
 Enterprise cleanup merged through PR #10.
 Live deployment: https://kpah-aps.vercel.app/
@@ -37,12 +37,17 @@ Live deployment: https://kpah-aps.vercel.app/
 - Removed unused `jspdf` and `jspdf-autotable` dependencies, regenerated the lockfile, and confirmed `npm audit` reports 0 vulnerabilities; type-check and production build pass.
 - Controlled checkout test passed with a Rs. 1,000 test item; the invoice was voided atomically, restoring stock and shift totals to baseline.
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
+- Manual synthetic clinical sign-off covered appointment check-in, examination persistence, laboratory order/finalization, vaccination history, grooming consent/service mapping, boarding intake/discharge, Reports, and Settings/Data & Operations. No real patient data was used.
+- Fixed and deployed the boarding empty-rate guard. A live synthetic boarding admission now displays `Rs. 0.00/day` instead of `NaN`; the underlying `boarding_rates` configuration remains empty and requires approved business rates.
+- Published POS queue billing fix `c97057d` (`Fix POS queue appointment billing link`) and confirmed Vercel generated a new production asset. The live checkout behavior still needs an authenticated rerun.
+- Synthetic QA appointments were cancelled after testing. A zero-float synthetic shift was opened, reconciled, and closed as balanced. The failed pre-fix clinical checkout created no invoice and changed no stock.
 
-## Remaining Work: 3 Items
+## Remaining Work: 4 Items
 
 1. Operate the daily backup policy with external retention and rehearse a restore against a safe target; do not replay the stale retained file into production.
-2. Complete manual clinical workflow sign-off after an authenticated browser session is available; this has not been completed in this run.
-3. Rotate the temporary beta-test password before entering any real clinic data.
+2. Re-run the authenticated clinical POS checkout after `c97057d` and confirm the linked appointment UUID is accepted, source records are billed, and the shift closes cleanly.
+3. Configure approved boarding rates; do not treat the zero-rate guard as a business configuration.
+4. Rotate the temporary beta-test password before entering any real clinic data.
 
 ## Current Decision
 
@@ -50,14 +55,15 @@ BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until daily backup rete
 
 ## Deployability Assessment
 
-**65% controlled-beta deployable.** This is a weighted engineering readiness score,
-not a safety certification: hosting/release 18/20, authentication and authorization
-15/20, core clinical/financial workflow coverage 12/25, recovery 12/20, and QA/
-operations 8/15.
+**75% controlled-beta deployable (provisional).** This is a weighted engineering
+readiness score, not a safety certification: hosting/release 19/20, authentication
+and authorization 15/20, core clinical/financial workflow coverage 18/25, recovery
+12/20, and QA/operations 11/15.
 
 The system remains **NO-GO as an unrestricted clinical system of record**. The
 controlled export and merge restore works, but Supabase Free has no certified
-provider-managed backups or PITR, and manual workflow sign-off remains incomplete.
+provider-managed backups or PITR, the fresh post-fix POS checkout is not yet
+authenticated, and external backup retention remains unproven.
 
 ## Vercel-Only Deployment
 
