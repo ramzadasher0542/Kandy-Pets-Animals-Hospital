@@ -39,31 +39,34 @@ Live deployment: https://kpah-aps.vercel.app/
 - Checkout RPC privilege hardening is recorded in PR #10 with an Auth-guarded browser wrapper and no direct browser access to mutation helpers.
 - Manual synthetic clinical sign-off covered appointment check-in, examination persistence, laboratory order/finalization, vaccination history, grooming consent/service mapping, boarding intake/discharge, Reports, and Settings/Data & Operations. No real patient data was used.
 - Fixed and deployed the boarding empty-rate guard. A live synthetic boarding admission now displays `Rs. 0.00/day` instead of `NaN`; the underlying `boarding_rates` configuration remains empty and requires approved business rates.
-- Published POS queue billing fix `c97057d` (`Fix POS queue appointment billing link`) and confirmed Vercel generated a new production asset. The live checkout behavior still needs an authenticated rerun.
+- Published POS queue billing fixes `c97057d` and `c15785f`, then confirmed the final Vercel production asset. A clean authenticated discharge-queue checkout created invoice `c4c97ddb` for Rs. 5,000, and voiding it restored vaccine stock and the shift baseline.
 - Synthetic QA appointments were cancelled after testing. A zero-float synthetic shift was opened, reconciled, and closed as balanced. The failed pre-fix clinical checkout created no invoice and changed no stock.
+- Found and fixed a second financial-integrity defect: voiding a clinical invoice left linked vaccination/lab/grooming/boarding rows marked billed. Invoice items now retain source references, and a successful void releases those exact rows for rebilling. A fresh vaccination was checked out as invoice `88e0bd5e`, voided, and then reappeared in POS as a billable charge.
+- A fresh post-test export is retained at `outputs/ceylonpets_backup_FULL_2026-08-14.json` with 27 tables and 88 rows. The browser download bridge still exposed no file, so the JSON was captured from the authenticated export and preserved directly as a workspace artifact.
+- The fresh 88-row snapshot was merged back into the same synthetic beta production state, reporting `Backup merged: 88 rows across 20 tables`. This is a same-state rehearsal, not an independent safe-environment recovery test.
 
 ## Remaining Work: 4 Items
 
-1. Operate the daily backup policy with external retention and rehearse a restore against a safe target; do not replay the stale retained file into production.
-2. Re-run the authenticated clinical POS checkout after `c97057d` and confirm the linked appointment UUID is accepted, source records are billed, and the shift closes cleanly.
-3. Configure approved boarding rates; do not treat the zero-rate guard as a business configuration.
-4. Rotate the temporary beta-test password before entering any real clinic data.
+1. Keep the fresh JSON backup outside Supabase on the operator's own storage and rehearse restore against a separate safe target; the current same-state rehearsal is not independent disaster recovery.
+2. Configure approved boarding rates; do not treat the zero-rate guard as a business configuration.
+3. Rotate the temporary beta-test password before entering any real clinic data.
+4. Remove or quarantine the remaining synthetic QA clinical rows before beta handoff; no automated clinical regression suite is claimed.
 
 ## Current Decision
 
-BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until daily backup retention/recovery and manual clinical workflow sign-off are complete. Staff Management remains explicitly deferred.
+BETA / UNDER DEVELOPMENT. NOT READY FOR REAL CLINIC DATA until independent backup recovery, approved boarding rates, and password rotation are complete. Staff Management remains explicitly deferred.
 
 ## Deployability Assessment
 
-**75% controlled-beta deployable (provisional).** This is a weighted engineering
-readiness score, not a safety certification: hosting/release 19/20, authentication
-and authorization 15/20, core clinical/financial workflow coverage 18/25, recovery
-12/20, and QA/operations 11/15.
+**82% controlled-beta deployable (provisional).** This is a weighted engineering
+readiness score, not a safety certification: hosting/release 20/20, authentication
+and authorization 16/20, core clinical/financial workflow coverage 22/25, recovery
+14/20, and QA/operations 10/15.
 
 The system remains **NO-GO as an unrestricted clinical system of record**. The
-controlled export and merge restore works, but Supabase Free has no certified
-provider-managed backups or PITR, the fresh post-fix POS checkout is not yet
-authenticated, and external backup retention remains unproven.
+controlled export and same-state merge restore work, but Supabase Free has no
+certified provider-managed backups or PITR, independent recovery is unproven,
+boarding rates are not configured, and the temporary password must be rotated.
 
 ## Vercel-Only Deployment
 
