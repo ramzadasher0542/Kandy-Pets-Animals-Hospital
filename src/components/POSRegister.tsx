@@ -20,6 +20,7 @@ import { fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fe
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
 import { formatDisplayDate } from '../utils/time';
+import { formatRupees, parseWholeRupees } from '../utils/currency';
 import { showToast } from './Toast';
 import POSReceipt from './POSReceipt';
 
@@ -474,7 +475,7 @@ export default function POSRegister({
                     <button onClick={() => updateCartQuantity(item.cartId, 1)} className="p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors cursor-pointer"><Plus className="w-3 h-3"/></button>
                   </div>
                   <div className="w-20 text-right font-black font-mono text-xs text-slate-800">
-                    {(item.price * item.cartQuantity).toFixed(2)}
+                    {formatRupees(item.price * item.cartQuantity)}
                   </div>
                   <button onClick={() => removeFromCart(item.cartId)} className="p-1.5 text-rose-400 hover:bg-rose-100 hover:text-rose-600 rounded-xl transition-colors cursor-pointer">
                     <Trash2 className="w-4 h-4"/>
@@ -490,18 +491,18 @@ export default function POSRegister({
           <div className="space-y-2 mb-4">
             <div className="flex justify-between items-center text-xs font-bold text-slate-500">
               <span>Subtotal</span>
-              <span className="font-mono">{subtotal.toFixed(2)}</span>
+              <span className="font-mono">{formatRupees(subtotal)}</span>
             </div>
             <div className="flex justify-between items-center text-xs font-bold text-slate-500">
               <span className="flex items-center gap-2">Discount <PenTool className="w-3 h-3"/></span>
               <div className="relative w-24">
                 <span className="absolute left-2 top-1 text-[10px] font-mono">-</span>
-                <input type="number" min="0" step="0.01" value={discount || ''} onChange={e => setDiscount(parseFloat(e.target.value) || 0)} className="w-full text-right bg-slate-50 border border-slate-200 rounded text-[10px] font-mono font-bold py-1 px-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+                <input type="number" min="0" step="1" inputMode="numeric" value={discount || ''} onChange={e => setDiscount(parseWholeRupees(e.target.value))} className="w-full text-right bg-slate-50 border border-slate-200 rounded text-[10px] font-mono font-bold py-1 px-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
               </div>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
               <span className="text-sm font-black text-slate-800 uppercase tracking-widest">Total Due</span>
-              <span className="text-2xl font-black text-emerald-600 font-mono tracking-tight">{total.toFixed(2)}</span>
+              <span className="text-2xl font-black text-emerald-600 font-mono tracking-tight">{formatRupees(total)}</span>
             </div>
           </div>
 
@@ -540,22 +541,22 @@ export default function POSRegister({
             <div className="space-y-3 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="flex justify-between items-center text-xs font-bold text-slate-700">
                 <span>Cash Amount</span>
-                <input type="number" min="0" step="0.01" value={splitAmounts.cash || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, cash: parseFloat(e.target.value) || 0 }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                <input type="number" min="0" step="1" inputMode="numeric" value={splitAmounts.cash || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, cash: parseWholeRupees(e.target.value) }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
               </div>
               <div className="flex justify-between items-center text-xs font-bold text-slate-700">
                 <span>Card Amount</span>
-                <input type="number" min="0" step="0.01" value={splitAmounts.card || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, card: parseFloat(e.target.value) || 0 }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                <input type="number" min="0" step="1" inputMode="numeric" value={splitAmounts.card || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, card: parseWholeRupees(e.target.value) }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
               </div>
               <div className="flex justify-between items-center text-xs font-bold text-slate-700">
                 <span>Bank Transfer</span>
-                <input type="number" min="0" step="0.01" value={splitAmounts.bank_transfer || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, bank_transfer: parseFloat(e.target.value) || 0 }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                <input type="number" min="0" step="1" inputMode="numeric" value={splitAmounts.bank_transfer || ''} onChange={e => setSplitAmounts(prev => ({ ...prev, bank_transfer: parseWholeRupees(e.target.value) }))} className="w-24 text-right bg-white border border-slate-300 rounded font-mono p-1 focus:ring-1 focus:ring-indigo-500 outline-none" />
               </div>
               {(() => {
-                const diff = (total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)).toFixed(2);
-                const isBalanced = Math.abs(parseFloat(diff)) < 0.01;
+                const diff = total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer);
+                const isBalanced = diff === 0;
                 return (
                   <div className={`text-[10px] font-black uppercase tracking-widest text-right mt-2 ${isBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {isBalanced ? 'Balanced' : `Remaining: ${diff}`}
+                    {isBalanced ? 'Balanced' : `Remaining: ${formatRupees(diff)}`}
                   </div>
                 );
               })()}
@@ -565,7 +566,7 @@ export default function POSRegister({
           <Button
             data-testid="btn-checkout"
             onClick={handleCheckout}
-            disabled={cart.length === 0 || (paymentMethod === 'split' && Math.abs(total - (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer)) >= 0.01)}
+            disabled={cart.length === 0 || (paymentMethod === 'split' && total !== (splitAmounts.cash + splitAmounts.card + splitAmounts.bank_transfer))}
             className="w-full py-3.5"
           >
             <CheckCircle2 className="w-5 h-5"/> Process Transaction
@@ -609,7 +610,7 @@ export default function POSRegister({
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{item.category.replace('_', ' ')}</div>
                   </div>
                   <div className="flex justify-between items-end border-t border-slate-50 pt-2">
-                    <div className="font-mono text-xs font-black text-indigo-600">{(item.price || 0).toFixed(2)}</div>
+                    <div className="font-mono text-xs font-black text-indigo-600">{formatRupees(item.price || 0)}</div>
                     {!['service', 'lab_service'].includes(item.category) && (
                       <div className={`text-[10px] font-bold ${item.stock <= item.minStock ? 'text-rose-500' : 'text-slate-400'}`}>
                         Stk: {item.stock}
