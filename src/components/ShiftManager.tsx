@@ -633,7 +633,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
             </div>
             <div className="flex justify-between font-bold text-slate-600">
               <span>Cash Invoices & Adjustments</span>
-              <span className="font-mono text-emerald-600">+{formatCurrency((lastClosedShift?.actualCash || 0) - (lastClosedShift?.startingCash || 0))</span>
+              <span className="font-mono text-emerald-600">+{formatCurrency((lastClosedShift?.actualCash || 0) - (lastClosedShift?.startingCash || 0))}</span>
             </div>
             <div className="flex justify-between font-black text-slate-900 text-base pt-2 border-t border-slate-100">
               <span>Actual Cash in Drawer</span>
