@@ -348,7 +348,8 @@ export default function POSRegister({
         category: c.category,
         quantity: c.cartQuantity,
         unitPrice: numericPrice,
-        totalPrice: numericPrice * c.cartQuantity
+        totalPrice: numericPrice * c.cartQuantity,
+        sourceRefs: c.sourceRefs
       };
     });
 
