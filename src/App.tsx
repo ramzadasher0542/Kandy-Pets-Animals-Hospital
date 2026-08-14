@@ -91,7 +91,7 @@ import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
   ActiveShift, ClinicQueueItem, User,
-  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry
+  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, InvoiceSourceRef
 } from './types';
 
 import DashboardAnalytics from './components/DashboardAnalytics';
@@ -1035,6 +1035,34 @@ function App() {
             }
           }
         }
+
+        // A voided sale must release the exact clinical source rows that were
+        // marked billed during checkout so they can be rebilled after correction.
+        const sourceRefs = (target.items || []).flatMap(item => item.sourceRefs || []) as InvoiceSourceRef[];
+        let sourceUnbillingFailed = false;
+        const uniqueRefs = new Map<string, InvoiceSourceRef>();
+        sourceRefs.forEach(ref => uniqueRefs.set(`${ref.type}-${ref.id}`, ref));
+        for (const ref of uniqueRefs.values()) {
+          try {
+            if (ref.type === 'vaccination') {
+              const record = (await fetchVaccinations()).find(row => row.id === ref.id);
+              if (record?.billed) await upsertVaccination({ ...record, billed: false, updated_at: new Date().toISOString() });
+            } else if (ref.type === 'grooming') {
+              const record = (await fetchGroomingLogs()).find(row => row.id === ref.id);
+              if (record?.billed) await upsertGroomingLog({ ...record, billed: false, updated_at: new Date().toISOString() });
+            } else if (ref.type === 'lab') {
+              const record = (await fetchLabResults()).find(row => row.id === ref.id);
+              if (record?.billed) await upsertLabResult({ ...record, billed: false, updated_at: new Date().toISOString() });
+            } else if (ref.type === 'boarding') {
+              const record = (await fetchBoardingRecords()).find(row => row.id === ref.id);
+              if (record?.billed) await upsertBoardingRecord({ ...record, billed: false, updated_at: new Date().toISOString() });
+            }
+          } catch (error) {
+            sourceUnbillingFailed = true;
+            if (import.meta.env.DEV) console.error('[CeylonPets] Failed to release billed source row:', error);
+          }
+        }
+        if (sourceUnbillingFailed) showToast('Invoice voided, but one or more linked clinical rows could not be released for rebilling.', 'warning');
       }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
