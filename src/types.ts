@@ -241,7 +241,9 @@ export interface MedicalRecord {
   is_deleted?: boolean;
 }
 
-export interface InvoiceItem { itemId: string; sku: string; name: string; category: ItemCategory; quantity: number; unitPrice: number; totalPrice: number; }
+export type InvoiceSourceType = 'vaccination' | 'grooming' | 'lab' | 'boarding';
+export interface InvoiceSourceRef { type: InvoiceSourceType; id: string; }
+export interface InvoiceItem { itemId: string; sku: string; name: string; category: ItemCategory; quantity: number; unitPrice: number; totalPrice: number; sourceRefs?: InvoiceSourceRef[]; }
 
 export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'e_wallet' | 'deposit' | 'split';
 
