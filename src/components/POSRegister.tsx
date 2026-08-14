@@ -326,7 +326,11 @@ export default function POSRegister({
     
     const isWalkIn = !selectedAppointment;
     const selectedQueueItem = selectedAppointment as (Appointment & Partial<ClinicQueueItem>) | null;
-    const linkedAppointmentId = selectedQueueItem?.appointmentId || selectedQueueItem?.id;
+    const linkedAppointmentId = selectedQueueItem?.appointmentId || (
+      selectedQueueItem?.id && appointments.some(apt => apt.id === selectedQueueItem.id)
+        ? selectedQueueItem.id
+        : undefined
+    );
     const clientName = isWalkIn ? (customClientName || 'Walk-in Client') : selectedAppointment.ownerName;
     const clientPhone = isWalkIn ? (customClientPhone || '0000000000') : selectedAppointment.ownerPhone;
     const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
