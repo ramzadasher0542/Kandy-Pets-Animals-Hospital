@@ -16,6 +16,7 @@ import { showToast } from './Toast';
 import { fetchPaginatedInvoices, fetchInvoiceStats } from '../lib/db';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
+import { formatRupees } from '../utils/currency';
 
 interface InvoicesProps {
   invoices: any[];
@@ -120,7 +121,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
           icon: <DollarSign className="w-6 h-6" />,
           iconBg: 'bg-emerald-50 text-emerald-600',
           label: 'Gross Revenue (Paid)',
-          value: <span className="font-mono">{currencySign}{(stats.revenue).toFixed(2)}</span>
+          value: <span className="font-mono">{currencySign}{formatRupees(stats.revenue)}</span>
         },
         {
           icon: stats.voided > 0 ? <AlertTriangle className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />,
@@ -198,7 +199,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className={`font-mono text-sm font-black ${isVoid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                        {currencySign}{(inv.sales_total || 0).toFixed(2)}
+                        {currencySign}{formatRupees(inv.sales_total || 0)}
                       </div>
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
                         {inv.paymentMethod === 'split' ? 'SPLIT TENDER' : inv.paymentMethod}
@@ -326,9 +327,9 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                 
                 return (
                 <tr key={idx}>
-                  <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-black text-slate-400">@ {currencySign}{price.toFixed(2)}</div></td>
+                  <td className="py-3 pr-2 font-bold text-slate-700">{item.name || item.itemName || 'Retail Purchase'} <div className="text-[10px] font-black text-slate-400">@ {currencySign}{formatRupees(price)}</div></td>
                   <td className="py-3 px-2 text-center font-mono font-bold text-slate-600">{qty}</td>
-                  <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{total.toFixed(2)}</td>
+                  <td className="py-3 pl-2 text-right font-mono font-black text-slate-800">{currencySign}{formatRupees(total)}</td>
                 </tr>
                 )
               })}
@@ -338,7 +339,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
           <div className="border-t border-slate-200 pt-4 mb-8">
             <div className="flex justify-between items-center">
               <span className="font-black text-slate-800 uppercase tracking-widest">Total Paid</span>
-              <span className="text-xl font-mono font-black text-indigo-600">{currencySign}{((selectedInvoice?.total || selectedInvoice?.grandTotal || 0)).toFixed(2)}</span>
+              <span className="text-xl font-mono font-black text-indigo-600">{currencySign}{formatRupees((selectedInvoice?.total || selectedInvoice?.grandTotal || 0))}</span>
             </div>
             {selectedInvoice?.paymentMethod && (
               <div className="flex justify-between items-center mt-2">
