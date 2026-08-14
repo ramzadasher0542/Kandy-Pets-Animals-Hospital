@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
+import { formatRupees, parseWholeRupees } from '../utils/currency';
 
 // --- Cash Adjustment Type ---
 interface CashAdjustment {
@@ -44,7 +45,7 @@ interface ShiftManagerProps {
   setActiveShift: (s: ActiveShift | null) => void;
 }
 
-const formatCurrency = (v: number) => `Rs. ${v.toFixed(2)}`;
+const formatCurrency = (v: number) => `Rs. ${formatRupees(v)}`;
 
 export default function ShiftManager({ invoices, currentUser, activeShift, setActiveShift }: ShiftManagerProps) {
   const [openingFloatInput, setOpeningFloatInput] = useState('');
@@ -147,7 +148,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     const openingFloatCents = Math.round(activeShift.openingFloat * 100);
     const expectedCashCents = openingFloatCents + cashSalesCents + adjustInCents - adjustOutCents;
     const totalRevenueCents = cashSalesCents + cardSalesCents + bankSalesCents;
-    const actualCents = Math.round((parseFloat(actualClosingInput) || 0) * 100);
+    const actualCents = parseWholeRupees(actualClosingInput) * 100;
     const discrepancyCents = actualCents - expectedCashCents;
 
     // Convert back to display currency (divide only at the end)
@@ -167,7 +168,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const handleOpenShift = async () => {
     if (!openingFloatInput) { showToast('Please enter a starting float amount.', 'error'); return; }
     
-    const floatAmount = parseFloat(openingFloatInput) || 0;
+    const floatAmount = parseWholeRupees(openingFloatInput);
     const openingFloatCents = Math.round(floatAmount * 100);
 
     const newShift: Shift = {
@@ -258,21 +259,21 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       openingFloat: activeShift.openingFloat,
       cashSales: drawerMath.cashSales,
       expectedClosing: drawerMath.expectedCash,
-      actualClosing: parseFloat(actualClosingInput) || 0,
+      actualClosing: parseWholeRupees(actualClosingInput),
       discrepancy: drawerMath.discrepancy,
-      status: Math.abs(drawerMath.discrepancy) < 0.01 ? 'balanced' : 'discrepancy'
+      status: drawerMath.discrepancy === 0 ? 'balanced' : 'discrepancy'
     };
 
     // Close the shift in Supabase (rupees → integer cents to match the columns).
     // The shift-close UPDATE and the reconciliation INSERT run in ONE database
     // transaction via close_shift_and_reconcile: both commit or neither does, so a
     // failure can no longer close the shift while losing the reconciliation.
-    const notes = log.status === 'balanced' ? 'Balanced' : `Discrepancy Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)}`;
+    const notes = log.status === 'balanced' ? 'Balanced' : `Discrepancy Rs. ${formatRupees(Math.abs(drawerMath.discrepancy))}`;
     let result: { already_closed: boolean };
     try {
       result = await closeShiftAndReconcile(
         activeShift.id,
-        Math.round((parseFloat(actualClosingInput) || 0) * 100),
+        parseWholeRupees(actualClosingInput) * 100,
         Math.round(drawerMath.expectedCash * 100),
         Math.round(drawerMath.discrepancy * 100),
         notes,
@@ -303,7 +304,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       closedAt: log.timestamp,
       openedBy: currentUser.name,
       startingCash: activeShift.openingFloat,
-      actualCash: parseFloat(actualClosingInput) || 0,
+      actualCash: parseWholeRupees(actualClosingInput),
       notes,
     });
     setActiveShift(null);
@@ -321,7 +322,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     }
 
     if (drawerMath.discrepancy !== 0) {
-      showToast(`Warning: Drawer discrepancy of Rs. ${Math.abs(drawerMath.discrepancy).toFixed(2)} detected.`, 'warning');
+      showToast(`Warning: Drawer discrepancy of Rs. ${formatRupees(Math.abs(drawerMath.discrepancy))} detected.`, 'warning');
     } else {
       showToast('Shift reconciled perfectly. Drawer is balanced.', 'success');
     }
@@ -343,7 +344,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
   const handleSaveAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeShift) return showToast('No active shift. Open register first.', 'error');
-    const amt = parseFloat(adjAmount);
+    const amt = parseWholeRupees(adjAmount);
     if (!amt || amt <= 0) return showToast('Enter a valid amount.', 'error');
     if (!adjReason.trim()) return showToast('Reason is required.', 'error');
 
@@ -368,7 +369,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     }
     setAdjustments(prev => [newAdj, ...prev]);
     setShowAdjModal(false); setAdjAmount(''); setAdjReason('');
-    showToast(`Drawer ${adjType === 'IN' ? 'cash added' : 'cash removed'}: Rs. ${amt.toFixed(2)}`, 'success');
+    showToast(`Drawer ${adjType === 'IN' ? 'cash added' : 'cash removed'}: Rs. ${formatRupees(amt)}`, 'success');
   };
 
   const handleDismissReceipt = () => {
@@ -415,9 +416,9 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block pl-1">Starting Float (Rs.)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-3.5 text-xs font-black text-slate-400 font-mono">Rs.</span>
-                    <input type="number" value={openingFloatInput} onChange={e => setOpeningFloatInput(e.target.value)}
+                    <input type="number" min="0" step="1" inputMode="numeric" value={openingFloatInput} onChange={e => setOpeningFloatInput(e.target.value === '' ? '' : String(parseWholeRupees(e.target.value)))}
                       className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-lg font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                      placeholder="0.00" />
+                      placeholder="0" />
                   </div>
                 </div>
                 <button onClick={handleOpenShift}
@@ -507,9 +508,9 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
                   <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block pl-1">Actual Counted Drawer Cash</label>
                   <div className="relative">
                     <span className="absolute left-4 top-3.5 text-xs font-black text-indigo-400 font-mono">Rs.</span>
-                    <input type="number" value={actualClosingInput} onChange={e => setActualClosingInput(e.target.value)}
+                    <input type="number" min="0" step="1" inputMode="numeric" value={actualClosingInput} onChange={e => setActualClosingInput(e.target.value === '' ? '' : String(parseWholeRupees(e.target.value)))}
                       className="w-full pl-12 pr-4 py-3 bg-white border-2 border-indigo-200 rounded-xl text-lg font-mono font-black text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                      placeholder="0.00" />
+                      placeholder="0" />
                   </div>
                 </div>
                 {actualClosingInput && (
@@ -554,7 +555,7 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Amount</label>
-                <input type="number" step="0.01" min="0" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} placeholder="0.00"
+                <input type="number" step="1" inputMode="numeric" min="0" value={adjAmount} onChange={e => setAdjAmount(e.target.value === '' ? '' : String(parseWholeRupees(e.target.value)))} placeholder="0"
                   className="w-full px-4 py-3 text-2xl font-black font-mono text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" autoFocus required />
               </div>
               <div>
@@ -628,21 +629,21 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
           <div className="border-t border-b border-slate-200 py-4 mb-6 space-y-3">
             <div className="flex justify-between font-bold text-slate-600">
               <span>Starting Drawer Float</span>
-              <span className="font-mono">Rs.{(lastClosedShift?.startingCash || 0).toFixed(2)}</span>
+              <span className="font-mono">{formatCurrency(lastClosedShift?.startingCash || 0)}</span>
             </div>
             <div className="flex justify-between font-bold text-slate-600">
               <span>Cash Invoices & Adjustments</span>
-              <span className="font-mono text-emerald-600">+Rs.{((lastClosedShift?.actualCash || 0) - (lastClosedShift?.startingCash || 0)).toFixed(2)}</span>
+              <span className="font-mono text-emerald-600">+{formatCurrency((lastClosedShift?.actualCash || 0) - (lastClosedShift?.startingCash || 0))</span>
             </div>
             <div className="flex justify-between font-black text-slate-900 text-base pt-2 border-t border-slate-100">
               <span>Actual Cash in Drawer</span>
-              <span className="font-mono">Rs.{(lastClosedShift?.actualCash || 0).toFixed(2)}</span>
+              <span className="font-mono">{formatCurrency(lastClosedShift?.actualCash || 0)}</span>
             </div>
             
             {lastClosedShift?.discrepancy !== 0 && (
               <div className="flex justify-between font-black text-rose-600 bg-rose-50 p-2 rounded-lg mt-2">
                 <span>Discrepancy (Overage/Shortage)</span>
-                <span className="font-mono">Rs.{(lastClosedShift?.discrepancy || 0).toFixed(2)}</span>
+                <span className="font-mono">{formatCurrency(lastClosedShift?.discrepancy || 0)}</span>
               </div>
             )}
           </div>
