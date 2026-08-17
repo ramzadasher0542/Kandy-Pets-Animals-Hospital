@@ -15,6 +15,7 @@ import { downloadJsonFile } from '../lib/download';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 import { parseWholeRupees } from '../utils/currency';
+import { formatClinicDateTime, formatClinicISODate } from '../utils/time';
 
 export interface SystemConfig {
   appName: string;
@@ -36,9 +37,6 @@ export interface SystemConfig {
   localAutosaveInterval: number;
   cloudEndpoint: string;
   cloudBackupEnabled: boolean;
-  emailDigestEnabled: boolean;
-  recipientEmails: string[];
-  digestSchedule: string;
   rolePermissions: {
     cashier: string[];
     veterinarian: string[];
@@ -51,10 +49,6 @@ export interface SystemConfig {
   /** AUTH-4: admin-editable overrides for requireAuth's ACTION_POLICIES.
    *  Shape: { [AuthAction]: ActionRole[] }. Absent action = use the default. */
   actionPolicies?: Record<string, string[]>;
-  // F-5: EmailJS credentials for emailing the Z-Report (owner-configured, never hardcoded)
-  emailjsServiceId?: string;
-  emailjsTemplateId?: string;
-  emailjsPublicKey?: string;
   boardingRates?: {
     catNofoodCents: number;
     catWithfoodCents: number;
@@ -279,47 +273,69 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       const loc = `"${(i.location || '').replace(/"/g, '""')}"`;
       return `${i.sku},${name},${i.category},${i.price},${i.cost},${i.stock},${i.minStock},${i.unit},${loc}`;
     }).join('\n');
-    downloadCSV(`master_inventory_export_${new Date().toISOString().split('T')[0]}.csv`, headers + rows);
+    downloadCSV(`master_inventory_export_${formatClinicISODate(new Date())}.csv`, headers + rows);
     showToast('Registry exported successfully.', 'success');
   };
 
   const [isExportingAll, setIsExportingAll] = useState(false);
   const [isRestoringAll, setIsRestoringAll] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<{
+    filename: string;
+    exportedAt: string;
+    tables: number;
+    rows: number;
+  } | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [restoreFileName, setRestoreFileName] = useState<string | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
-  const handleExportAllData = async () => {
+  const handleDownloadBackup = async () => {
     setIsExportingAll(true);
+    setBackupError(null);
     try {
+      const auth = await requireAuth(currentUser || null, 'daily_backup');
+      if (!auth.allowed) throw new Error('Only an administrator or provider can create a system backup.');
+
       const json = await exportFullDatabase();
-      downloadJsonFile(json, `kandy-pets-backup-${new Date().toISOString().split('T')[0]}.json`);
-      showToast('Backup downloaded successfully.', 'success');
+      const parsed = JSON.parse(json) as { exportedAt?: string; tables?: Record<string, unknown[]> };
+      const tables = parsed.tables || {};
+      const tableCount = Object.keys(tables).length;
+      const rowCount = Object.values(tables).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0);
+      if (!tableCount) throw new Error('The backup contained no table data. Nothing was downloaded.');
+
+      const filename = `ceylonpets_backup_FULL_${formatClinicISODate(new Date())}.json`;
+      downloadJsonFile(json, filename);
+      setBackupStatus({
+        filename,
+        exportedAt: parsed.exportedAt || new Date().toISOString(),
+        tables: tableCount,
+        rows: rowCount,
+      });
+      showToast(`Backup downloaded: ${filename}`, 'success');
     } catch (error) {
       if (import.meta.env.DEV) console.error(error);
-      showToast('Failed to export data.', 'error');
+      const message = error instanceof Error ? error.message : 'The system backup could not be created.';
+      setBackupError(message);
+      showToast(`Backup failed: ${message}`, 'error');
     } finally {
       setIsExportingAll(false);
     }
   };
 
-  const handleDownloadBackup = async () => {
-    try {
-      const json = await exportFullDatabase();
-      downloadJsonFile(json, `ceylonpets_backup_FULL_${new Date().toISOString().split('T')[0]}.json`);
-      showToast('Full system backup downloaded successfully.', 'success');
-    } catch (error) {
-      if (import.meta.env.DEV) console.error(error);
-      showToast('Failed to download system backup.', 'error');
-    }
-  };
-
   const handleRestoreBackupTrigger = async () => {
+    setBackupError(null);
     const auth = await requireAuth(currentUser || null, 'system_restore');
     if (!auth.allowed) {
-      showToast('Authorization failed. Restore cancelled.', 'error');
+      const message = 'Authorization failed. Restore cancelled.';
+      setBackupError(message);
+      showToast(message, 'error');
       return;
     }
-    if (!window.confirm('Restore this backup into the cloud database? Matching records may be replaced. No rows will be deleted, and Supabase Auth passwords are not changed.')) {
-      return;
-    }
+    setShowRestoreConfirm(true);
+  };
+
+  const confirmRestoreBackup = () => {
+    setShowRestoreConfirm(false);
     backupInputRef.current?.click();
   };
 
@@ -327,10 +343,24 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setRestoreFileName(file.name);
+    setBackupError(null);
+    if (file.size > 50 * 1024 * 1024) {
+      setBackupError('This backup is larger than 50 MB. Choose a smaller JSON backup file.');
+      showToast('Backup file is too large.', 'error');
+      if (backupInputRef.current) backupInputRef.current.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       const text = event.target?.result as string;
-      if (!text) return;
+      if (!text) {
+        const message = 'The backup file is empty. Choose a complete JSON backup file.';
+        setBackupError(message);
+        showToast(message, 'error');
+        return;
+      }
       setIsRestoringAll(true);
       try {
         const summary = await restoreFullDatabase(text);
@@ -338,10 +368,18 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
         setTimeout(() => window.location.reload(), 1500);
       } catch (error) {
         if (import.meta.env.DEV) console.error(error);
-        showToast(error instanceof Error ? error.message : 'Failed to restore backup.', 'error');
+        const message = error instanceof Error ? error.message : 'Failed to restore backup.';
+        setBackupError(message);
+        showToast(message, 'error');
       } finally {
         setIsRestoringAll(false);
       }
+    };
+    reader.onerror = () => {
+      const message = 'The backup file could not be read. Choose the JSON file again.';
+      setBackupError(message);
+      showToast(message, 'error');
+      setIsRestoringAll(false);
     };
     reader.readAsText(file);
     if (backupInputRef.current) backupInputRef.current.value = '';
@@ -512,26 +550,6 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
                   <div className="col-span-2 md:col-span-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Public Email</label>
                     <input type="email" value={localConfig.hospitalEmail} onChange={e => updateConfig('hospitalEmail', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                </div>
-              </div>
-
-              {/* F-5: EmailJS configuration for Z-Report delivery */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-500" /> Email (Z-Report) — EmailJS</h3>
-                <p className="text-[10px] font-bold text-slate-400 -mt-3">Configure your own EmailJS account to email the end-of-day Z-Report. Nothing is sent until all three fields are filled. Recipients use the "Public Email" above.</p>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Service ID</label>
-                    <input type="text" value={localConfig.emailjsServiceId || ''} onChange={e => updateConfig('emailjsServiceId', e.target.value)} placeholder="service_xxxxxxx" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Template ID</label>
-                    <input type="text" value={localConfig.emailjsTemplateId || ''} onChange={e => updateConfig('emailjsTemplateId', e.target.value)} placeholder="template_xxxxxxx" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">EmailJS Public Key</label>
-                    <input type="text" value={localConfig.emailjsPublicKey || ''} onChange={e => updateConfig('emailjsPublicKey', e.target.value)} placeholder="Your EmailJS public key" className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
                   </div>
                 </div>
               </div>
@@ -917,58 +935,151 @@ const isProvider = ROOT_ROLES.includes(role as any);
           {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database') && (
             <div className="space-y-6 animate-fade-in">
 
-              {/* SECTION: Data Backup (portable JSON export) */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><DownloadCloud className="w-5 h-5 text-rose-500" /> Data Backup <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-1 rounded-full tracking-widest">BETA</span></h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Download a complete cloud snapshot weekly and keep a copy outside Supabase.</p>
+              <section className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="bg-slate-950 px-6 py-7 text-white md:px-8">
+                  <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+                    <div className="max-w-2xl">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-300">
+                        <ShieldAlert className="h-4 w-4" /> Data protection
+                        <span className="rounded-full bg-amber-400/15 px-2 py-1 text-amber-200">Beta</span>
+                      </div>
+                      <h3 className="mt-3 text-2xl font-black tracking-tight">Backup &amp; Restore</h3>
+                      <p className="mt-2 text-sm font-medium leading-relaxed text-slate-300">
+                        Create a portable copy of the clinic data, or validate and merge a previous copy back into Supabase.
+                        This page is for recovery operations, not routine stock exports.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left md:min-w-[190px]">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Protection level</p>
+                      <p className="mt-1 text-sm font-black text-emerald-300">Administrator / provider</p>
+                      <p className="mt-1 text-[11px] font-medium text-slate-400">Auth passwords are never exported.</p>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={handleExportAllData}
-                  disabled={isExportingAll}
-                  className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest shadow-md transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isExportingAll ? 'Generating...' : 'Export All Data'}
-                </button>
-              </div>
 
-              {/* SECTION: Bulk Inventory Logistics */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-500" /> Data Security & Backups</h3>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Beta recovery tools merge validated rows into Supabase. They never delete rows or change Auth passwords. (Bulk stock updates now live in the <span className="font-black">Inventory &amp; Stock</span> tab.)</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button onClick={handleDownloadBackup} className="p-6 bg-gradient-to-br from-indigo-50 to-white border border-indigo-200 hover:border-indigo-400 hover:shadow-md rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer group">
-                    <div className="w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md group-hover:scale-110 transition-transform"><DownloadCloud className="w-6 h-6"/></div>
-                    <span className="text-sm font-black text-slate-800 mt-1">Download Full System Backup</span>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Complete JSON Snapshot</span>
-                  </button>
-
-                  <>
-                    <input
-                      ref={backupInputRef}
-                      data-testid="input-restore-backup"
-                      type="file"
-                      accept=".json,application/json"
-                      onChange={handleBackupFileUpload}
-                      className="hidden"
-                    />
+                <div className="space-y-6 p-6 md:p-8">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <button
-                      onClick={handleRestoreBackupTrigger}
-                      disabled={isRestoringAll}
-                      data-testid="btn-restore-backup"
-                      className="p-6 bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleDownloadBackup}
+                      disabled={isExportingAll}
+                      data-testid="btn-download-backup"
+                      className="group rounded-2xl border-2 border-indigo-200 bg-indigo-50/60 p-6 text-left transition-all hover:border-indigo-500 hover:bg-indigo-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <div className="w-12 h-12 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-md"><UploadCloud className="w-6 h-6"/></div>
-                      <span className="text-sm font-black text-slate-800 mt-1">{isRestoringAll ? 'Restoring...' : 'Restore Full Backup'}</span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1"><ShieldAlert className="w-3 h-3" /> Admin confirmation required</span>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md transition-transform group-hover:-translate-y-0.5">
+                          <DownloadCloud className="h-5 w-5" />
+                        </div>
+                        <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">Portable copy</span>
+                      </div>
+                      <p className="mt-5 text-base font-black text-slate-900">{isExportingAll ? 'Preparing backup...' : 'Create & download backup'}</p>
+                      <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">Complete JSON snapshot of all configured clinic tables, including audit history and soft-deleted records.</p>
+                      <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-indigo-700">Keep the file outside Supabase</p>
                     </button>
-                  </>
-                </div>
 
-              </div>
+                    <>
+                      <input
+                        ref={backupInputRef}
+                        data-testid="input-restore-backup"
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={handleBackupFileUpload}
+                        className="hidden"
+                      />
+                      <button
+                        onClick={handleRestoreBackupTrigger}
+                        disabled={isRestoringAll}
+                        data-testid="btn-restore-backup"
+                        className="group rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 p-6 text-left transition-all hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md transition-transform group-hover:-translate-y-0.5">
+                            <UploadCloud className="h-5 w-5" />
+                          </div>
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">Validated merge</span>
+                        </div>
+                        <p className="mt-5 text-base font-black text-slate-900">{isRestoringAll ? 'Restoring backup...' : 'Restore from JSON file'}</p>
+                        <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">Choose a previous backup. The file is checked before matching records are merged into the current cloud database.</p>
+                        <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-emerald-700">Administrator confirmation required</p>
+                      </button>
+                    </>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="flex gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                      <div><p className="text-xs font-black text-slate-800">What is included</p><p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">Clinic records, configuration, audit trails, and deleted history.</p></div>
+                    </div>
+                    <div className="flex gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <div><p className="text-xs font-black text-slate-800">What is protected</p><p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">Auth passwords are excluded. Restore never deletes rows or changes credentials.</p></div>
+                    </div>
+                    <div className="flex gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <Database className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+                      <div><p className="text-xs font-black text-slate-800">Important limitation</p><p className="mt-1 text-[11px] font-bold leading-relaxed text-slate-500">This is a portable export, not provider-managed disaster recovery.</p></div>
+                    </div>
+                  </div>
+
+                  {backupStatus ? (
+                    <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex gap-3">
+                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                        <div>
+                          <p className="text-sm font-black text-emerald-900">Backup created and download started</p>
+                          <p className="mt-1 text-xs font-bold text-emerald-700">{backupStatus.tables} tables · {backupStatus.rows} rows · {formatClinicDateTime(backupStatus.exportedAt)}</p>
+                        </div>
+                      </div>
+                      <code className="break-all rounded-lg bg-white/70 px-3 py-2 text-[10px] font-bold text-emerald-800">{backupStatus.filename}</code>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs font-bold text-slate-500">
+                      No backup has been created in this session. After clicking the download button, verify that the JSON file appears in your browser’s downloads before leaving this page.
+                    </div>
+                  )}
+
+                  {restoreFileName && !backupError && !isRestoringAll && (
+                    <p className="text-xs font-bold text-slate-500">Selected restore file: <span className="font-mono text-slate-700">{restoreFileName}</span></p>
+                  )}
+
+                  {backupError && (
+                    <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 md:flex-row md:items-start md:justify-between">
+                      <div className="flex gap-3">
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                        <div>
+                          <p className="text-sm font-black text-rose-900">Backup operation failed</p>
+                          <p className="mt-1 text-xs font-bold leading-relaxed text-rose-700">{backupError}</p>
+                        </div>
+                      </div>
+                      <button onClick={handleDownloadBackup} disabled={isExportingAll} className="shrink-0 rounded-lg bg-rose-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-rose-700 disabled:opacity-50">Try again</button>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <Modal
+                open={showRestoreConfirm}
+                onClose={() => setShowRestoreConfirm(false)}
+                title="Confirm backup restore"
+                icon={<ShieldAlert className="h-5 w-5 text-amber-600" />}
+                size="sm"
+                footer={
+                  <>
+                    <button onClick={() => setShowRestoreConfirm(false)} className="rounded-xl px-4 py-2.5 text-xs font-black text-slate-600 hover:bg-slate-100">Cancel</button>
+                    <button onClick={confirmRestoreBackup} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white shadow-sm hover:bg-emerald-700">Choose backup file</button>
+                  </>
+                }
+              >
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-black text-amber-900">This is a merge, not an undo button.</p>
+                    <p className="mt-1 text-xs font-bold leading-relaxed text-amber-800">Matching records may be updated. Existing rows are not deleted, and Supabase Auth passwords are not changed.</p>
+                  </div>
+                  <ul className="space-y-2 text-xs font-bold leading-relaxed text-slate-600">
+                    <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />Use a backup created by this application.</li>
+                    <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />Keep the original file unchanged in case you need to retry.</li>
+                    <li className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />For disaster recovery, test against a separate empty database first.</li>
+                  </ul>
+                </div>
+              </Modal>
 
               {/* SECTION: The Danger Zone */}
               <div className="bg-rose-50 p-6 rounded-2xl border border-rose-200 shadow-sm space-y-6 relative overflow-hidden">
