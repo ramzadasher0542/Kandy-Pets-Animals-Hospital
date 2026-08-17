@@ -1027,6 +1027,7 @@ export async function getQueueItemsByService(serviceType: string): Promise<Clini
 const FULL_BACKUP_FORMAT = 'ceylonpets-cloud-backup';
 const FULL_BACKUP_VERSION = 2;
 const RESTORE_BATCH_SIZE = 100;
+const BACKUP_READ_ATTEMPTS = 2;
 
 interface BackupTableDefinition {
   name: string;
@@ -1085,11 +1086,25 @@ export async function exportFullDatabase(): Promise<string> {
 
     // Read raw rows so deleted history and database-owned columns survive a round trip.
     for (const definition of BACKUP_TABLES) {
-      const query = definition.select
-        ? client.from(definition.name).select(definition.select)
-        : client.from(definition.name).select('*');
-      const { data, error } = await query;
-      if (error) throw new Error(`Backup could not read ${definition.name}: ${error.message}`);
+      let data: unknown[] | null = null;
+      let lastError: { message?: string } | null = null;
+
+      for (let attempt = 0; attempt < BACKUP_READ_ATTEMPTS; attempt++) {
+        const query = definition.select
+          ? client.from(definition.name).select(definition.select)
+          : client.from(definition.name).select('*');
+        const result = await query;
+        data = result.data as unknown[] | null;
+        lastError = result.error;
+        if (!result.error) break;
+        if (attempt < BACKUP_READ_ATTEMPTS - 1) {
+          await new Promise(resolve => setTimeout(resolve, 350));
+        }
+      }
+
+      if (lastError) {
+        throw new Error(`Backup could not read ${definition.name}: ${lastError.message || 'the cloud request failed'}`);
+      }
       tables[definition.name] = data || [];
     }
 
@@ -1423,14 +1438,8 @@ export async function fetchSystemConfig(): Promise<SystemConfig | null> {
     localAutosaveInterval: Number(data.local_autosave_interval) || 15,
     cloudEndpoint: data.cloud_endpoint || '',
     cloudBackupEnabled: data.cloud_backup_enabled || false,
-    emailDigestEnabled: data.email_digest_enabled || false,
-    recipientEmails: data.recipient_emails || [],
-    digestSchedule: data.digest_schedule || 'daily_end',
     rolePermissions: data.role_permissions || {},
-     actionPolicies: data.action_policies || {},
-    emailjsServiceId: data.emailjs_service_id || '',
-    emailjsTemplateId: data.emailjs_template_id || '',
-    emailjsPublicKey: data.emailjs_public_key || '',
+    actionPolicies: data.action_policies || {},
     boardingRates: data.boarding_rates || {},
     defaultDepositCents: Number(data.default_deposit_cents) || 0,
      idleLogoutMinutes: data.idle_logout_minutes ?? 15,
@@ -1461,14 +1470,8 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
     local_autosave_interval: config.localAutosaveInterval,
     cloud_endpoint: config.cloudEndpoint,
     cloud_backup_enabled: config.cloudBackupEnabled,
-    email_digest_enabled: config.emailDigestEnabled,
-    recipient_emails: config.recipientEmails,
-    digest_schedule: config.digestSchedule,
     role_permissions: config.rolePermissions,
     action_policies: config.actionPolicies,
-    emailjs_service_id: config.emailjsServiceId,
-    emailjs_template_id: config.emailjsTemplateId,
-    emailjs_public_key: config.emailjsPublicKey,
     boarding_rates: config.boardingRates,
     default_deposit_cents: config.defaultDepositCents,
     idle_logout_minutes: config.idleLogoutMinutes,

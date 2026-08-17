@@ -4,11 +4,16 @@
  * provider-managed storage.
  */
 export function downloadJsonFile(json: string, filename: string): void {
+  if (!json.trim()) throw new Error('The backup is empty and cannot be downloaded.');
+
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.rel = 'noopener';
+  link.style.position = 'fixed';
+  link.style.left = '-9999px';
   document.body.appendChild(link);
   link.click();
 
