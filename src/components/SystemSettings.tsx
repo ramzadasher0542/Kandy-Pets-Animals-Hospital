@@ -15,7 +15,9 @@ import { downloadJsonFile } from '../lib/download';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
 import { parseWholeRupees } from '../utils/currency';
-import { formatClinicDateTime, formatClinicISODate } from '../utils/time';
+import { formatDisplayDate } from '../utils/time';
+const formatClinicISODate = formatDisplayDate;
+const formatClinicDateTime = (date: string) => new Date(date).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 
 export interface SystemConfig {
   appName: string;
