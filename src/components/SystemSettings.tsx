@@ -10,7 +10,7 @@ import { Building2, Printer, Users, ShieldAlert, Save, Plus,
   FileText, Download, Upload, Layers, AlertTriangle, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
 import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
-import { fetchInventory, exportFullDatabase, restoreFullDatabase } from '../lib/db';
+import { fetchInventory, exportFullDatabase, restoreFullDatabase, purgeApplicationData } from '../lib/db';
 import { downloadJsonFile } from '../lib/download';
 import { ItemCategory, InventoryItem } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
@@ -315,7 +315,10 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       });
       showToast(`Backup downloaded: ${filename}`, 'success');
     } catch (error) {
-      if (import.meta.env.DEV) console.error(error);
+        const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [isPurgingAll, setIsPurgingAll] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
       const message = error instanceof Error ? error.message : 'The system backup could not be created.';
       setBackupError(message);
       showToast(`Backup failed: ${message}`, 'error');
@@ -385,6 +388,27 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
     };
     reader.readAsText(file);
     if (backupInputRef.current) backupInputRef.current.value = '';
+  };
+
+    const handlePurgeApplicationData = async () => {
+    setShowPurgeConfirm(false);
+    setIsPurgingAll(true);
+    setPurgeError(null);
+    try {
+      const auth = await requireAuth(currentUser || null, 'erase_local_database');
+      if (!auth.allowed) throw new Error('Only an administrator or provider can reset application data.');
+
+      const summary = await purgeApplicationData();
+      showToast('Application reset complete: ' + summary.tablesCleared + ' data tables cleared. Credentials were preserved.', 'success');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (error) {
+      if (import.meta.env.DEV) console.error(error);
+      const message = error instanceof Error ? error.message : 'Application reset failed.';
+      setPurgeError(message);
+      showToast('Application reset failed: ' + message, 'error');
+    } finally {
+      setIsPurgingAll(false);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -933,7 +957,32 @@ const isProvider = ROOT_ROLES.includes(role as any);
             </div>
           )}
 
-          {/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
+                        <Modal
+                open={showPurgeConfirm}
+                onClose={() => setShowPurgeConfirm(false)}
+                title="Reset application data"
+                icon={<ShieldAlert className="h-5 w-5 text-rose-600" />}
+                size="sm"
+                footer={
+                  <>
+                    <button onClick={() => setShowPurgeConfirm(false)} className="rounded-xl px-4 py-2.5 text-xs font-black text-slate-600 hover:bg-slate-100">Cancel</button>
+                    <button onClick={handlePurgeApplicationData} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-black text-white shadow-sm hover:bg-rose-700">Reset application</button>
+                  </>
+                }
+              >
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                    <p className="text-sm font-black text-rose-900">This makes the clinic look brand new.</p>
+                    <p className="mt-1 text-xs font-bold leading-relaxed text-rose-800">All application records, configuration, audit history, inventory, appointments, clinical records, invoices, shifts, and staff-management data will be cleared.</p>
+                  </div>
+                  <ul className="space-y-2 text-xs font-bold leading-relaxed text-slate-600">
+                    <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />Login accounts, roles, credentials, and Supabase Auth passwords are preserved.</li>
+                    <li className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />This cannot be undone. Create and keep a backup first.</li>
+                    <li className="flex gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />Only an administrator or provider can perform this reset.</li>
+                  </ul>
+                </div>
+              </Modal>
+{/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
           {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database') && (
             <div className="space-y-6 animate-fade-in">
 
@@ -1093,13 +1142,14 @@ const isProvider = ROOT_ROLES.includes(role as any);
                   <div className="space-y-4">
                     <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
-                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Database className="w-4 h-4 text-slate-400" /> Erase Cloud + Local — Disabled</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Browser-initiated cloud erase has been removed. This client cannot wipe the Supabase database, and the cloud is closed to the anon key at the database layer.</p>
+                        <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Database className="w-4 h-4 text-rose-500" /> Reset Application Data</h4>
+                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Clears every public application table except users. Supabase Auth passwords are never touched.</p>
                       </div>
-                      <button disabled title="Cloud erase is disabled — provider-managed only" className="px-6 py-3 bg-slate-100 text-slate-400 font-black rounded-xl text-[10px] uppercase tracking-widest whitespace-nowrap cursor-not-allowed">
-                        Disabled
+                      <button onClick={() => { setPurgeError(null); setShowPurgeConfirm(true); }} disabled={isPurgingAll} data-testid="btn-purge-application-data" className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest whitespace-nowrap disabled:opacity-60">
+                        {isPurgingAll ? 'Resetting...' : 'Reset application'}
                       </button>
                     </div>
+                    {purgeError && <div role="alert" className="rounded-xl border border-rose-300 bg-white px-4 py-3 text-xs font-bold text-rose-700">{purgeError}</div>}
                   </div>
                 </div>
               </div>
