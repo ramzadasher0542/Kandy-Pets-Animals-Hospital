@@ -1196,6 +1196,24 @@ export async function restoreFullDatabase(jsonData: string): Promise<RestoreSumm
 
   return { tablesProcessed, rowsProcessed };
 }
+export interface PurgeSummary {
+  tablesCleared: number;
+  usersPreserved: number;
+}
+
+/** Clear application data while preserving public.users and Supabase Auth identities. */
+export async function purgeApplicationData(): Promise<PurgeSummary> {
+  const client = cloud();
+  const { data, error } = await client.rpc('purge_application_data_auth');
+  if (error) throw new Error(error.message || 'Application reset failed.');
+
+  const result = (data || {}) as Record<string, unknown>;
+  return {
+    tablesCleared: Number(result.tables_cleared || 0),
+    usersPreserved: Number(result.users_preserved || 0),
+  };
+}
+
 
 // ==========================================
 // MISSION 2: BOOT-OPTIMIZED QUERIES
