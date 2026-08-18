@@ -290,6 +290,9 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
   const [backupError, setBackupError] = useState<string | null>(null);
   const [restoreFileName, setRestoreFileName] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+    const [isPurgingAll, setIsPurgingAll] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
 
   const handleDownloadBackup = async () => {
     setIsExportingAll(true);
@@ -305,9 +308,6 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       const rowCount = Object.values(tables).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0);
       if (!tableCount) throw new Error('The backup contained no table data. Nothing was downloaded.');
 
-      const filename = `ceylonpets_backup_FULL_${formatClinicISODate(new Date())}.json`;
-      downloadJsonFile(json, filename);
-      setBackupStatus({
         filename,
         exportedAt: parsed.exportedAt || new Date().toISOString(),
         tables: tableCount,
@@ -315,11 +315,7 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       });
       showToast(`Backup downloaded: ${filename}`, 'success');
     } catch (error) {
-        const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
-  const [isPurgingAll, setIsPurgingAll] = useState(false);
-  const [purgeError, setPurgeError] = useState<string | null>(null);
-  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
-      const message = error instanceof Error ? error.message : 'The system backup could not be created.';
+        const message = error instanceof Error ? error.message : 'The system backup could not be created.';
       setBackupError(message);
       showToast(`Backup failed: ${message}`, 'error');
     } finally {
