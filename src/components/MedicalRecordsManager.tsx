@@ -73,6 +73,22 @@ const SYSTEM_LABELS: Record<keyof PhysicalExamination, string> = {
   eyesAndEars: 'Eyes & Ears (ENT)'
 };
 
+const createDefaultPhysicalExam = (): PhysicalExamination => ({
+  general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
+  respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
+  urogenital: { isNormal: true, abnormalities: [] }, skin: { isNormal: true, abnormalities: [] },
+  musculoskeletal: { isNormal: true, abnormalities: [] }, neurological: { isNormal: true, abnormalities: [] },
+  reproductive: { isNormal: true, abnormalities: [] }, eyesAndEars: { isNormal: true, abnormalities: [] }
+});
+
+const normalizePhysicalExam = (value?: Partial<PhysicalExamination>): PhysicalExamination => {
+  const defaults = createDefaultPhysicalExam();
+  return (Object.keys(defaults) as Array<keyof PhysicalExamination>).reduce((result, key) => ({
+    ...result,
+    [key]: { ...defaults[key], ...(value?.[key] || {}) }
+  }), {} as PhysicalExamination);
+};
+
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
 export default function MedicalRecordsManager({ clients, pets, records, boardingRecords, inventory, appointments, clinicQueue, systemConfig, viewPayload, onAddRecord, onUpdateRecord, onCompleteVisit, onUpdateRecordsBulk }: RecordsProps) {
@@ -100,13 +116,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
   const [vitals, setVitals] = useState<Vitals>({});
   const [history, setHistory] = useState<PatientHistory>({ diet: [], previousMedicalHistory: [], currentMedications: [] });
   const [treatmentNotes, setTreatmentNotes] = useState('');
-  const [exam, setExam] = useState<PhysicalExamination>({
-    general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
-    respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
-    urogenital: { isNormal: true, abnormalities: [] }, skin: { isNormal: true, abnormalities: [] },
-    musculoskeletal: { isNormal: true, abnormalities: [] }, neurological: { isNormal: true, abnormalities: [] },
-    reproductive: { isNormal: true, abnormalities: [] }, eyesAndEars: { isNormal: true, abnormalities: [] }
-  });
+  const [exam, setExam] = useState<PhysicalExamination>(() => createDefaultPhysicalExam());
   const [assessment, setAssessment] = useState<ClinicalAssessment>({});
   
   // Pharmacy State
@@ -309,17 +319,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
     setVitals(targetRecord.vitals || {});
     setHistory(targetRecord.patientHistory || { diet: [], previousMedicalHistory: [], currentMedications: [] });
     
-    if (targetRecord.physicalExam) {
-      setExam(targetRecord.physicalExam);
-    } else {
-      setExam({
-        general: { isNormal: true, abnormalities: [] }, gastrointestinal: { isNormal: true, abnormalities: [] },
-        respiratory: { isNormal: true, abnormalities: [] }, cardiovascular: { isNormal: true, abnormalities: [] },
-        urogenital: { isNormal: true, abnormalities: [] }, skin: { isNormal: true, abnormalities: [] },
-        musculoskeletal: { isNormal: true, abnormalities: [] }, neurological: { isNormal: true, abnormalities: [] },
-        reproductive: { isNormal: true, abnormalities: [] }, eyesAndEars: { isNormal: true, abnormalities: [] }
-      });
-    }
+    setExam(normalizePhysicalExam(targetRecord.physicalExam));
     
     setAssessment(targetRecord.assessment || {});
     setPrescribedMeds(targetRecord.prescribedMeds || []);
@@ -491,7 +491,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
         {(Object.keys(SYSTEM_LABELS) as Array<keyof PhysicalExamination>).map(systemKey => {
           const isExpanded = expandedSystem === systemKey;
-          const sysData = exam[systemKey];
+          const sysData = exam[systemKey] || { isNormal: true, abnormalities: [] };
           const hasAbnormalities = (sysData.abnormalities?.length || 0) > 0;
           const isNormal = sysData.isNormal && !hasAbnormalities;
 
