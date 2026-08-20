@@ -188,7 +188,7 @@ agree. A click that appears to work but does not survive reload is a failure.
 | B. Front desk/shift start | PASS / PARTIAL | Synthetic client, pet, shift, OPD appointment, check-in, and clinical queue path passed. Cashier front-desk access required correction. |
 | C. Veterinary clinical | PASS / PARTIAL | Appointment, queue, vitals, normal exam, assessment, treatment plan, chart lock, and discharge persisted. Medication, laboratory, and vaccination billing paths remain untested. |
 | D. Grooming | PASS / FAIL | Consent validation and signed session persistence passed. Standalone completed grooming was not visible in POS before the source-card fix; production retest pending. |
-| E. Boarding | PASS / FAIL | Rate setup, deposit guard, admission, kennel lock, feeding, stock decrement, discharge, and refund calculation passed. Deposit cash accounting and final boarding billing are not safe for go-live. |
+| E. Boarding | PASS / FIXED / RETEST PENDING | Rate setup, deposit guard, admission, kennel lock, feeding, stock decrement, discharge, and refund calculation passed. Atomic cash ledger and settlement invoice fix is applied; live retest remains. |
 | F. Inventory | PASS / PARTIAL | Supplier, service records, food item, batch receipt, expiry, and stock decrement passed. Duplicate SKU, FEFO, void reversal, and negative-stock boundaries remain untested. |
 | G. POS/payments | PASS / PARTIAL | Cash checkout, tax, stock decrement, receipt, clinical billing, and grooming billing through an active queue passed. Card, bank transfer, split payment, discount approval, and void retest remain. |
 | H. Reports | PASS / PARTIAL | Revenue, COGS, payment method, productivity, and Z-report values reconciled to recorded paid invoices. Boarding deposit/refund is excluded from this reconciliation and is a release blocker. |
@@ -201,7 +201,7 @@ Findings are added only after reproduction. Each finding must include severity,
 role, exact steps, expected result, actual result, frontend evidence, backend
 evidence, impact, fix, and retest result.
 
-### F-001 — P0 — Boarding deposit and refund bypass the cash ledger
+### F-001 — P0 — Boarding deposit and refund bypassed the cash ledger
 
 - **Role:** Administrator performing boarding admission; cashier responsible for the drawer.
 - **Steps:** Configure a positive dog rate, admit synthetic pet `QA Luna` to Kennel 1, accept the Rs. 15,000 mandatory deposit, log one Rs. 800 food consumption, and discharge.
@@ -210,8 +210,8 @@ evidence, impact, fix, and retest result.
 - **Frontend evidence:** Boarding showed a successful `Patient booked into Kennel 1` and `Discharged. Refund: Rs. 14,200`; Shift showed only Rs. 4,872 cash sales; Invoices showed no boarding deposit/refund transaction.
 - **Backend/source evidence:** `BoardingManager.tsx` creates an `admission_deposit` billing item and sets `depositPaid: true` without a POS/shift mutation (`handleConfirmBooking`, lines 331-357). Discharge calculates and reports the refund but only updates the boarding row and requeues the patient (`handleDischargeSettle`, lines 237-292).
 - **Impact:** Physical cash, customer liability, invoice history, and Z-report can disagree. This is a go-live blocker.
-- **Fix:** Not auto-guessed. The owner must choose the accounting model: refundable deposits as explicit cash-in/refund ledger movements, or an invoice/credit-note model. The source-billing patch now includes discharged boarding rows for downstream charge billing, but it does not pretend to solve the deposit liability.
-- **Retest:** Pending the accounting decision and implementation.
+- **Fix:** Implemented the explicit cash-ledger model. Step 38 adds the Auth-guarded `commit_boarding_cash_ledger_auth` RPC. Admission records a `Boarding Deposit` cash-in movement. Discharge creates one settlement invoice for the actual boarding charges and records either a `Boarding Deposit Refund` cash-out or `Boarding Additional Charge` cash-in movement. Boarding, invoice, and movement commit together, with stable IDs for retries.
+- **Retest:** Production source deployment and a fresh boarding scenario are still required.
 
 ### F-002 — P1 — Completed grooming can be saved but has no standalone billing handoff
 
@@ -223,7 +223,7 @@ evidence, impact, fix, and retest result.
 - **Backend/source evidence:** `GroomingManager.tsx` writes the log, while `POSRegister.tsx` only rendered appointment/clinic-queue cards and swept grooming rows after a patient was selected through one of those cards.
 - **Impact:** A completed grooming service can remain unbilled indefinitely without an unrelated queue item.
 - **Fix:** Added a direct unbilled-grooming source card in `POSRegister.tsx`, with patient/client context and source references.
-- **Retest:** Production retest pending deployment.
+- **Retest:** Source fix exists; fresh production grooming scenario still required.
 
 ### F-003 — P1 — Default role panels did not match operational responsibilities
 
@@ -235,7 +235,7 @@ evidence, impact, fix, and retest result.
 - **Backend/source evidence:** Both default permission maps in `App.tsx` had the narrower lists, and the persisted Panel Access Matrix reflected them.
 - **Impact:** Core work was blocked or forced through administrator access, weakening least-privilege operations.
 - **Fix:** Expanded the two `App.tsx` default maps and corrected the live Panel Access Matrix for these panels.
-- **Retest:** Production role-by-role retest pending; no groomer identity was available.
+- **Retest:** Administrator production sign-in passed; role-by-role retest remains pending and no groomer identity was available.
 
 ### F-004 — P1 — Invoice patient identity can fall back to a name/phone key
 
@@ -246,19 +246,20 @@ evidence, impact, fix, and retest result.
 - **Source evidence:** `POSRegister.tsx` built `patientId` from pet name and normalized phone; `App.tsx` later searched `pets` by `invoice.patientId`.
 - **Impact:** Financial history can exist while client-level totals fail to update.
 - **Fix:** POS now resolves the loaded pet UUID before constructing the invoice, with the old composite only as a fallback for incomplete data.
-- **Retest:** Production retest pending deployment.
+- **Retest:** Source fix exists; fresh production invoice identity check still required.
 
 ## Final Decision
 
-**NO-GO pending remediation.** F-001 is an open P0 financial-control blocker.
-F-002 through F-004 have source fixes or configuration corrections awaiting
-production deployment and retest. The remaining scenario matrix is incomplete,
-so this report is not a go-live approval.
+**NO-GO pending retest.** The F-001 implementation is applied in production
+Supabase but has not yet been validated through a fresh live boarding scenario.
+F-002 through F-004 have source fixes or configuration corrections; the final
+Vercel deployment and role/payment/security/recovery matrix remain incomplete.
+This report is not a go-live approval.
 
 ## Noticed, Not Fixed
 
 - No groomer login identity was provided, so groomer-specific sign-in and least-privilege tests remain blocked.
 - Card, bank transfer, split payment, discount approval, invoice void/reversal, laboratory, vaccination, backup/restore, RLS, direct-RPC, and reconnect tests remain incomplete.
-- Boarding deposit/refund accounting was not changed without an explicit owner-approved liability model.
+- Boarding deposit/refund now uses explicit cash-in/cash-out ledger movements and a settlement invoice; the owner must confirm this matches the clinic's accounting policy.
+- The new boarding ledger migration has been applied to production Supabase but still needs a fresh live retest after Vercel deployment.
 - Synthetic QA records and service/food inventory remain in production pending owner-approved cleanup.
-
