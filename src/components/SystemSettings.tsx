@@ -308,7 +308,7 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       const rowCount = Object.values(tables).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0);
       if (!tableCount) throw new Error('The backup contained no table data. Nothing was downloaded.');
 
-        filename,
+        const filename = `ceylonpets_backup_FULL_${formatClinicISODate(new Date())}.json`; downloadJsonFile(json, filename); setBackupStatus({ filename,
         exportedAt: parsed.exportedAt || new Date().toISOString(),
         tables: tableCount,
         rows: rowCount,
