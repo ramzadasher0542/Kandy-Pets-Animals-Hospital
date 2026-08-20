@@ -8,9 +8,9 @@ import { Modal } from './ui/Modal';
 import {
   Home, Activity, Info, CheckCircle2, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
 } from 'lucide-react';
-import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem } from '../types';
+import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem, ActiveShift, User } from '../types';
 import { showToast } from './Toast';
-import { fetchBoardingRecords, upsertBoardingRecord } from '../lib/db';
+import { commitBoardingCashLedger, fetchBoardingRecords, upsertBoardingRecord } from '../lib/db';
 import PageShell from './ui/PageShell';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import { formatRupees, parseWholeRupees } from '../utils/currency';
@@ -25,13 +25,15 @@ interface BoardingProps {
   onUpdateStock?: (itemId: string, qtyDelta: number) => Promise<void>;
   onUpdateRecord: (record: MedicalRecord) => void;
   onDischargeToQueue?: (item: ClinicQueueItem) => Promise<void>;
+  activeShift?: ActiveShift | null;
+  currentUser?: User | null;
 }
 
 const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue }: BoardingProps) {
+export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue, activeShift, currentUser }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
@@ -49,6 +51,8 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   
   // Guardrail State
   const [showDepositGuard, setShowDepositGuard] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
 
   const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
 
@@ -119,6 +123,30 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const persistBoarding = async (updated: BoardingRecord) => {
     await upsertBoardingRecord(updated);
     setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+  };
+
+  // IDs are derived from the boarding UUID so a lost response/retry cannot
+  // create a second deposit, settlement invoice, or refund movement.
+  const derivedId = (id: string, marker: 'a1' | 'a2' | 'a3') => `${id.slice(0, -2)}${marker}`;
+
+  const makeAdjustment = (
+    id: string,
+    type: 'IN' | 'OUT',
+    amountCents: number,
+    category: string,
+    reason: string,
+  ) => {
+    if (!activeShift || !currentUser) throw new Error('OPEN_SHIFT_REQUIRED');
+    return {
+      id,
+      type,
+      amount: amountCents / 100,
+      category,
+      reason,
+      date: new Date().toISOString(),
+      createdBy: currentUser.name,
+      shiftId: activeShift.id,
+    } as const;
   };
 
   const handleLogDoctorRound = async (cage: string) => {
@@ -235,6 +263,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   };
 
   const handleDischargeSettle = async (cage: string) => {
+    if (isSettling) return;
     const occupant = activeBoardingMap.get(cage);
     if (!occupant || !occupant.boarding) return;
     const b = occupant.boarding;
@@ -243,13 +272,35 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     const deposit = b.depositAmountCents ?? 0;
     const balance = deposit - charges; // positive = refund owed, negative = owner owes more
 
+    if ((charges > 0 || balance !== 0) && (!activeShift || !currentUser)) {
+      showToast('Open a shift before settling a boarding account.', 'error');
+      return;
+    }
+
+    setIsSettling(true);
     let nextItems = b.billingItems || [];
     let toastMsg: string;
+    let settlementAdjustment;
     if (balance < 0) {
       nextItems = [...nextItems, { itemId: 'additional_charges', name: 'Additional Charges Beyond Deposit', price: Math.abs(balance), quantity: 1 }];
-      toastMsg = `Discharged. Collect Rs. ${formatRupees(Math.abs(balance) / 100)} additional.`;
+      toastMsg = `Discharged. Additional cash recorded: Rs. ${formatRupees(Math.abs(balance) / 100)}.`;
+      settlementAdjustment = makeAdjustment(
+        derivedId(b.id, 'a2'),
+        'IN',
+        Math.abs(balance),
+        'Boarding Additional Charge',
+        `Additional boarding charge for ${occupant.pet?.name || b.petId} (${b.id.slice(0, 8)})`,
+      );
     } else if (balance > 0) {
+      nextItems = [...nextItems, { itemId: 'settlement_refund', name: 'Boarding Deposit Refund', price: 0, quantity: 1 }];
       toastMsg = `Discharged. Refund: Rs. ${formatRupees(balance / 100)}`;
+      settlementAdjustment = makeAdjustment(
+        derivedId(b.id, 'a2'),
+        'OUT',
+        balance,
+        'Boarding Deposit Refund',
+        `Refund for boarding deposit for ${occupant.pet?.name || b.petId} (${b.id.slice(0, 8)})`,
+      );
     } else {
       toastMsg = 'Discharged. Settled exactly — no balance.';
     }
@@ -259,39 +310,64 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       billingItems: nextItems,
       totalChargesCents: charges,
       status: 'discharged',
+      billed: charges <= 0 ? false : true,
     };
-    await upsertBoardingRecord(updated);
-    setBoardingRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
 
-    // Re-Entry: push the discharged pet back into the shared clinic queue so the
-    // front desk can settle the final balance / handle follow-ups — it isn't
-    // "lost" the moment it leaves the kennel board.
-    if (onDischargeToQueue) {
-      const pet = pets.find(p => p.id === b.petId);
-      const client = pet ? clients.find(c => c.client_id === pet.clientId) : undefined;
-      try {
-        await onDischargeToQueue({
-          id: `queue_discharge_${b.id}`,
-          petId: b.petId,
-          petName: pet?.name || 'Discharged Patient',
-          ownerName: client?.full_name || 'Unknown',
-          ownerPhone: client?.primary_phone || '',
-          appointmentId: '',
-          serviceType: 'Examination',
-          checkInTime: new Date().toISOString(),
-          status: 'active',
-          priority: 2,
-          urgency: 'routine',
-          emergencyBackfillRequired: false,
-        });
-      } catch (err) {
-        if (import.meta.env.DEV) console.error('[Boarding] Failed to re-queue discharged patient:', err);
-      }
+    const billableItems = (nextItems || []).filter(item =>
+      item.itemId !== 'admission_deposit' &&
+      item.itemId !== 'additional_charges' &&
+      item.itemId !== 'settlement_refund' &&
+      Number(item.price) > 0,
+    );
+    const invoice = charges > 0 && activeShift && currentUser ? {
+      id: b.id,
+      patientId: b.petId,
+      petName: occupant.pet?.name || 'Boarding Patient',
+      ownerName: occupant.ownerName || 'Unknown Owner',
+      ownerPhone: occupant.pet ? clients.find(c => c.client_id === occupant.pet?.clientId)?.primary_phone || '0000000000' : '0000000000',
+      date: new Date().toISOString(),
+      items: (billableItems.length > 0 ? billableItems : [{ itemId: 'boarding_charge', name: 'Boarding Charges', price: charges, quantity: 1, category: 'service' }]).map(item => {
+        const inventoryItem = inventory.find(i => i.id === item.itemId);
+        const unitPrice = Number(item.price) / 100;
+        return {
+          itemId: item.itemId,
+          sku: inventoryItem?.sku || item.itemId,
+          name: item.name,
+          category: inventoryItem?.category || item.category || 'service',
+          quantity: item.quantity || 1,
+          unitPrice,
+          totalPrice: unitPrice * (item.quantity || 1),
+          sourceRefs: [{ type: 'boarding' as const, id: b.id }],
+        };
+      }),
+      subtotal: charges / 100,
+      tax: 0,
+      discount: 0,
+      sales_total: charges / 100,
+      cogs: 0,
+      profit: charges / 100,
+      paymentMethod: 'deposit' as const,
+      paymentStatus: 'paid' as const,
+      depositHeld: deposit / 100,
+      createdBy: currentUser.name,
+      shiftId: activeShift.id,
+      notes: 'Boarding charges settled against the refundable admission deposit.',
+    };
+
+    try {
+      await commitBoardingCashLedger(updated, invoice, settlementAdjustment);
+      setBoardingRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+    } catch (err: any) {
+      const message = err?.message === 'OPEN_SHIFT_REQUIRED' ? 'Open a shift before settling a boarding account.' : `Boarding settlement failed: ${err?.message || err}`;
+      showToast(message, 'error');
+      setIsSettling(false);
+      return;
     }
 
     showToast(toastMsg, 'success');
     setSelectedCage(null);
     setDischargeModalCage(null);
+    setIsSettling(false);
   };
 
   const handleOpenGuard = (e: React.FormEvent) => {
@@ -308,10 +384,18 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   };
 
   const handleConfirmBooking = async () => {
+    if (isSaving) return;
     if (!selectedCage || !selectedPatientId) return;
+
+    if (!activeShift || !currentUser) {
+      showToast('Open a shift before collecting the boarding deposit.', 'error');
+      return;
+    }
 
     const patient = uniquePatients.find(p => p.id === selectedPatientId);
     if (!patient) return;
+
+    setIsSaving(true);
 
     // Snapshot today's cage rate for this pet/food/litter configuration
     const cageFeePerDayCents = calculateDailyRate(patient, foodType, hospitalProvidesLitter);
@@ -359,7 +443,23 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       doctorFeePerVisitCents: medicalBoarding ? Math.round((doctorFeeRupees || 0) * 100) : 0,
     };
 
-    await upsertBoardingRecord(newBoardingInfo);
+    try {
+      await commitBoardingCashLedger(
+        newBoardingInfo,
+        undefined,
+        makeAdjustment(
+          derivedId(newBoardingInfo.id, 'a1'),
+          'IN',
+          depositCents,
+          'Boarding Deposit',
+          `Refundable boarding deposit for ${patient.name} (${newBoardingInfo.id.slice(0, 8)})`,
+        ),
+      );
+    } catch (err: any) {
+      showToast(`Boarding admission failed: ${err?.message || err}`, 'error');
+      setIsSaving(false);
+      return;
+    }
     setBoardingRecords(prev => [...prev, newBoardingInfo]);
     showToast(`Patient booked into ${selectedCage}.`, 'success');
 
@@ -375,6 +475,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     setEstimatedStayDays(1);
     setDoctorFeeRupees(0);
     setCleaningFeeRupees(0);
+    setIsSaving(false);
   };
 
   const renderActiveQueue = () => {
@@ -724,15 +825,15 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
               )}
 
               <div data-testid="deposit-display" className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
-                <p className="text-sm font-black text-emerald-800">Deposit to collect: Rs. {formatRupees(depositCents / 100)} <span className="font-bold text-emerald-600">(standard admission deposit)</span></p>
-                <p className="text-xs text-emerald-700 font-bold mt-1">All charges will run against this deposit at discharge.</p>
+                <p className="text-sm font-black text-emerald-800">Cash deposit to collect: Rs. {formatRupees(depositCents / 100)} <span className="font-bold text-emerald-600">(standard admission deposit)</span></p>
+                <p className="text-xs text-emerald-700 font-bold mt-1">The deposit is recorded in the active shift and applied at discharge.</p>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex gap-3 items-start">
                 <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Financial Notice</h4>
-                  <p className="text-xs text-amber-700 font-bold leading-relaxed">Booking this space will immediately generate a mandatory admission deposit in the POS billing queue. The space will be locked until checkout.</p>
+                  <p className="text-xs text-amber-700 font-bold leading-relaxed">Booking this space records the mandatory cash deposit in the active shift ledger. The space will be locked until checkout.</p>
                 </div>
               </div>
 
@@ -757,7 +858,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
         footer={
           <>
             <button onClick={() => setShowDepositGuard(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-50 transition-colors">Cancel</button>
-            <button onClick={handleConfirmBooking} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors">Collect & Lock Cage</button>
+             <button onClick={handleConfirmBooking} disabled={isSaving} className="flex-[2] py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-colors">{isSaving ? 'Saving...' : 'Collect & Lock Cage'}</button>
           </>
         }
       >
