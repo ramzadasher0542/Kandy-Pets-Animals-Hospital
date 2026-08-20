@@ -29,6 +29,7 @@ interface RecordsProps {
   onUpdateStock?: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
   onAddAppointment?: (appointment: Appointment) => Promise<void>;
   onUpdateAppointmentStatus?: (id: string, status: string) => Promise<void>;
+  onCompleteVisit?: (appointmentId: string) => Promise<void>;
   clinicQueue?: any[];
   systemConfig?: any;
   viewPayload?: any;
@@ -74,7 +75,7 @@ const SYSTEM_LABELS: Record<keyof PhysicalExamination, string> = {
 
 const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) : '';
 
-export default function MedicalRecordsManager({ clients, pets, records, boardingRecords, inventory, appointments, clinicQueue, systemConfig, viewPayload, onAddRecord, onUpdateRecord, onUpdateRecordsBulk }: RecordsProps) {
+export default function MedicalRecordsManager({ clients, pets, records, boardingRecords, inventory, appointments, clinicQueue, systemConfig, viewPayload, onAddRecord, onUpdateRecord, onCompleteVisit, onUpdateRecordsBulk }: RecordsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showQueueOnly, setShowQueueOnly] = useState(true); // Default to Queue
   const [showModal, setShowModal] = useState(false);
@@ -197,9 +198,10 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           weight: p?.weight || 0,
           sex: p?.sex || 'Unknown',
           ownerName: r.ownerName,
-          ownerPhone: r.ownerPhone,
-          visitDate: r.visitDate,
-          assessment: r.assessment,
+           ownerPhone: r.ownerPhone,
+           visitDate: r.visitDate,
+           appointmentId: r.appointmentId,
+           assessment: r.assessment,
           diagnosis: r.diagnosis,
           hasRecordToday: r.visitDate === todayStr
         };
@@ -222,9 +224,10 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           weight: p?.weight || 0,
           sex: p?.sex || 'Unknown',
           ownerName: r.ownerName,
-          ownerPhone: r.ownerPhone,
-          visitDate: r.visitDate,
-          assessment: r.assessment,
+           ownerPhone: r.ownerPhone,
+           visitDate: r.visitDate,
+           appointmentId: r.appointmentId,
+           assessment: r.assessment,
           diagnosis: r.diagnosis,
           hasRecordToday: r.visitDate === todayStr
         });
@@ -247,14 +250,16 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
           ownerPhone: a.ownerPhone,
           visitDate: a.date,
           assessment: null,
-          diagnosis: 'Pending Triage',
-          hasRecordToday: false,
-          apptStatus: a.status
-        });
-      } else {
-        if (a.date === todayStr) {
-          patientMap.get(pid).apptStatus = a.status;
-        }
+           diagnosis: 'Pending Triage',
+           hasRecordToday: false,
+           apptStatus: a.status,
+           appointmentId: a.id
+         });
+       } else {
+         if (a.date === todayStr) {
+           patientMap.get(pid).apptStatus = a.status;
+           patientMap.get(pid).appointmentId = a.id;
+         }
       }
     });
 
@@ -290,7 +295,8 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
         treatmentNotes: '',
         prescribedMeds: [],
         inpatientLogs: [],
-        createdDate: todayStr
+        createdDate: todayStr,
+        appointmentId: patientStub.appointmentId,
       };
       // ONLY trigger App.tsx upstream save if we actually originated from the clinic queue check-in
       // (This prevents aggressive blank saves when just opening history)
@@ -321,7 +327,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
     setShowModal(true);
   };
 
-  const saveRecord = () => {
+  const saveRecord = async () => {
     if (!editingRecord) return;
     
     const compiledSymptoms = Object.values(exam).flatMap((sys: any) => sys.abnormalities || []).join(', ');
@@ -345,12 +351,24 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
     };
 
     if (existingRecord) {
-      onUpdateRecord(updatedRecord);
+      await Promise.resolve(onUpdateRecord(updatedRecord));
     } else {
-      onAddRecord(updatedRecord);
+      await Promise.resolve(onAddRecord(updatedRecord));
     }
     setShowModal(false);
     showToast('Chart Locked & Saved successfully.', 'success');
+  };
+
+  const completeVisit = async () => {
+    const appointmentId = editingRecord?.appointmentId;
+    if (!appointmentId || !onCompleteVisit) return;
+    try {
+      await saveRecord();
+      await onCompleteVisit(appointmentId);
+      showToast('Clinical visit completed and removed from the active queue.', 'success');
+    } catch (error: any) {
+      showToast(`Visit completion failed: ${error?.message || error}`, 'error');
+    }
   };
 
   const toggleArrayItem = (array: string[] | undefined, item: string) => {
@@ -614,7 +632,7 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
   );
 
   const renderPharmacyTab = () => {
-    const rxInventory = inventory.filter(i => i.category === 'prescription' || i.category === 'retail' || i.category === 'vaccine');
+    const rxInventory = inventory.filter(i => ['prescription', 'pharmacy', 'retail', 'vaccine'].includes(i.category) && i.stock > 0);
     const filteredSearch = medSearch ? rxInventory.filter(i => i.name.toLowerCase().includes(medSearch.toLowerCase())) : [];
 
     const handleAddMed = () => {
@@ -1007,9 +1025,14 @@ export default function MedicalRecordsManager({ clients, pets, records, boarding
             </div>
           }
           icon={<div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl"><Stethoscope className="w-6 h-6"/></div>}
-          footer={
+           footer={
             <>
               <button onClick={() => setShowModal(false)} className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-colors text-[10px] uppercase tracking-widest cursor-pointer">Close Workspace</button>
+              {editingRecord?.appointmentId && appointments?.some(a => a.id === editingRecord?.appointmentId && a.status === 'in-progress') && onCompleteVisit && (
+                <button onClick={completeVisit} className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
+                  <CheckCircle2 className="w-4 h-4"/> Complete Visit &amp; Discharge
+                </button>
+              )}
               <button onClick={saveRecord} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-md transition-colors text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer">
                 <Save className="w-4 h-4"/> Lock Chart & Save
               </button>
