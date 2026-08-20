@@ -1566,8 +1566,12 @@ function App() {
                     <span className="px-3 py-1 bg-white/20 text-white font-bold rounded-full text-[10px] uppercase tracking-wider flex items-center gap-1.5 w-max">
                       <span className="text-sm select-none leading-none">{systemConfig.invoiceLogo}</span> {systemConfig.appName} Core Medical Suite
                     </span>
-                    <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm border-2 border-white/30 border-dashed inline-block">
-                      <p className="text-white/70 font-bold text-xs uppercase tracking-widest text-center">Your Logo Here<br /><span className="text-[10px] font-bold opacity-75 capitalize mt-1 block">(Upload via System Settings)</span></p>
+                    <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm border border-white/25 shadow-inner inline-flex flex-col items-center gap-3">
+                      <img src="/ceylon-logo-512.png" alt="Ceylon Pets Animal Hospital" className="h-16 w-16 rounded-2xl object-contain bg-white p-1 shadow-lg" />
+                      <div className="text-center">
+                        <p className="text-white font-black text-xs uppercase tracking-widest">Ceylon Pets Animal Hospital</p>
+                        <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest mt-1">Clinical Operations Platform</p>
+                      </div>
                     </div>
                     <p className="text-white/80 leading-relaxed font-bold text-sm max-w-sm">Serving Pet parents cleanly and securely. Tablet-ready clinical charts, custom billing registers, and automated client alerts.</p>
                   </div>
