@@ -217,9 +217,9 @@ function App() {
     emailDigestEnabled: false,
     recipientEmails: [],
     digestSchedule: 'daily_end',
-    rolePermissions: {
-      cashier: ['pos', 'shift'],
-      veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming', 'shift'],
+      rolePermissions: {
+        cashier: ['pos', 'shift'],
+      veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming'],
       // HOTFIX-1: 'manager' had NO entry anywhere, so isViewPermitted fell through
       // to `|| []` and every manager account could log in but saw zero views.
       // Operational floor above cashier; no 'reminders'/'portal' (owner-only).
@@ -231,7 +231,7 @@ function App() {
       // revoke panels per role from the Panel Access Matrix in Settings.
       groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
        provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'reminders', 'portal']
     },
@@ -305,7 +305,24 @@ function App() {
             setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
             setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
             setUsers(Array.isArray(hUsers) ? hUsers as any : []);
-            setClinicQueue((Array.isArray(queue) ? [...queue] : []).sort((a: any, b: any) => {
+             const activeAppointmentIds = new Set(
+               (Array.isArray(appts) ? appts : [])
+                 .filter((a: any) => !a.is_deleted && !['cancelled', 'completed', 'no-show'].includes(a.status))
+                 .map((a: any) => a.id)
+             );
+             const activePetIds = new Set(
+               (Array.isArray(fetchedPets) ? fetchedPets : [])
+                 .filter((p: any) => !p.is_deleted)
+                 .map((p: any) => p.id)
+             );
+             // Active work must point at a live appointment, or at an active pet
+             // for follow-up rows such as boarding discharge. Cancelled/deleted
+             // history remains in the database but cannot reappear as work.
+             const validQueue = (Array.isArray(queue) ? queue : []).filter((q: any) => {
+               if (q.status !== 'active' || q.is_deleted) return false;
+               return q.appointmentId ? activeAppointmentIds.has(q.appointmentId) : activePetIds.has(q.petId);
+             });
+             setClinicQueue(validQueue.sort((a: any, b: any) => {
               const pA = a.priority ?? 2;
               const pB = b.priority ?? 2;
               if (pA !== pB) return pA - pB;
@@ -517,7 +534,7 @@ function App() {
       // from browser state. Show the failure and leave React stock state unchanged.
       if (import.meta.env.DEV) console.error('[CeylonPets] Stock update failed:', error);
       showToast(`Stock update failed: ${error.message}`, 'error');
-      return;
+      throw error;
     }
     if (newStock === null) return;
     const finalStock = newStock;
@@ -777,7 +794,6 @@ function App() {
   }, []);
 
   const handleDeleteInventoryItem = useCallback(async (id: string) => {
-    if (!window.confirm('Are you sure?')) return;
     try {
       await deleteInventoryItem(id);
       setInventory(prev => prev.filter(i => i.id !== id));
@@ -1245,11 +1261,11 @@ function App() {
     // missing from EITHER falls through to `|| []` (= zero views).
     const defaultPermissions: Record<string, string[]> = {
       cashier: ['pos', 'shift'],
-      veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming', 'shift'],
+      veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming'],
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
       groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
        provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
     };
     // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
@@ -1424,7 +1440,7 @@ function App() {
          return <ReportsManager currentUser={currentUser} config={systemConfig} />;
       case 'staff': 
          return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
-      case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
+       case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onCompleteVisit={closeVisit} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
          const safeSystemConfig = systemConfig;
         return (
