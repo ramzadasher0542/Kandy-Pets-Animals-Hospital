@@ -58,7 +58,7 @@ export interface ActionPolicy {
  */
 export const ACTION_POLICIES: Record<AuthAction, ActionPolicy> = {
   delete_inventory:      { description: 'delete an inventory item',            allowedRoles: ['owner', 'manager'] },
-  delete_medical_record: { description: 'delete a medical record',             allowedRoles: ['owner', 'manager', 'veterinarian'] },
+  delete_medical_record: { description: 'delete a medical record',             allowedRoles: [] },
   void_invoice:          { description: 'void an invoice',                     allowedRoles: ['owner', 'manager'] },
   daily_backup:          { description: 'create the daily shift backup',       allowedRoles: [] },
   discount_override:     { description: 'approve an over-threshold discount',  allowedRoles: ['owner', 'manager'] },
