@@ -14,7 +14,7 @@
 ### Latest Verification
 
 - Supabase dashboard reports **Healthy**; Free-plan usage is within limits: 22 MB / 5 GB egress, 29 MB / 500 MB database, 10 / 50,000 MAU, and 0 / 1 GB storage.
-- Vercel production deployment is **Ready**, sourced from `main` at documentation commit `f3f390f`; the deployed application code baseline remains `5c5f573` (`Harden clinical and financial workflows`).
+- Vercel production deployment is **Ready**, sourced from `main`; the deployed application code baseline remains `5c5f573` (`Harden clinical and financial workflows`).
 - Live administrator sign-in succeeded; the app displayed **CLOUD SYNC ACTIVE**, all active clinic navigation, and Settings.
 - Staff & Security remains available for Auth/access control, but live UI inspection found no Staff Management screen and no Payroll content.
 - The live inventory still contains the synthetic `Synthetic Exam Service` test item. It was not removed because production-data deletion requires explicit approval.
