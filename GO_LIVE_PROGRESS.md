@@ -18,6 +18,8 @@
 - Live administrator sign-in succeeded; the app displayed **CLOUD SYNC ACTIVE**, all active clinic navigation, and Settings.
 - Staff & Security remains available for Auth/access control, but live UI inspection found no Staff Management screen and no Payroll content.
 - The live inventory still contains the synthetic `Synthetic Exam Service` test item. It was not removed because production-data deletion requires explicit approval.
+- Step 38 is applied to production Supabase: boarding admission/settlement can atomically persist the boarding row, settlement invoice, and cash adjustment through `commit_boarding_cash_ledger_auth`.
+- `MANUAL_CHECKLIST.md` is now the owner-facing click-by-click verification guide. It contains no password.
 
 ### Next Handoff Actions
 
@@ -25,6 +27,7 @@
 2. Keep external backups outside Supabase; the Free tier has no certified PITR/provider-managed recovery.
 3. Obtain approval before removing or quarantining synthetic QA rows, and configure approved boarding rates before real clinic use.
 4. Re-run administrator and restricted-role smoke tests after any new deployment.
+5. Run the boarding deposit/refund scenario from `MANUAL_CHECKLIST.md` and verify the new cash-in/cash-out movements against Shift and Invoices.
 
 Last verified: 2026-08-20 UTC
 
