@@ -145,6 +145,17 @@ export default function POSRegister({
     );
   }, [groomingLogs, todayStr]);
 
+  const unbilledBoardingRecords = useMemo(() => activeBoarding.filter(record =>
+    record.status === 'discharged' &&
+    !record.billed &&
+    (record.billingItems || []).some(item =>
+      item.itemId !== 'admission_deposit' &&
+      item.itemId !== 'additional_charges' &&
+      item.itemId !== 'settlement_refund' &&
+      Number(item.price) > 0,
+    ),
+  ), [activeBoarding]);
+
   // ---------------------------------------------------------
   // CART OPERATIONS
   // ---------------------------------------------------------
@@ -207,7 +218,27 @@ export default function POSRegister({
   ) => {
     items.forEach(item => {
       const invItem = inventory.find(i => i.id === item.itemId);
-      if (!invItem) return;
+      if (!invItem) {
+        // Boarding can contain non-stock service lines such as doctor rounds.
+        // Keep those billable after an invoice void instead of silently dropping
+        // the source because no inventory row exists for the service code.
+        if (sourceType !== 'boarding' || ['admission_deposit', 'additional_charges', 'settlement_refund'].includes(item.itemId)) return;
+        targetItems.push({
+          id: item.itemId,
+          sku: item.itemId,
+          name: item.name || 'Boarding Service',
+          category: 'service',
+          price: Number(item.price || 0) / 100,
+          cost: 0,
+          stock: 0,
+          minStock: 0,
+          unit: 'service',
+          cartQuantity: item.quantity || 1,
+          cartId: crypto.randomUUID(),
+          sourceRefs: [{ type: sourceType, id: sourceId }],
+        });
+        return;
+      }
       const existing = targetItems.find(i => i.id === invItem.id);
       if (existing) {
         existing.cartQuantity += item.quantity || 1;
@@ -341,6 +372,42 @@ export default function POSRegister({
         ? `Imported ${newCartItems.length} grooming charge(s) from E.H.R.`
         : 'No configured inventory items found for this grooming session.',
       newCartItems.length > 0 ? 'success' : 'error'
+    );
+  };
+
+  const handleSelectBoardingRecord = (record: BoardingRecord) => {
+    const pet = availablePets.find(row => row.id === record.petId);
+    const client = pet ? clients.find(row => row.client_id === pet.clientId) : undefined;
+    const appointment: Appointment = {
+      id: `boarding-${record.id}`,
+      petName: pet?.name || 'Boarding Patient',
+      petType: pet?.petType || 'Other',
+      breed: pet?.breed || '',
+      ownerName: client?.full_name || 'Unknown Owner',
+      ownerPhone: client?.primary_phone || '0000000000',
+      date: record.checkInDate || todayStr,
+      time: '',
+      veterinarian: '',
+      reason: 'Boarding Settlement',
+      status: 'completed',
+      admissionType: 'Pet Boarding',
+    };
+    const newCartItems: CartItem[] = [];
+    const items = (record.billingItems || []).filter(item =>
+      item.itemId !== 'admission_deposit' &&
+      item.itemId !== 'additional_charges' &&
+      item.itemId !== 'settlement_refund',
+    );
+    sweepBillingItems(items, 'boarding', record.id, newCartItems);
+    setSelectedAppointment(appointment);
+    setCustomClientName('');
+    setCustomClientPhone('');
+    setCart(newCartItems);
+    showToast(
+      newCartItems.length > 0
+        ? `Imported ${newCartItems.length} boarding charge(s) from E.H.R.`
+        : 'No configured inventory items found for this boarding account.',
+      newCartItems.length > 0 ? 'success' : 'error',
     );
   };
 
@@ -775,7 +842,7 @@ export default function POSRegister({
               <div>
                 <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Seen Today — Not Yet Billed</h4>
                 <div className="space-y-3">
-                  {unbilledAppointments.length === 0 && unbilledGroomingLogs.length === 0 ? (
+                   {unbilledAppointments.length === 0 && unbilledGroomingLogs.length === 0 && unbilledBoardingRecords.length === 0 ? (
                     <div className="text-[10px] text-slate-400 italic px-2">No unbilled checkouts.</div>
                   ) : (
                     <>
@@ -819,6 +886,29 @@ export default function POSRegister({
                             <div className="text-[10px] font-bold mb-3 text-slate-500">{client?.full_name || 'Unknown Owner'} • {log.services.join(', ')}</div>
                             <div className="border-t pt-3 flex items-center justify-between border-slate-100">
                               <div className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1 text-indigo-600"><FileText className="w-3 h-3"/> Import Grooming Charges</div>
+                              <ChevronRight className="w-4 h-4 text-slate-300"/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {unbilledBoardingRecords.map(record => {
+                        const pet = availablePets.find(row => row.id === record.petId);
+                        const client = pet ? clients.find(row => row.client_id === pet.clientId) : undefined;
+                        return (
+                          <div
+                            key={record.id}
+                            data-testid={`btn-import-boarding-${record.id}`}
+                            onClick={() => handleSelectBoardingRecord(record)}
+                            className="p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden bg-white border-slate-200 hover:border-indigo-300"
+                          >
+                            <div className="absolute top-0 right-0 w-2 h-full bg-amber-400"></div>
+                            <div className="flex justify-between items-start mb-1">
+                              <div className="font-black text-sm truncate text-slate-800">{pet?.name || 'Boarding Patient'}</div>
+                              <div className="text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Boarding</div>
+                            </div>
+                            <div className="text-[10px] font-bold mb-3 text-slate-500">{client?.full_name || 'Unknown Owner'} • Discharged</div>
+                            <div className="border-t pt-3 flex items-center justify-between border-slate-100">
+                              <div className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1 text-indigo-600"><FileText className="w-3 h-3"/> Import Boarding Charges</div>
                               <ChevronRight className="w-4 h-4 text-slate-300"/>
                             </div>
                           </div>
