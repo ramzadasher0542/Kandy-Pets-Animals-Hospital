@@ -1415,6 +1415,7 @@ function App() {
             inventory={inventory} 
             appointments={appointments}
             records={records}
+            patientRecords={pets}
             clients={clients}
             clinicQueue={clinicQueue}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
