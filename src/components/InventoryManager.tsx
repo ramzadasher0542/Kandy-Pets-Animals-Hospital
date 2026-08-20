@@ -22,17 +22,27 @@ const UNIT_PRESETS = [
   'Syringe', 'Other'
 ];
 
+const DEFAULT_CATEGORY_DEFINITIONS = [
+  { name: 'retail', label: 'Retail', is_service: false, is_lab: false },
+  { name: 'service', label: 'Service', is_service: true, is_lab: false },
+  { name: 'food', label: 'Food', is_service: false, is_lab: false },
+  { name: 'pharmacy', label: 'Pharmacy', is_service: false, is_lab: false },
+  { name: 'prescription', label: 'Prescription', is_service: false, is_lab: false },
+  { name: 'vaccine', label: 'Vaccine', is_service: false, is_lab: false },
+  { name: 'lab_service', label: 'Lab Service', is_service: true, is_lab: true },
+] as const;
+
 interface InventoryProps {
   inventory?: InventoryItem[];
   onAddProduct?: any;
-  onUpdateStock?: any;
+  onUpdateStock?: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
   onUpdatePrice?: any;
   onUpdateInventory?: (item: any) => Promise<void>;
   onDeleteInventory?: (id: string) => Promise<void>;
   systemConfig?: any;
 }
 
-export default function InventoryManager({ inventory, onUpdateInventory, onDeleteInventory, systemConfig }: InventoryProps) {
+export default function InventoryManager({ inventory, onUpdateStock, onUpdateInventory, onDeleteInventory, systemConfig }: InventoryProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,6 +114,17 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   const loadCategories = async () => {
     const cats = await fetchInventoryCategories();
+    if (cats.length === 0) {
+      const seeded = DEFAULT_CATEGORY_DEFINITIONS.map((definition, index): InventoryCategory => ({
+        id: crypto.randomUUID(),
+        ...definition,
+        sort_order: index + 1,
+        is_deleted: false,
+      }));
+      await Promise.all(seeded.map(upsertInventoryCategory));
+      setCategories(await fetchInventoryCategories());
+      return;
+    }
     setCategories(cats);
   };
 
@@ -162,7 +183,9 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
       category_id: categories.find(c => c.name === formData.category)?.id,
       price: Number(formData.price) || 0,
       cost: 0, // deprecated — batch-level only
-      stock: !editingItem ? 0 : (isPhysical ? (Number(formData.stock) || 0) : 0),
+      // Stock is changed only through Receive or Quick Adjust so batch totals
+      // remain the source of truth for physical items.
+      stock: editingItem ? (isPhysical ? editingItem.stock : 0) : 0,
       minStock: isPhysical ? (Number(formData.minStock) || 0) : 0,
       unit: formData.unit || 'unit',
       location: formData.location || '',
@@ -194,15 +217,21 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
     const delta = Number(adjustAmount);
     if (isNaN(delta) || delta === 0) return;
 
-    const updatedItem = { ...adjustItem, stock: adjustItem.stock + delta };
-    if (onUpdateInventory) {
-      await onUpdateInventory(updatedItem);
+    try {
+      if (onUpdateStock) {
+        await onUpdateStock(adjustItem.id, delta, adjustItem.stock);
+      } else if (onUpdateInventory) {
+        await onUpdateInventory({ ...adjustItem, stock: adjustItem.stock + delta });
+      } else {
+        throw new Error('Stock handler unavailable.');
+      }
+      await loadInventory();
+      setAdjustItem(null);
+      setAdjustAmount('');
+      showToast(`Stock adjusted by ${delta > 0 ? '+' + delta : delta}.`, 'success');
+    } catch (error: any) {
+      showToast(`Stock adjustment failed: ${error?.message || error}`, 'error');
     }
-    await loadInventory();
-    
-    setAdjustItem(null);
-    setAdjustAmount('');
-    showToast(`Stock adjusted by ${delta > 0 ? '+' + delta : delta}.`, 'success');
   };
 
   const handleReceiveStock = async (e: React.FormEvent) => {
@@ -278,11 +307,15 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to permanently delete this item?')) return;
-    if (onDeleteInventory) {
+    try {
+      if (!onDeleteInventory) throw new Error('Delete handler unavailable.');
       await onDeleteInventory(id);
+      await loadInventory();
+      setSelectedItem(null);
+      showToast('Item deleted from registry.', 'success');
+    } catch (error: any) {
+      showToast(`Delete failed: ${error?.message || error}`, 'error');
     }
-    await loadInventory();
-    showToast('Item deleted from registry.', 'success');
   };
 
   const openEdit = (item: InventoryItem) => {
@@ -695,10 +728,10 @@ export default function InventoryManager({ inventory, onUpdateInventory, onDelet
               <input
                 type="number"
                 value={formData.stock || 0}
-                onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                readOnly
+                className="w-full px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-500 outline-none"
               />
-              <p className="mt-1 text-[10px] text-amber-600">Manual adjustment only</p>
+              <p className="mt-1 text-[10px] text-amber-600">Use Receive or Quick Adjust to keep batches in sync.</p>
             </div>
           )}
           <div>
