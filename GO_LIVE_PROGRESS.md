@@ -1,6 +1,32 @@
 # Go-Live Progress
 
-Last verified: 2026-08-14 UTC
+## Current Handoff Context (2026-08-20 UTC)
+
+- Project repository: `ramzadasher0542/Kandy-Pets-Animals-Hospital`
+- Supabase project: `Kandy-Pets-Animals-Hospital` (`cjpmsjjluqlfcyzuspni`), Free plan
+- Vercel project: `kpah-aps`, production URL `https://kpah-aps.vercel.app/`, Hobby plan
+- Vercel production variables confirmed present: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+- Owner requirement: use Supabase and Vercel Free/Hobby tiers only
+- Owner requirement: Staff Management and Payroll remain paused; dormant payroll tables are not part of the active release
+- Administrator identity: `ramzadasher0542@gmail.com`, role `admin`
+- Administrator password is intentionally not stored in this repository, progress file, or agent memory. Keep it in the owner's password manager and manage it through Supabase Auth.
+
+### Latest Verification
+
+- Supabase dashboard reports **Healthy**; Free-plan usage is within limits: 22 MB / 5 GB egress, 29 MB / 500 MB database, 10 / 50,000 MAU, and 0 / 1 GB storage.
+- Vercel production deployment is **Ready**, sourced from `main` at commit `5c5f573` (`Harden clinical and financial workflows`).
+- Live administrator sign-in succeeded; the app displayed **CLOUD SYNC ACTIVE**, all active clinic navigation, and Settings.
+- Staff & Security remains available for Auth/access control, but live UI inspection found no Staff Management screen and no Payroll content.
+- The live inventory still contains the synthetic `Synthetic Exam Service` test item. It was not removed because production-data deletion requires explicit approval.
+
+### Next Handoff Actions
+
+1. Run the repository lint and production build checks before any release change.
+2. Keep external backups outside Supabase; the Free tier has no certified PITR/provider-managed recovery.
+3. Obtain approval before removing or quarantining synthetic QA rows, and configure approved boarding rates before real clinic use.
+4. Re-run administrator and restricted-role smoke tests after any new deployment.
+
+Last verified: 2026-08-20 UTC
 
 Enterprise cleanup merged through PR #10.
 Live deployment: https://kpah-aps.vercel.app/
@@ -49,7 +75,7 @@ Live deployment: https://kpah-aps.vercel.app/
 
 1. Keep the fresh JSON backup outside Supabase on the operator's own storage and rehearse restore against a separate safe target; the current same-state rehearsal is not independent disaster recovery.
 2. Configure approved boarding rates; do not treat the zero-rate guard as a business configuration.
-3. Rotate the temporary beta-test password before entering any real clinic data.
+3. Keep the administrator credential in a password manager and rotate it if it is temporary, shared, or exposed before entering any real clinic data.
 4. Remove or quarantine the remaining synthetic QA clinical rows before beta handoff; no automated clinical regression suite is claimed.
 
 ## Current Decision
