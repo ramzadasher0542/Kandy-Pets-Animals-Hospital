@@ -51,7 +51,6 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
-  const [showWarningModal, setShowWarningModal] = useState(false);
 
   React.useEffect(() => {
     fetchGroomingLogs().then(setGroomingLogs).catch((e) => { if (import.meta.env.DEV) console.error(e); });
@@ -190,7 +189,8 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
     });
 
     if (missingServices.length > 0) {
-      showToast(`Warning: ${missingServices.join(', ')} not found in inventory. Billed at 0.00.`, 'warning');
+      showToast(`Configure these grooming services in Inventory before billing: ${missingServices.join(', ')}.`, 'error');
+      return;
     }
 
     const consentSignature = hasSignature && canvasRef.current ? canvasRef.current.toDataURL('image/png') : undefined;
@@ -221,14 +221,17 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
     setSelectedServices([]);
     clearSignature();
     setGroomingInstructions({ bathe: false, fullShave: false, trimOnly: false, nailClip: false, earClean: false, deShed: false, customNotes: '' });
-    setShowWarningModal(false);
     setActiveTab('history');
   };
 
   const handleFinalizeAndBill = () => {
     if (!selectedPatient || selectedServices.length === 0) return;
+    if (!consentOwnerName.trim()) {
+      showToast('Owner name is required for grooming consent.', 'error');
+      return;
+    }
     if (!hasSignature) {
-      setShowWarningModal(true);
+      showToast('A customer signature is required before grooming can be finalized.', 'error');
       return;
     }
     processFinalization();
@@ -536,23 +539,6 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
             </div>
           }
         />
-
-        {showWarningModal && (
-          <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col border border-amber-200">
-              <div className="p-6 bg-amber-50">
-                <h3 className="text-lg font-black text-amber-900 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600" /> Missing Signature
-                </h3>
-                <p className="text-sm font-bold text-amber-800 mt-2">No signature captured. Save anyway?</p>
-              </div>
-              <div className="p-4 flex gap-3 justify-end bg-slate-50 border-t border-slate-100">
-                <button onClick={() => setShowWarningModal(false)} className="px-6 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-                <button onClick={processFinalization} className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md">Confirm Save</button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {signatureModal && (
           <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSignatureModal(null)}>
