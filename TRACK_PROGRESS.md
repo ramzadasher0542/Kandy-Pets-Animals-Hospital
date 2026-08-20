@@ -20,25 +20,25 @@ provided test identities in the live browser session only.
 3. `PASS / PARTIAL` Opening hospital, shift, front desk, customers, pets, and appointments.
 4. `PASS / PARTIAL` Veterinarian clinical workflow; medication/lab/vaccination paths remain.
 5. `PASS / FIXED / RETEST PENDING` Grooming workflow; direct standalone POS source card added.
-6. `PASS / FAIL` Boarding/operator workflow; deposit/refund cash ledger remains a P0 blocker.
+6. `PASS / FIXED / RETEST PENDING` Boarding/operator workflow; atomic deposit, settlement invoice, refund, and additional-cash ledger fix applied.
 7. `PASS / PARTIAL` Inventory, suppliers, batches, FEFO, and low-stock behavior.
 8. `PASS / PARTIAL` POS, payments, source billing, voids, and idempotency.
 9. `PASS / PARTIAL` Reports, KPIs, CSV, Z-report, and performance reconciliation.
 10. `PASS / PARTIAL` Closing shift, backup download, restore rehearsal, and second-session visibility.
 11. `PARTIAL` Frontend/backend mismatch review and security/resilience checks.
-12. `IN PROGRESS` Fix P0/P1 defects in dependency order.
+12. `FIXED / RETEST PENDING` F-001 through F-004 source/configuration fixes applied; production retest remains.
 13. `IN PROGRESS` Retest changed paths and publish final decision.
 
 ## Findings Index
 
-- `F-001` P0 — Boarding deposit/refund bypasses cash ledger; owner accounting decision required.
+- `F-001` P0 — Boarding deposit/refund bypassed cash ledger; atomic ledger RPC applied, production retest pending.
 - `F-002` P1 — Standalone completed grooming had no POS handoff; source fix added, production retest pending.
 - `F-003` P1 — Cashier/veterinarian/owner panel permissions were too narrow; live matrix and defaults corrected, retest pending.
 - `F-004` P1 — POS patient identity could be a name/phone composite instead of pet UUID; source fix added, production retest pending.
 
 ## Release Gate
 
-- No P0/P1 defect remains open.
+- No P0/P1 defect remains open after live retest.
 - Every financial mutation has a persisted, reloadable result.
 - Every clinical source can be billed once and voided/released once.
 - Role visibility and Supabase RLS agree.
@@ -47,5 +47,4 @@ provided test identities in the live browser session only.
 
 ## Last Update
 
-2026-08-20 UTC — Live clinical, grooming, boarding, inventory, POS, reporting, and shift-close paths exercised. P0/P1 findings recorded; source fixes and live permission corrections applied, production retest pending.
-
+2026-08-20 UTC — Added `MANUAL_CHECKLIST.md`, applied Step 38 to production Supabase, and wired boarding admission/settlement to an atomic cash ledger plus settlement invoice. Vercel source deployment and production retest remain pending.
