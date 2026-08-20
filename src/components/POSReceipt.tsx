@@ -6,6 +6,7 @@
 import React from 'react';
 import { Invoice } from '../types';
 import { formatRupees } from '../utils/currency';
+import { formatDisplayDate } from '../utils/time';
 
 interface POSReceiptProps {
   invoice: Invoice | null;
@@ -27,7 +28,7 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
   const dashedLine = '- '.repeat(38);
   const doubleLine = '='.repeat(38);
 
-  const dateStr = new Date(invoice.date).toLocaleString();
+  const dateStr = formatDisplayDate(invoice.date);
   const invoiceNum = invoice.id.slice(0, 8).toUpperCase();
 
   const showClient = invoice.ownerName !== 'Walk-in Client';
@@ -134,6 +135,12 @@ export default function POSReceipt({ invoice, systemConfig }: POSReceiptProps) {
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Discount</span>
               <span>-{currency}{formatRupees(invoice.discount)}</span>
+            </div>
+          )}
+          {invoice.tax > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Tax</span>
+              <span>{currency}{formatRupees(invoice.tax)}</span>
             </div>
           )}
           <div style={{ fontSize: '10px', letterSpacing: '-0.5px', overflow: 'hidden', whiteSpace: 'nowrap', margin: '4px 0' }}>
