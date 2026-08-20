@@ -732,6 +732,37 @@ export async function addCashAdjustment(adj: {
   if (error) throw error;
 }
 
+export interface CashAdjustmentInput {
+  id: string;
+  type: 'IN' | 'OUT';
+  amount: number;
+  category: string;
+  reason: string;
+  date: string;
+  createdBy: string;
+  shiftId: string;
+}
+
+/**
+ * Atomically persist a boarding row, its settlement invoice, and its cash
+ * movement. The invoice is optional for admission, while the adjustment is
+ * optional for a zero-balance discharge.
+ */
+export async function commitBoardingCashLedger(
+  boarding: BoardingRecord,
+  invoice?: Invoice,
+  adjustment?: CashAdjustmentInput,
+): Promise<void> {
+  if (!boarding?.id) throw new Error('INVALID_BOARDING_ID');
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.rpc('commit_boarding_cash_ledger_auth', {
+    p_boarding: boarding,
+    p_invoice: invoice || null,
+    p_adjustment: adjustment || null,
+  });
+  if (error) throw error;
+}
+
 export async function openShift(openedBy: string, openingFloatCents: number): Promise<string | null> {
   const newShiftId = crypto.randomUUID(); // Strict UUID standard
   const now = new Date().toISOString();
