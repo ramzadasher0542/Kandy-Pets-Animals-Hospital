@@ -242,15 +242,6 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       return;
     }
 
-    // Supabase Free has no managed backups. A shift close therefore requires a
-    // root-authorized portable backup download, generated after the financial
-    // close so the final reconciliation is included in the snapshot.
-    const backupAuth = await requireAuth(currentUser || null, 'daily_backup');
-    if (!backupAuth.allowed) {
-      showToast('Shift close cancelled: daily backup requires administrator/provider access.', 'error');
-      return;
-    }
-
     const log: ShiftReconciliation = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
