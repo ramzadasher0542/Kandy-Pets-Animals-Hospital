@@ -26,6 +26,12 @@ export interface SystemConfig {
   hospitalAddress: string;
   hospitalPhone: string;
   hospitalEmail: string;
+  emailjsServiceId?: string;
+  emailjsTemplateId?: string;
+  emailjsPublicKey?: string;
+  emailDigestEnabled?: boolean;
+  recipientEmails?: string[];
+  digestSchedule?: string;
   invoiceLogo: string;
   invoiceFooterMessage: string;
   invoiceSubFooterMessage: string;
