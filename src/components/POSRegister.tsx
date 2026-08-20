@@ -108,8 +108,8 @@ export default function POSRegister({
     // Directly-sellable stock: retail, food, pharmacy (prescription) and vaccines.
     // Clinical services (consultation/surgery/lab) are NOT walk-in sellable — they
     // come in via "Import from EHR" so a medical chart backs every service charge.
-    const SELLABLE = ['retail', 'food', 'prescription', 'vaccine'];
-    const allowed = inventory.filter(i => SELLABLE.includes(i.category));
+    const SELLABLE = ['retail', 'food', 'pharmacy', 'prescription', 'vaccine'];
+    const allowed = inventory.filter(i => SELLABLE.includes(i.category) && i.stock > 0);
     if (!searchQuery) return allowed;
     const q = searchQuery.toLowerCase();
     return allowed.filter(i => 
@@ -135,12 +135,20 @@ export default function POSRegister({
   // CART OPERATIONS
   // ---------------------------------------------------------
   const addToCart = (item: InventoryItem, qty: number = 1) => {
+    if (item.stock <= 0) {
+      showToast(`${item.name} is out of stock.`, 'error');
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
-        return prev.map(i => i.id === item.id ? { ...i, cartQuantity: i.cartQuantity + qty } : i);
+        const nextQuantity = Math.min(item.stock, existing.cartQuantity + qty);
+        if (nextQuantity === existing.cartQuantity) {
+          showToast(`Only ${item.stock} ${item.unit} available for ${item.name}.`, 'warning');
+        }
+        return prev.map(i => i.id === item.id ? { ...i, cartQuantity: nextQuantity } : i);
       }
-      return [...prev, { ...item, cartQuantity: qty, cartId: crypto.randomUUID() }];
+      return [...prev, { ...item, cartQuantity: Math.min(item.stock, qty), cartId: crypto.randomUUID() }];
     });
   };
 
@@ -151,7 +159,11 @@ export default function POSRegister({
   const updateCartQuantity = (cartId: string, delta: number) => {
     setCart(prev => prev.map(i => {
       if (i.cartId === cartId) {
-        const newQty = Math.max(1, i.cartQuantity + delta);
+        const available = inventory.find(inv => inv.id === i.id)?.stock ?? i.stock;
+        const newQty = Math.min(available, Math.max(1, i.cartQuantity + delta));
+        if (newQty === i.cartQuantity && delta > 0) {
+          showToast(`Only ${available} ${i.unit} available for ${i.name}.`, 'warning');
+        }
         return { ...i, cartQuantity: newQty };
       }
       return i;
@@ -285,7 +297,10 @@ export default function POSRegister({
   // ---------------------------------------------------------
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.cartQuantity), 0);
   const totalCostOfGoods = cart.reduce((sum, item) => sum + (item.cost * item.cartQuantity), 0);
-  const total = Math.max(0, subtotal - discount);
+  const taxableSubtotal = Math.max(0, subtotal - discount);
+  const taxRate = Number.isFinite(Number(systemConfig?.taxRate)) ? Math.max(0, Number(systemConfig.taxRate)) : 0;
+  const tax = Math.round(taxableSubtotal * taxRate);
+  const total = taxableSubtotal + tax;
 
   const handleCheckout = async () => {
     if (import.meta.env.DEV) console.log('[POS] handleCheckout initiated. Cart size:', cart.length, 'Total:', total);
@@ -364,7 +379,7 @@ export default function POSRegister({
       date: new Date().toISOString(),
       items: invoiceItems,
       subtotal,
-      tax: 0, 
+       tax,
       discount,
       sales_total: total,
       cogs: totalCostOfGoods,
@@ -500,6 +515,12 @@ export default function POSRegister({
                 <input type="number" min="0" step="1" inputMode="numeric" value={discount || ''} onChange={e => setDiscount(parseWholeRupees(e.target.value))} className="w-full text-right bg-slate-50 border border-slate-200 rounded text-[10px] font-mono font-bold py-1 px-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
               </div>
             </div>
+            {tax > 0 && (
+              <div className="flex justify-between items-center text-xs font-bold text-slate-500">
+                <span>Tax ({(taxRate * 100).toFixed(2)}%)</span>
+                <span className="font-mono">{formatRupees(tax)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
               <span className="text-sm font-black text-slate-800 uppercase tracking-widest">Total Due</span>
               <span className="text-2xl font-black text-emerald-600 font-mono tracking-tight">{formatRupees(total)}</span>
