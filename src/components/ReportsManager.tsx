@@ -128,10 +128,18 @@ function classifyStream(item: InvoiceItemLite): string {
 
 const isPaid = (i: VaultInvoice) => (i.status === 'PAID' || i.paymentStatus === 'paid') && !i.is_deleted;
 const invTotal = (i: VaultInvoice) => i.sales_total || (i.amountCents ? i.amountCents / 100 : 0);
+const parseReportDate = (dateVal: any): Date | null => {
+  if (!dateVal) return null;
+  if (typeof dateVal === 'string') {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateVal);
+    if (parts) return new Date(+parts[1], +parts[2] - 1, +parts[3]);
+  }
+  const parsed = new Date(dateVal);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
 const inRange = (dateVal: any, r: DateRange) => {
-  if (!dateVal) return false;
-  const t = new Date(dateVal).getTime();
-  return !isNaN(t) && t >= r.start.getTime() && t <= r.end.getTime();
+  const parsed = parseReportDate(dateVal);
+  return parsed !== null && parsed.getTime() >= r.start.getTime() && parsed.getTime() <= r.end.getTime();
 };
 // Appointment dates are YYYY-MM-DD (local); parse to a local Date to avoid TZ drift.
 const parseApptDate = (apt: any): Date | null => {
