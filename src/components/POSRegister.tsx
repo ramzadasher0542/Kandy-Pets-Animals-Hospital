@@ -30,6 +30,7 @@ interface POSProps {
   inventory: InventoryItem[];
   appointments: Appointment[];
   records: MedicalRecord[];
+  patientRecords?: Pet[];
   clients?: Client[];
   clinicQueue?: ClinicQueueItem[];
   onCheckout?: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
@@ -61,6 +62,7 @@ export default function POSRegister({
   inventory = [], 
   appointments = [], 
   records = [],
+  patientRecords = [],
   clients = [],
   clinicQueue = [],
   onAddInvoice, 
@@ -102,6 +104,7 @@ export default function POSRegister({
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   const todayStr = formatDisplayDate(new Date());
+  const availablePets = patientRecords.length > 0 ? patientRecords : pets;
 
   // ---------------------------------------------------------
   // INVENTORY & QUEUE LOGIC
@@ -228,7 +231,7 @@ export default function POSRegister({
     
     // Auto-Scrape Logic
     // AUDIT FIX: Multi-day charge sweep — find today's record
-    const petStub = pets.find(p => p.name.toLowerCase() === (apt.petName || '').trim().toLowerCase());
+    const petStub = availablePets.find(p => p.name.toLowerCase() === (apt.petName || '').trim().toLowerCase());
     const targetPid = petStub ? petStub.id : `${(apt.petName || '').trim().toLowerCase()}_${normalizeSearchPhone(apt.ownerPhone)}`;
 
     const allPatientRecords = records.filter(r => r.patientId === targetPid);
@@ -311,7 +314,7 @@ export default function POSRegister({
   };
 
   const handleSelectGroomingLog = (log: GroomingLog) => {
-    const pet = pets.find(row => row.id === log.petId);
+    const pet = availablePets.find(row => row.id === log.petId);
     const client = pet ? clients.find(row => row.client_id === pet.clientId) : undefined;
     const appointment: Appointment = {
       id: `grooming-${log.id}`,
@@ -402,7 +405,7 @@ export default function POSRegister({
     
     if (import.meta.env.DEV) console.log('[POS] Resolving patientId...');
     const linkedPet = !isWalkIn
-      ? pets.find(p => p.name.toLowerCase().trim() === selectedAppointment.petName.toLowerCase().trim())
+      ? availablePets.find(p => p.name.toLowerCase().trim() === selectedAppointment.petName.toLowerCase().trim())
       : undefined;
     const patientId = isWalkIn
       ? 'RETAIL'
@@ -799,7 +802,7 @@ export default function POSRegister({
                         );
                       })}
                       {unbilledGroomingLogs.map(log => {
-                        const pet = pets.find(row => row.id === log.petId);
+                        const pet = availablePets.find(row => row.id === log.petId);
                         const client = pet ? clients.find(row => row.client_id === pet.clientId) : undefined;
                         return (
                           <div
