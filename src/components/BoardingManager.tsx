@@ -38,6 +38,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [checkOutDate, setCheckOutDate] = useState<string>('');
   const [foodType, setFoodType] = useState<'without_food' | 'with_food'>('without_food');
+  const [admissionFoodItemId, setAdmissionFoodItemId] = useState<string>('');
   const [hospitalProvidesLitter, setHospitalProvidesLitter] = useState<boolean>(false);
   const [medicalBoarding, setMedicalBoarding] = useState<boolean>(false);
   const [estimatedStayDays, setEstimatedStayDays] = useState<number>(1);
@@ -99,7 +100,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [feedingQtyPerMeal, setFeedingQtyPerMeal] = useState<number>(1);
   const [feedingMealsPerDay, setFeedingMealsPerDay] = useState<number>(3);
 
-  const foodInventory = useMemo(() => inventory.filter(i => i.category === 'food'), [inventory]);
+  const foodInventory = useMemo(() => inventory.filter(i => i.category === 'food' && i.stock > 0), [inventory]);
 
   // Medication log modal state (Admission only)
   const [medModalCage, setMedModalCage] = useState<string | null>(null);
@@ -314,6 +315,18 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
 
     // Snapshot today's cage rate for this pet/food/litter configuration
     const cageFeePerDayCents = calculateDailyRate(patient, foodType, hospitalProvidesLitter);
+    if (cageFeePerDayCents <= 0) {
+      showToast('Configure a positive boarding rate for this patient type before admission.', 'error');
+      return;
+    }
+
+    const admissionFood = foodType === 'with_food'
+      ? foodInventory.find(item => item.id === admissionFoodItemId)
+      : undefined;
+    if (foodType === 'with_food' && !admissionFood) {
+      showToast('Select an in-stock food item before admitting a patient with food.', 'error');
+      return;
+    }
 
     // Intake charges the flat deposit only; all other charges accumulate against it.
     const billingItems = [
@@ -332,6 +345,12 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       depositPaid: true,
       hospitalProvidesLitter,
       billingItems: billingItems,
+      feedingPlan: admissionFood ? {
+        inventoryItemId: admissionFood.id,
+        itemName: admissionFood.name,
+        quantityPerMeal: 1,
+        mealsPerDay: 3,
+      } : undefined,
       estimatedStayDays: Math.max(1, estimatedStayDays || 1),
       depositAmountCents: depositCents,
       totalChargesCents: 0,
@@ -350,6 +369,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     setSelectedPatientId('');
     setCheckOutDate('');
     setFoodType('without_food');
+    setAdmissionFoodItemId('');
     setMedicalBoarding(false);
     setHospitalProvidesLitter(false);
     setEstimatedStayDays(1);
@@ -637,6 +657,20 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                       With Food
                     </button>
                   </div>
+                  {foodType === 'with_food' && (
+                    <select
+                      data-testid="admission-food-select"
+                      value={admissionFoodItemId}
+                      onChange={e => setAdmissionFoodItemId(e.target.value)}
+                      className="w-full mt-3 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="">Select in-stock food</option>
+                      {foodInventory.map(item => <option key={item.id} value={item.id}>{item.name} (stock {item.stock})</option>)}
+                    </select>
+                  )}
+                  {foodType === 'with_food' && foodInventory.length === 0 && (
+                    <p className="text-[10px] font-bold text-amber-600 mt-2">No in-stock food is available. Add food inventory before admission.</p>
+                  )}
                 </div>
 
                 <div className="space-y-2 border border-slate-200 p-4 rounded-2xl bg-slate-50">
