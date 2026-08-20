@@ -14,11 +14,13 @@
 ### Latest Verification
 
 - Supabase dashboard reports **Healthy**; Free-plan usage is within limits: 22 MB / 5 GB egress, 29 MB / 500 MB database, 10 / 50,000 MAU, and 0 / 1 GB storage.
-- Vercel production deployment is **Ready**, sourced from `main`; the deployed application code baseline remains `5c5f573` (`Harden clinical and financial workflows`).
+- Vercel production deployment is **Ready**, sourced from `main`; commit `3208ff5` (`fix: restore boarding manager source`) is promoted to `https://kpah-aps.vercel.app/`.
 - Live administrator sign-in succeeded; the app displayed **CLOUD SYNC ACTIVE**, all active clinic navigation, and Settings.
 - Staff & Security remains available for Auth/access control, but live UI inspection found no Staff Management screen and no Payroll content.
 - The live inventory still contains the synthetic `Synthetic Exam Service` test item. It was not removed because production-data deletion requires explicit approval.
 - Step 38 is applied to production Supabase: boarding admission/settlement can atomically persist the boarding row, settlement invoice, and cash adjustment through `commit_boarding_cash_ledger_auth`.
+- Step 38 was corrected to quote the case-sensitive `shifts."isOpen"` column and re-applied; production verification returned `has_quoted_is_open=true` and `has_unquoted_isopen=false`.
+- Live boarding retest passed with synthetic `QA Luna`: Rs. 15,000 admission cash-in, discharged kennel, Rs. 15,000 refund cash-out, and database readback confirmed both movements in the same shift.
 - `MANUAL_CHECKLIST.md` is now the owner-facing click-by-click verification guide. It contains no password.
 
 ### Next Handoff Actions
@@ -27,7 +29,7 @@
 2. Keep external backups outside Supabase; the Free tier has no certified PITR/provider-managed recovery.
 3. Obtain approval before removing or quarantining synthetic QA rows, and configure approved boarding rates before real clinic use.
 4. Re-run administrator and restricted-role smoke tests after any new deployment.
-5. Run the boarding deposit/refund scenario from `MANUAL_CHECKLIST.md` and verify the new cash-in/cash-out movements against Shift and Invoices.
+5. Re-run grooming, role, payment, security, and recovery scenarios from `MANUAL_CHECKLIST.md`; the boarding deposit/refund scenario now passes in production.
 
 Last verified: 2026-08-20 UTC
 
@@ -73,6 +75,8 @@ Live deployment: https://kpah-aps.vercel.app/
 - Found and fixed a second financial-integrity defect: voiding a clinical invoice left linked vaccination/lab/grooming/boarding rows marked billed. Invoice items now retain source references, and a successful void releases those exact rows for rebilling. A fresh vaccination was checked out as invoice `88e0bd5e`, voided, and then reappeared in POS as a billable charge.
 - A fresh post-test export is retained at `outputs/ceylonpets_backup_FULL_2026-08-14.json` with 27 tables and 88 rows. The browser download bridge still exposed no file, so the JSON was captured from the authenticated export and preserved directly as a workspace artifact.
 - The fresh 88-row snapshot was merged back into the same synthetic beta production state, reporting `Backup merged: 88 rows across 20 tables`. This is a same-state rehearsal, not an independent safe-environment recovery test.
+- Fixed the first Vercel build failure caused by a missing conditional branch, removed the duplicated editor copy of `BoardingManager.tsx`, and promoted the clean 1,031-line source in commit `3208ff5`.
+- Corrected and published migration commit `4ad4de8`; the live boarding retest admitted and discharged `QA Luna`, and Supabase readback confirmed one `IN 15000` deposit plus one `OUT 15000` refund.
 
 ## Remaining Work: 4 Items
 
