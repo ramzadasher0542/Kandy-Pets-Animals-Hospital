@@ -175,7 +175,8 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                 </tr>
               ) : pageInvoices.map(inv => {
                 const isVoid = inv.paymentStatus === 'void';
-                const d = new Date(inv.date);
+                 const hasTime = typeof inv.date === 'string' && !/^\d{4}-\d{2}-\d{2}$/.test(inv.date);
+                 const d = hasTime ? new Date(inv.date) : null;
                 
                 // ARMOR: Extract ID safely
                 const displayId = inv.invoiceNumber || inv.invoice_number || inv.id.slice(0,8);
@@ -185,7 +186,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-800 text-xs">{formatDisplayDate(inv.date)}</div>
                       <div className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">
-                        {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                         {d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recorded date'}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -323,7 +324,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
               {(selectedInvoice?.items || selectedInvoice?.purchases || selectedInvoice?.cart || []).map((item: any, idx: number) => {
                 const price = item.price || item.unitPrice || 0;
                 const qty = item.quantity || item.qty || 1;
-                const total = item.total || item.lineTotal || (price * qty) || 0;
+                 const total = item.totalPrice ?? item.total ?? item.lineTotal ?? (price * qty);
                 
                 return (
                 <tr key={idx}>
@@ -339,7 +340,7 @@ export default function InvoicesManager({ invoices = [], onVoidInvoice, systemCo
           <div className="border-t border-slate-200 pt-4 mb-8">
             <div className="flex justify-between items-center">
               <span className="font-black text-slate-800 uppercase tracking-widest">Total Paid</span>
-              <span className="text-xl font-mono font-black text-indigo-600">{currencySign}{formatRupees((selectedInvoice?.total || selectedInvoice?.grandTotal || 0))}</span>
+               <span className="text-xl font-mono font-black text-indigo-600">{currencySign}{formatRupees(selectedInvoice?.sales_total ?? selectedInvoice?.total ?? selectedInvoice?.grandTotal ?? (selectedInvoice?.amountCents ? selectedInvoice.amountCents / 100 : 0))}</span>
             </div>
             {selectedInvoice?.paymentMethod && (
               <div className="flex justify-between items-center mt-2">
