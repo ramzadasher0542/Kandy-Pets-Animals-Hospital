@@ -218,8 +218,8 @@ function App() {
     recipientEmails: [],
     digestSchedule: 'daily_end',
       rolePermissions: {
-        cashier: ['pos', 'shift'],
-      veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming'],
+        cashier: ['pos', 'appointments', 'pets', 'customers', 'shift'],
+      veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
       // HOTFIX-1: 'manager' had NO entry anywhere, so isViewPermitted fell through
       // to `|| []` and every manager account could log in but saw zero views.
       // Operational floor above cashier; no 'reminders'/'portal' (owner-only).
@@ -231,7 +231,7 @@ function App() {
       // revoke panels per role from the Panel Access Matrix in Settings.
       groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'suppliers', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
        provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'reminders', 'portal']
     },
@@ -1260,12 +1260,12 @@ function App() {
     // always populated, so it normally wins. Both must stay in sync; a role
     // missing from EITHER falls through to `|| []` (= zero views).
     const defaultPermissions: Record<string, string[]> = {
-      cashier: ['pos', 'shift'],
-      veterinarian: ['dashboard', 'appointments', 'examinations', 'boarding', 'grooming'],
+      cashier: ['pos', 'appointments', 'pets', 'customers', 'shift'],
+      veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
       groomer: ['grooming', 'shift'],
       admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
        provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
     };
     // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
@@ -1415,6 +1415,7 @@ function App() {
             inventory={inventory} 
             appointments={appointments}
             records={records}
+            clients={clients}
             clinicQueue={clinicQueue}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
             onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
