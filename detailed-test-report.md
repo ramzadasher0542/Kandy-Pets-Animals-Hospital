@@ -188,11 +188,11 @@ agree. A click that appears to work but does not survive reload is a failure.
 | B. Front desk/shift start | PASS / PARTIAL | Synthetic client, pet, shift, OPD appointment, check-in, and clinical queue path passed. Cashier front-desk access required correction. |
 | C. Veterinary clinical | PASS / PARTIAL | Appointment, queue, vitals, normal exam, assessment, treatment plan, chart lock, and discharge persisted. Medication, laboratory, and vaccination billing paths remain untested. |
 | D. Grooming | PASS / FAIL | Consent validation and signed session persistence passed. Standalone completed grooming was not visible in POS before the source-card fix; production retest pending. |
-| E. Boarding | PASS / FIXED / RETEST PENDING | Rate setup, deposit guard, admission, kennel lock, feeding, stock decrement, discharge, and refund calculation passed. Atomic cash ledger and settlement invoice fix is applied; live retest remains. |
+| E. Boarding | PASS / FIXED / LIVE RETEST PASSED | Production test admitted synthetic `QA Luna` with a Rs. 15,000 deposit, discharged the kennel, refunded Rs. 15,000, and confirmed the boarding row plus matching cash movements in Supabase. |
 | F. Inventory | PASS / PARTIAL | Supplier, service records, food item, batch receipt, expiry, and stock decrement passed. Duplicate SKU, FEFO, void reversal, and negative-stock boundaries remain untested. |
 | G. POS/payments | PASS / PARTIAL | Cash checkout, tax, stock decrement, receipt, clinical billing, and grooming billing through an active queue passed. Card, bank transfer, split payment, discount approval, and void retest remain. |
-| H. Reports | PASS / PARTIAL | Revenue, COGS, payment method, productivity, and Z-report values reconciled to recorded paid invoices. Boarding deposit/refund is excluded from this reconciliation and is a release blocker. |
-| I. Closing/recovery | PASS / PARTIAL | Synthetic shift closed with a balanced Z-report at Rs. 14,872. That balance reflects the current ledger omission of the promised boarding deposit/refund. Backup/restore and duplicate-close tests remain. |
+| H. Reports | PASS / PARTIAL | Revenue, COGS, payment method, productivity, and Z-report values reconciled to recorded paid invoices. The fresh boarding ledger readback now confirms the deposit/refund movements; broader report and payment coverage remains. |
+| I. Closing/recovery | PASS / PARTIAL | The earlier Rs. 14,872 synthetic Z-report predates the boarding ledger fix. The fresh boarding test wrote matching cash-in/cash-out movements. Backup/restore and duplicate-close tests remain. |
 | J. Security/resilience | PARTIAL | Role matrix and visible panel boundaries were reviewed. Anonymous/RLS, direct RPC authorization, reconnect, and PIN exposure tests remain. |
 
 ## Findings
@@ -211,7 +211,7 @@ evidence, impact, fix, and retest result.
 - **Backend/source evidence:** `BoardingManager.tsx` creates an `admission_deposit` billing item and sets `depositPaid: true` without a POS/shift mutation (`handleConfirmBooking`, lines 331-357). Discharge calculates and reports the refund but only updates the boarding row and requeues the patient (`handleDischargeSettle`, lines 237-292).
 - **Impact:** Physical cash, customer liability, invoice history, and Z-report can disagree. This is a go-live blocker.
 - **Fix:** Implemented the explicit cash-ledger model. Step 38 adds the Auth-guarded `commit_boarding_cash_ledger_auth` RPC. Admission records a `Boarding Deposit` cash-in movement. Discharge creates one settlement invoice for the actual boarding charges and records either a `Boarding Deposit Refund` cash-out or `Boarding Additional Charge` cash-in movement. Boarding, invoice, and movement commit together, with stable IDs for retries.
-- **Retest:** Production source deployment and a fresh boarding scenario are still required.
+- **Retest:** Passed after production deployment. The first attempt correctly failed before writing because the RPC used unquoted `isOpen`; after applying the quoted predicate, `QA Luna` was admitted to Kennel 1, discharged, and refunded Rs. 15,000. Supabase readback showed one `IN 15000` and one `OUT 15000` boarding movement in the same shift, with no duplicate boarding row.
 
 ### F-002 — P1 — Completed grooming can be saved but has no standalone billing handoff
 
@@ -250,10 +250,10 @@ evidence, impact, fix, and retest result.
 
 ## Final Decision
 
-**NO-GO pending retest.** The F-001 implementation is applied in production
-Supabase but has not yet been validated through a fresh live boarding scenario.
-F-002 through F-004 have source fixes or configuration corrections; the final
-Vercel deployment and role/payment/security/recovery matrix remain incomplete.
+**NO-GO pending remaining matrix.** F-001 is now fixed and live-verified in
+production. F-002 through F-004 have source fixes or configuration corrections;
+role/payment/security/recovery coverage, approved boarding rates, backup recovery,
+and synthetic-data cleanup remain incomplete.
 This report is not a go-live approval.
 
 ## Noticed, Not Fixed
@@ -261,5 +261,4 @@ This report is not a go-live approval.
 - No groomer login identity was provided, so groomer-specific sign-in and least-privilege tests remain blocked.
 - Card, bank transfer, split payment, discount approval, invoice void/reversal, laboratory, vaccination, backup/restore, RLS, direct-RPC, and reconnect tests remain incomplete.
 - Boarding deposit/refund now uses explicit cash-in/cash-out ledger movements and a settlement invoice; the owner must confirm this matches the clinic's accounting policy.
-- The new boarding ledger migration has been applied to production Supabase but still needs a fresh live retest after Vercel deployment.
 - Synthetic QA records and service/food inventory remain in production pending owner-approved cleanup.
