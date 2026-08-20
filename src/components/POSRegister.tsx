@@ -15,7 +15,7 @@ import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
-import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, ClinicQueueItem, User as UserType } from '../types';
+import { InventoryItem, Appointment, Invoice, InvoiceItem, MedicalRecord, BoardingRecord, GroomingLog, LabResult, Vaccination, Pet, Client, ClinicQueueItem, User as UserType } from '../types';
 import { fetchPets, fetchBoardingRecords, fetchGroomingLogs, fetchLabResults, fetchVaccinations } from '../lib/db';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PhoneInput from './PhoneInput';
@@ -30,6 +30,7 @@ interface POSProps {
   inventory: InventoryItem[];
   appointments: Appointment[];
   records: MedicalRecord[];
+  clients?: Client[];
   clinicQueue?: ClinicQueueItem[];
   onCheckout?: (invoice: Invoice, updatedInventory: InventoryItem[]) => void;
   activeShiftId?: string;
@@ -59,7 +60,8 @@ const normalizeSearchPhone = (p: string) => p ? p.replace(/\D/g, '').slice(-9) :
 export default function POSRegister({ 
   inventory = [], 
   appointments = [], 
-  records = [], 
+  records = [],
+  clients = [],
   clinicQueue = [],
   onAddInvoice, 
   onUpdateStock,
@@ -131,6 +133,15 @@ export default function POSRegister({
     });
   }, [appointments, invoices, todayStr]);
 
+  const unbilledGroomingLogs = useMemo(() => {
+    return groomingLogs.filter(log =>
+      log.date === todayStr &&
+      log.status === 'completed' &&
+      !log.billed &&
+      Boolean(log.billingItems?.length)
+    );
+  }, [groomingLogs, todayStr]);
+
   // ---------------------------------------------------------
   // CART OPERATIONS
   // ---------------------------------------------------------
@@ -185,6 +196,31 @@ export default function POSRegister({
   // ---------------------------------------------------------
   // E.H.R AUTO-SCRAPER ENGINE
   // ---------------------------------------------------------
+  const sweepBillingItems = (
+    items: any[],
+    sourceType: 'vaccination' | 'grooming' | 'lab' | 'boarding',
+    sourceId: string,
+    targetItems: CartItem[]
+  ) => {
+    items.forEach(item => {
+      const invItem = inventory.find(i => i.id === item.itemId);
+      if (!invItem) return;
+      const existing = targetItems.find(i => i.id === invItem.id);
+      if (existing) {
+        existing.cartQuantity += item.quantity || 1;
+        if (!existing.sourceRefs) existing.sourceRefs = [];
+        existing.sourceRefs.push({ type: sourceType, id: sourceId });
+        return;
+      }
+      targetItems.push({
+        ...invItem,
+        cartQuantity: item.quantity || 1,
+        cartId: crypto.randomUUID(),
+        sourceRefs: [{ type: sourceType, id: sourceId }]
+      });
+    });
+  };
+
   const handleSelectAppointment = (apt: Appointment) => {
     setSelectedAppointment(apt);
     setCustomClientName('');
@@ -198,7 +234,11 @@ export default function POSRegister({
     const allPatientRecords = records.filter(r => r.patientId === targetPid);
     const activeRecord = allPatientRecords.find(r => r.visitDate === todayStr);
 
-    const targetBoarding = activeBoarding.filter(b => b.petId === targetPid && b.status === 'active' && !b.billed);
+    const targetBoarding = activeBoarding.filter(b =>
+      b.petId === targetPid &&
+      ['active', 'discharged'].includes(b.status) &&
+      !b.billed
+    );
 
     let newCartItems: CartItem[] = [];
 
@@ -246,41 +286,19 @@ export default function POSRegister({
       }
     });
 
-    // 4. AUDIT FIX: Sweep native billing items from Grooming, Labs, and Boarding
-    const sweepBillingItems = (items: any[], sourceType: 'vaccination' | 'grooming' | 'lab' | 'boarding', sourceId: string) => {
-      items.forEach(med => {
-        const invItem = inventory.find(i => i.id === med.itemId);
-        if (invItem) {
-          const existing = newCartItems.find(i => i.id === invItem.id);
-          if (existing) {
-            existing.cartQuantity += med.quantity || 1;
-            if (!existing.sourceRefs) existing.sourceRefs = [];
-            existing.sourceRefs.push({ type: sourceType, id: sourceId });
-          } else {
-            newCartItems.push({ 
-              ...invItem, 
-              cartQuantity: med.quantity || 1, 
-              cartId: crypto.randomUUID(),
-              sourceRefs: [{ type: sourceType, id: sourceId }]
-            });
-          }
-        }
-      });
-    };
-
     // Sweep native arrays replacing the prescribedMeds hack
     const patientGrooming = groomingLogs.filter(l => l.petId === targetPid && !l.billed);
     patientGrooming.forEach(log => {
-      if (log.billingItems) sweepBillingItems(log.billingItems, 'grooming', log.id);
+      if (log.billingItems) sweepBillingItems(log.billingItems, 'grooming', log.id, newCartItems);
     });
     
     const patientLabs = labResults.filter(l => l.petId === targetPid && !l.billed);
     patientLabs.forEach(res => {
-      if (res.billingItems) sweepBillingItems(res.billingItems, 'lab', res.id);
+      if (res.billingItems) sweepBillingItems(res.billingItems, 'lab', res.id, newCartItems);
     });
 
     targetBoarding.forEach(rec => {
-      if (rec.billingItems) sweepBillingItems(rec.billingItems, 'boarding', rec.id);
+      if (rec.billingItems) sweepBillingItems(rec.billingItems, 'boarding', rec.id, newCartItems);
     });
 
     if (newCartItems.length > 0) {
@@ -290,6 +308,37 @@ export default function POSRegister({
       setCart(newCartItems);
       showToast('No active charges found in E.H.R. Manual entry required.', 'info');
     }
+  };
+
+  const handleSelectGroomingLog = (log: GroomingLog) => {
+    const pet = pets.find(row => row.id === log.petId);
+    const client = pet ? clients.find(row => row.client_id === pet.clientId) : undefined;
+    const appointment: Appointment = {
+      id: `grooming-${log.id}`,
+      petName: pet?.name || 'Grooming Patient',
+      petType: pet?.petType || 'Other',
+      breed: pet?.breed || '',
+      ownerName: client?.full_name || 'Unknown Owner',
+      ownerPhone: client?.primary_phone || '0000000000',
+      date: log.date,
+      time: '',
+      veterinarian: '',
+      reason: 'Grooming Salon',
+      status: 'completed',
+      admissionType: 'Grooming Salon'
+    };
+    const newCartItems: CartItem[] = [];
+    if (log.billingItems) sweepBillingItems(log.billingItems, 'grooming', log.id, newCartItems);
+    setSelectedAppointment(appointment);
+    setCustomClientName('');
+    setCustomClientPhone('');
+    setCart(newCartItems);
+    showToast(
+      newCartItems.length > 0
+        ? `Imported ${newCartItems.length} grooming charge(s) from E.H.R.`
+        : 'No configured inventory items found for this grooming session.',
+      newCartItems.length > 0 ? 'success' : 'error'
+    );
   };
 
   // ---------------------------------------------------------
@@ -352,7 +401,12 @@ export default function POSRegister({
     const petName = isWalkIn ? 'Retail Sale' : selectedAppointment.petName;
     
     if (import.meta.env.DEV) console.log('[POS] Resolving patientId...');
-    const patientId = isWalkIn ? 'RETAIL' : `${selectedAppointment.petName.toLowerCase().trim()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
+    const linkedPet = !isWalkIn
+      ? pets.find(p => p.name.toLowerCase().trim() === selectedAppointment.petName.toLowerCase().trim())
+      : undefined;
+    const patientId = isWalkIn
+      ? 'RETAIL'
+      : linkedPet?.id || `${selectedAppointment.petName.toLowerCase().trim()}_${normalizeSearchPhone(selectedAppointment.ownerPhone)}`;
 
     if (import.meta.env.DEV) console.log('[POS] Mapping cart items...');
     const invoiceItems: InvoiceItem[] = cart.map(c => {
@@ -718,37 +772,56 @@ export default function POSRegister({
               <div>
                 <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Seen Today — Not Yet Billed</h4>
                 <div className="space-y-3">
-                  {unbilledAppointments.length === 0 ? (
+                  {unbilledAppointments.length === 0 && unbilledGroomingLogs.length === 0 ? (
                     <div className="text-[10px] text-slate-400 italic px-2">No unbilled checkouts.</div>
                   ) : (
-                    unbilledAppointments.map(apt => {
-                      const isSelected = selectedAppointment?.id === apt.id;
-                      
-                      return (
-                        <div
-                          key={apt.id}
-                          data-testid="btn-import-ehr"
-                          onClick={() => handleSelectAppointment(apt)}
-                          className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
-                        >
-                          {!isSelected && <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>}
-                          <div className="flex justify-between items-start mb-1">
-                            <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{apt.petName}</div>
-                            <div className={`text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-                              Ready
+                    <>
+                      {unbilledAppointments.map(apt => {
+                        const isSelected = selectedAppointment?.id === apt.id;
+                        return (
+                          <div
+                            key={apt.id}
+                            data-testid="btn-import-ehr"
+                            onClick={() => handleSelectAppointment(apt)}
+                            className={`p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden ${isSelected ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
+                          >
+                            {!isSelected && <div className="absolute top-0 right-0 w-2 h-full bg-emerald-400"></div>}
+                            <div className="flex justify-between items-start mb-1">
+                              <div className={`font-black text-sm truncate ${isSelected ? 'text-white' : 'text-slate-800'}`}>{apt.petName}</div>
+                              <div className={`text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${isSelected ? 'bg-indigo-500 text-white' : 'bg-emerald-100 text-emerald-700'}`}>Ready</div>
+                            </div>
+                            <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{apt.ownerName} • {apt.ownerPhone}</div>
+                            <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
+                              <div className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}><FileText className="w-3 h-3"/> Import E.H.R Charges</div>
+                              <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
                             </div>
                           </div>
-                          <div className={`text-[10px] font-bold mb-3 ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>{apt.ownerName} • {apt.ownerPhone}</div>
-                          
-                          <div className={`border-t pt-3 flex items-center justify-between ${isSelected ? 'border-indigo-500' : 'border-slate-100'}`}>
-                            <div className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
-                              <FileText className="w-3 h-3"/> Import E.H.R Charges
+                        );
+                      })}
+                      {unbilledGroomingLogs.map(log => {
+                        const pet = pets.find(row => row.id === log.petId);
+                        const client = pet ? clients.find(row => row.client_id === pet.clientId) : undefined;
+                        return (
+                          <div
+                            key={log.id}
+                            data-testid={`btn-import-grooming-${log.id}`}
+                            onClick={() => handleSelectGroomingLog(log)}
+                            className="p-4 rounded-xl border transition-all cursor-pointer shadow-sm relative overflow-hidden bg-white border-slate-200 hover:border-indigo-300"
+                          >
+                            <div className="absolute top-0 right-0 w-2 h-full bg-violet-400"></div>
+                            <div className="flex justify-between items-start mb-1">
+                              <div className="font-black text-sm truncate text-slate-800">{pet?.name || 'Grooming Patient'}</div>
+                              <div className="text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">Grooming</div>
                             </div>
-                            <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-indigo-300' : 'text-slate-300'}`}/>
+                            <div className="text-[10px] font-bold mb-3 text-slate-500">{client?.full_name || 'Unknown Owner'} • {log.services.join(', ')}</div>
+                            <div className="border-t pt-3 flex items-center justify-between border-slate-100">
+                              <div className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1 text-indigo-600"><FileText className="w-3 h-3"/> Import Grooming Charges</div>
+                              <ChevronRight className="w-4 h-4 text-slate-300"/>
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })
+                        );
+                      })}
+                    </>
                   )}
                 </div>
               </div>
