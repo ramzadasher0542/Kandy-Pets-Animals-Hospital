@@ -71,7 +71,7 @@ BEGIN
       SELECT 1
       FROM public.shifts
       WHERE id::text = p_adjustment->>'shiftId'
-        AND isOpen = true
+        AND "isOpen" = true
         AND is_deleted = false
     ) THEN
       RAISE EXCEPTION 'OPEN_SHIFT_REQUIRED';
