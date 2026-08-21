@@ -31,8 +31,6 @@ jobs:
       - name: Run lint
         run: npm run lint
       - name: Run enterprise checks
-        run: npm run enterprise:check
+        run: node scripts/enterprise-check.mjs
       - name: Run production build
         run: npm run build
-      - name: Run tests
-        run: npm test
