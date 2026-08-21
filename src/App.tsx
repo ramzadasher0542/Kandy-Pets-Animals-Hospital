@@ -230,10 +230,10 @@ function App() {
       // its ordinary default, based on what 'owner' gets; provider can grant or
       // revoke panels per role from the Panel Access Matrix in Settings.
       groomer: ['grooming', 'shift'],
-      admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'suppliers', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      admin: ['dashboard', 'reports', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'reports', 'pos', 'appointments', 'inventory', 'suppliers', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
-       provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'reminders', 'portal']
+       provider: ['dashboard', 'reports', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'suppliers', 'invoices', 'shift', 'reminders', 'portal']
     },
   } as SystemConfig);
 
@@ -1255,7 +1255,7 @@ function App() {
     if (user.role === 'dummy_admin') return viewName === 'settings';
     if (user.role === 'pet_parent') return viewName === 'portal';
     if (viewName === 'settings') return false;
-    const checkedView = (viewName === 'reports' || viewName === 'dashboard') ? 'dashboard' : viewName;
+    const checkedView = viewName;
     // NOTE: this literal is only a fallback — systemConfig.rolePermissions is
     // always populated, so it normally wins. Both must stay in sync; a role
     // missing from EITHER falls through to `|| []` (= zero views).
@@ -1264,9 +1264,9 @@ function App() {
       veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
       groomer: ['grooming', 'shift'],
-      admin: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'pos', 'appointments', 'inventory', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-       provider: ['dashboard', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
+      admin: ['dashboard', 'reports', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+      owner: ['dashboard', 'reports', 'pos', 'appointments', 'inventory', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
+       provider: ['dashboard', 'reports', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
     };
     // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
     // TypeScript — it is why the missing 'manager' key compiled cleanly instead of
@@ -1283,7 +1283,7 @@ function App() {
     if (user.role === 'pet_parent') return 'portal';
     const priorityViews = ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'portal'] as const;
     for (const view of priorityViews) {
-      if (isViewPermitted(view, user)) return view === 'dashboard' ? 'reports' : view;
+      if (isViewPermitted(view, user)) return view;
     }
     return 'portal';
   };
@@ -1842,3 +1842,4 @@ function App() {
 export default function AppWrapper() {
   return <App />;
 }
+
