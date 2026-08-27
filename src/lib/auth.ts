@@ -75,17 +75,28 @@ export async function upsertSystemConfig(config: SystemConfig, currentUser: User
  *
  * Returns null when unconfigured, unauthenticated, or when the identity is not
  * yet linked to an active staff row (OWNER ACTION REQUIRED: set users.auth_user_id
- * for the real staff Auth account). A null result must be treated as "no access".
+ * for the real staff Auth account). The returned staff record includes its clinic
+ * assignment for the root React auth state. A null result must be treated as
+ * "no access".
  */
 export async function fetchStaffForAuthUser(authUserId: string | null | undefined): Promise<User | null> {
   if (!supabase || !authUserId) return null;
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id')
+    .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id, clinic_id, is_superadmin')
     .eq('auth_user_id', authUserId)
     .eq('active', true)
     .eq('is_deleted', false)
     .maybeSingle();
   if (error || !data) return null;
-  return data as unknown as User;
+  return {
+    id: data.id,
+    name: data.name,
+    username: data.username,
+    role: data.role,
+    avatarColor: data.avatar_color || '',
+    active: data.active ?? true,
+    clinicId: data.clinic_id ?? null,
+    isSuperadmin: data.is_superadmin === true,
+  } as User;
 }

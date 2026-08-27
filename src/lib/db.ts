@@ -26,7 +26,9 @@ import {
   InventoryBatch,
   Supplier,
   InventoryCategory,
-  ShiftReconciliation
+  ShiftReconciliation,
+  Clinic,
+  ClinicSettings
 } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 
@@ -38,6 +40,86 @@ function cloud() {
   } catch {
     throw cloudUnavailable();
   }
+}
+
+let currentClinicId: string | null = null;
+
+/** Keep the authenticated clinic in memory so every write uses the same scope. */
+export function setCurrentClinicId(clinicId: string | null | undefined): void {
+  currentClinicId = clinicId || null;
+}
+
+export function withCurrentClinicId<T extends object>(payload: T): T & { clinic_id: string } {
+  if (!currentClinicId) throw new Error('No clinic is assigned to the current user.');
+  return { ...payload, clinic_id: currentClinicId };
+}
+
+const defaultClinicSettings = (clinicId: string): ClinicSettings => ({
+  clinicId,
+  taxEnabled: true,
+  groomingEnabled: true,
+  boardingEnabled: true,
+});
+
+function mapClinicSettings(row: any, clinicId: string): ClinicSettings {
+  return {
+    clinicId,
+    taxEnabled: row?.tax_enabled ?? true,
+    groomingEnabled: row?.grooming_enabled ?? true,
+    boardingEnabled: row?.boarding_enabled ?? true,
+  };
+}
+
+export async function fetchClinics(): Promise<Clinic[]> {
+  const { data, error } = await cloud()
+    .from('clinics')
+    .select('id, name, address, phone, created_at')
+    .order('name');
+  if (error) throw error;
+  return (data || []) as Clinic[];
+}
+
+export async function fetchClinicSettings(clinicId: string): Promise<ClinicSettings> {
+  if (!clinicId) throw new Error('A clinic is required to load clinic settings.');
+  const { data, error } = await cloud()
+    .from('clinic_settings')
+    .select('clinic_id, tax_enabled, grooming_enabled, boarding_enabled')
+    .eq('clinic_id', clinicId)
+    .maybeSingle();
+  if (error) throw error;
+  return mapClinicSettings(data, clinicId);
+}
+
+export async function fetchAllClinicSettings(): Promise<ClinicSettings[]> {
+  const { data, error } = await cloud()
+    .from('clinic_settings')
+    .select('clinic_id, tax_enabled, grooming_enabled, boarding_enabled');
+  if (error) throw error;
+  return (data || []).map((row: any) => mapClinicSettings(row, row.clinic_id));
+}
+
+export async function upsertClinicSettings(settings: ClinicSettings): Promise<void> {
+  const { error } = await cloud().from('clinic_settings').upsert({
+    clinic_id: settings.clinicId,
+    tax_enabled: settings.taxEnabled,
+    grooming_enabled: settings.groomingEnabled,
+    boarding_enabled: settings.boardingEnabled,
+  }, { onConflict: 'clinic_id' });
+  if (error) throw error;
+}
+
+export async function createClinic(input: Pick<Clinic, 'name' | 'address' | 'phone'>): Promise<Clinic> {
+  const name = input.name.trim();
+  if (!name) throw new Error('Clinic name is required.');
+  const { data, error } = await cloud()
+    .from('clinics')
+    .insert({ name, address: input.address?.trim() || null, phone: input.phone?.trim() || null })
+    .select('id, name, address, phone, created_at')
+    .single();
+  if (error) throw error;
+  const clinic = data as Clinic;
+  await upsertClinicSettings(defaultClinicSettings(clinic.id));
+  return clinic;
 }
 
 // ==========================================
@@ -81,7 +163,7 @@ export async function upsertInventoryItem(item: InventoryItem): Promise<void> {
     item.minStock = 0;
   }
 
-  const { error } = await client.from('inventory').upsert(item);
+  const { error } = await client.from('inventory').upsert(withCurrentClinicId(item));
   if (error) throw error;
 }
 
@@ -140,7 +222,7 @@ async function recomputeItemStockFromBatches(itemId: string): Promise<number> {
 export async function upsertInventoryBatch(batch: InventoryBatch): Promise<void> {
   if (!batch || !batch.id) return;
   const client = cloud();
-  const { error } = await client.from('inventory_batches').upsert(batch);
+  const { error } = await client.from('inventory_batches').upsert(withCurrentClinicId(batch));
   if (error) throw error;
   // Keep item.stock in sync with the batch totals for this item.
   await recomputeItemStockFromBatches(batch.inventoryItemId);
@@ -255,7 +337,7 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
     time: formatDisplayTime(apt.time)
   };
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('appointments').upsert(formattedApt);
+  const { error } = await supabase.from('appointments').upsert(withCurrentClinicId(formattedApt));
   if (error) throw error;
 }
 
@@ -293,7 +375,7 @@ export async function upsertUser(user: User): Promise<void> {
     active: user.active ?? true,
     is_deleted: false
   };
-  const { error } = await supabase.from('users').upsert(payload);
+  const { error } = await supabase.from('users').upsert(withCurrentClinicId(payload));
   if (error) throw error;
 }
 
@@ -339,7 +421,7 @@ export async function fetchStaffProfiles(): Promise<any[]> {
 
 export async function upsertStaffProfile(profile: any): Promise<void> {
   if (!profile?.id) return;
-  const { error } = await cloud().from('staff_profiles').upsert(profile);
+  const { error } = await cloud().from('staff_profiles').upsert(withCurrentClinicId(profile));
   if (error) throw error;
 }
 
@@ -351,7 +433,7 @@ export async function fetchTimeEntries(): Promise<any[]> {
 
 export async function upsertTimeEntry(entry: any): Promise<void> {
   if (!entry?.id) return;
-  const { error } = await cloud().from('time_entries').upsert(entry);
+  const { error } = await cloud().from('time_entries').upsert(withCurrentClinicId(entry));
   if (error) throw error;
 }
 
@@ -363,7 +445,7 @@ export async function fetchScheduleEntries(): Promise<any[]> {
 
 export async function upsertScheduleEntry(entry: any): Promise<void> {
   if (!entry?.id) return;
-  const { error } = await cloud().from('schedule_entries').upsert(entry);
+  const { error } = await cloud().from('schedule_entries').upsert(withCurrentClinicId(entry));
   if (error) throw error;
 }
 
@@ -381,7 +463,7 @@ export async function fetchPayslips(): Promise<any[]> {
 
 export async function upsertPayslip(payslip: any): Promise<void> {
   if (!payslip?.id) return;
-  const { error } = await cloud().from('payslips').upsert(payslip);
+  const { error } = await cloud().from('payslips').upsert(withCurrentClinicId(payslip));
   if (error) throw error;
 }
 
@@ -393,13 +475,13 @@ export async function fetchDeletionAudits(): Promise<any[]> {
 
 export async function insertDeletionAudit(audit: any): Promise<void> {
   if (!audit?.id) return;
-  const { error } = await cloud().from('deletion_audit').insert(audit);
+  const { error } = await cloud().from('deletion_audit').insert(withCurrentClinicId(audit));
   if (error) throw error;
 }
 
 export async function insertAuthAudit(audit: any): Promise<void> {
   if (!audit?.id) return;
-  const { error } = await cloud().from('auth_audit').insert(audit);
+  const { error } = await cloud().from('auth_audit').insert(withCurrentClinicId(audit));
   if (error) throw error;
 }
 
@@ -423,7 +505,7 @@ export async function upsertMedicalRecord(rec: MedicalRecord): Promise<void> {
     visitDate: formatDisplayDate(rec.visitDate)
   };
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('medical_records').upsert(formattedRec);
+  const { error } = await supabase.from('medical_records').upsert(withCurrentClinicId(formattedRec));
   if (error) throw error;
 }
 
@@ -454,7 +536,7 @@ export async function upsertInvoice(inv: Invoice): Promise<void> {
   };
 
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('invoices').upsert(formattedInv);
+  const { error } = await supabase.from('invoices').upsert(withCurrentClinicId(formattedInv));
   if (error) throw error;
 
   // Cross-module cascade: Auto-complete appointment
@@ -469,13 +551,24 @@ export interface CheckoutCommitResult {
   invoice_id: string;
   already_committed: boolean;
   remaining_stock: Record<string, number>;
+  invoice?: Invoice;
+}
+
+export interface CheckoutEffectsResult {
+  processed: boolean;
+  already_processed?: boolean;
+  no_effects?: boolean;
+  invoice_id: string;
+  client_id?: string | null;
+  client_value_delta?: number;
+  source_refs?: Array<{ type: 'vaccination' | 'grooming' | 'lab' | 'boarding'; id: string }>;
 }
 
 // Persists ONE checkout invoice and decrements ALL of its stock items in a single
-// DB transaction via the commit_checkout_invoice_and_stock RPC (invoice + inventory
-// are atomic together; post-commit effects like shift/visit/source billing are NOT).
-// Idempotent by invoice id: a retry for an already-committed invoice does not
-// decrement stock again. Fail-closed — throws on any RPC error, no local fallback.
+// DB transaction via the commit_checkout_invoice_and_stock RPC. Catalog values,
+// stock, shift revenue, appointment completion, and queue closure are server-owned;
+// the remaining customer/source updates are recorded in a durable outbox.
+// Idempotent by invoice id: a retry does not decrement stock or revenue again.
 // The invoice `date` is pre-formatted exactly as upsertInvoice does so the stored
 // representation is identical.
 export async function commitCheckoutInvoiceAndStock(
@@ -486,7 +579,7 @@ export async function commitCheckoutInvoiceAndStock(
   if (!supabase) throw new Error('No internet connection');
   const formattedInv = { ...inv, date: formatDisplayDate(inv.date) };
   const { data, error } = await supabase.rpc('commit_checkout_invoice_and_stock', {
-    p_invoice: formattedInv,
+    p_invoice: withCurrentClinicId(formattedInv),
     p_stock_items: stockItems,
   });
   if (error) throw error;
@@ -495,7 +588,27 @@ export async function commitCheckoutInvoiceAndStock(
     invoice_id: result.invoice_id ?? inv.id,
     already_committed: !!result.already_committed,
     remaining_stock: result.remaining_stock ?? {},
+    invoice: result.invoice,
   };
+}
+
+// Applies the durable client/source effects recorded by checkout. The RPC is
+// idempotent, so a lost response can be retried without double-counting.
+export async function processCheckoutEffects(invoiceId: string): Promise<CheckoutEffectsResult> {
+  if (!supabase) throw new Error('No internet connection');
+  if (!invoiceId) throw new Error('INVALID_INVOICE_ID');
+  const { data, error } = await supabase.rpc('process_checkout_effects_auth', {
+    p_invoice_id: invoiceId,
+  });
+  if (error) throw error;
+  return (data || { invoice_id: invoiceId, processed: false, no_effects: true }) as CheckoutEffectsResult;
+}
+
+export async function processPendingCheckoutEffects(): Promise<number> {
+  if (!supabase) throw new Error('No internet connection');
+  const { data, error } = await supabase.rpc('process_pending_checkout_effects_auth');
+  if (error) throw error;
+  return Number(data || 0);
 }
 
 // ==========================================
@@ -515,7 +628,7 @@ export async function upsertNotification(notif: ClientNotification): Promise<voi
     return;
   }
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('notifications').upsert(notif);
+  const { error } = await supabase.from('notifications').upsert(withCurrentClinicId(notif));
   if (error) throw error;
 }
 
@@ -535,7 +648,7 @@ export async function upsertAlert(alert: SystemAlert): Promise<void> {
     return;
   }
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('system_alerts').upsert(alert);
+  const { error } = await supabase.from('system_alerts').upsert(withCurrentClinicId(alert));
   if (error) throw error;
 }
 
@@ -728,7 +841,7 @@ export async function addCashAdjustment(adj: {
 }): Promise<void> {
   if (!adj || !adj.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('cash_adjustments').insert(adj);
+  const { error } = await supabase.from('cash_adjustments').insert(withCurrentClinicId(adj));
   if (error) throw error;
 }
 
@@ -756,9 +869,9 @@ export async function commitBoardingCashLedger(
   if (!boarding?.id) throw new Error('INVALID_BOARDING_ID');
   if (!supabase) throw new Error('No internet connection');
   const { error } = await supabase.rpc('commit_boarding_cash_ledger_auth', {
-    p_boarding: boarding,
-    p_invoice: invoice || null,
-    p_adjustment: adjustment || null,
+    p_boarding: withCurrentClinicId(boarding),
+    p_invoice: invoice ? withCurrentClinicId(invoice) : null,
+    p_adjustment: adjustment ? withCurrentClinicId(adjustment) : null,
   });
   if (error) throw error;
 }
@@ -784,11 +897,15 @@ export async function openShift(openedBy: string, openingFloatCents: number): Pr
     is_deleted: false
   };
 
-  if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('shifts').insert(newShift);
-  if (error) throw error;
+  await insertShift(newShift);
 
   return newShiftId;
+}
+
+export async function insertShift(shift: Shift): Promise<void> {
+  if (!shift?.id) return;
+  const { error } = await cloud().from('shifts').insert(withCurrentClinicId(shift));
+  if (error) throw error;
 }
 
 // Atomic shift close + reconciliation. One Supabase RPC transaction updates the
@@ -817,7 +934,7 @@ export async function closeShiftAndReconcile(
     p_expected_cash_cents: expectedCashCents,
     p_discrepancy_cents: discrepancyCents,
     p_notes: notes,
-    p_reconciliation: reconciliation,
+    p_reconciliation: withCurrentClinicId(reconciliation),
   });
   if (error) throw error;
   return { already_closed: !!(data as any)?.already_closed };
@@ -915,7 +1032,7 @@ export async function fetchClients(): Promise<Client[]> {
       lifetime_value: 0,
       administrative_notes: 'Permanent default account for anonymous over-the-counter retail sales.'
     };
-    const { error: walkInError } = await supabase.from('clients').upsert(walkInClient);
+    const { error: walkInError } = await supabase.from('clients').upsert(withCurrentClinicId(walkInClient));
     if (walkInError) throw walkInError;
     clients.unshift(walkInClient);
   }
@@ -925,7 +1042,7 @@ export async function fetchClients(): Promise<Client[]> {
 export async function upsertClient(client: Client): Promise<void> {
   if (!client || !client.client_id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('clients').upsert(client);
+  const { error } = await supabase.from('clients').upsert(withCurrentClinicId(client));
   if (error) throw error;
 }
 
@@ -996,14 +1113,14 @@ export async function fetchClinicQueue(): Promise<ClinicQueueItem[]> {
 export async function addToClinicQueue(item: ClinicQueueItem): Promise<void> {
   if (!item || !item.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('clinic_queue').insert(item);
+  const { error } = await supabase.from('clinic_queue').insert(withCurrentClinicId(item));
   if (error) throw error;
 }
 
 export async function upsertClinicQueueItem(item: ClinicQueueItem): Promise<void> {
   if (!item || !item.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('clinic_queue').upsert(item);
+  const { error } = await supabase.from('clinic_queue').upsert(withCurrentClinicId(item));
   if (error) throw error;
 }
 
@@ -1210,11 +1327,15 @@ export async function restoreFullDatabase(jsonData: string): Promise<RestoreSumm
           const existingIds = new Set((existing || []).map((row: any) => row[definition.conflict]));
           const newRows = chunk.filter(row => !existingIds.has((row as Record<string, unknown>)[definition.conflict]));
           if (newRows.length) {
-            const { error } = await client.from(definition.name).insert(newRows);
+            const { error } = await client
+              .from(definition.name)
+              .insert(newRows.map(row => withCurrentClinicId(row as Record<string, unknown>)));
             if (error) throw error;
           }
         } else {
-          const { error } = await client.from(definition.name).upsert(chunk, { onConflict: definition.conflict });
+          const { error } = await client
+            .from(definition.name)
+            .upsert(chunk.map(row => withCurrentClinicId(row as Record<string, unknown>)), { onConflict: definition.conflict });
           if (error) throw error;
         }
         rowsProcessed += chunk.length;
@@ -1372,7 +1493,7 @@ export async function fetchPets(includeDeleted = false): Promise<Pet[]> {
 export async function upsertPet(pet: Pet): Promise<void> {
   if (!pet || !pet.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('pets').upsert(pet);
+  const { error } = await supabase.from('pets').upsert(withCurrentClinicId(pet));
   if (error) throw error;
 }
 
@@ -1400,7 +1521,7 @@ export async function fetchVaccinations(): Promise<Vaccination[]> {
 export async function upsertVaccination(vaccine: Vaccination): Promise<void> {
   if (!vaccine || !vaccine.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('vaccinations').upsert(vaccine);
+  const { error } = await supabase.from('vaccinations').upsert(withCurrentClinicId(vaccine));
   if (error) throw error;
 }
 
@@ -1415,7 +1536,7 @@ export async function fetchLabResults(): Promise<LabResult[]> {
 export async function upsertLabResult(result: LabResult): Promise<void> {
   if (!result || !result.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('lab_results').upsert(result);
+  const { error } = await supabase.from('lab_results').upsert(withCurrentClinicId(result));
   if (error) throw error;
 }
 
@@ -1431,7 +1552,7 @@ export async function fetchGroomingLogs(): Promise<GroomingLog[]> {
 export async function upsertGroomingLog(log: GroomingLog): Promise<void> {
   if (!log || !log.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('grooming_logs').upsert(log);
+  const { error } = await supabase.from('grooming_logs').upsert(withCurrentClinicId(log));
   if (error) throw error;
 }
 
@@ -1447,7 +1568,7 @@ export async function fetchBoardingRecords(): Promise<BoardingRecord[]> {
 export async function upsertBoardingRecord(record: BoardingRecord): Promise<void> {
   if (!record || !record.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('boarding_records').upsert(record);
+  const { error } = await supabase.from('boarding_records').upsert(withCurrentClinicId(record));
   if (error) throw error;
 }
 
@@ -1480,10 +1601,6 @@ export async function fetchSystemConfig(): Promise<SystemConfig | null> {
     invoiceExtraFooterMessage: data.invoice_extra_footer_message || '',
     taxRate: Number(data.tax_rate) || 0,
     currencySymbol: data.currency_symbol || 'Rs. ',
-    selectedReceiptPrinter: data.selected_receipt_printer || '',
-    selectedReportPrinter: data.selected_report_printer || '',
-    receiptPaperSize: data.receipt_paper_size || '58mm',
-    connectionType: data.connection_type || 'usb',
     localAutosaveInterval: Number(data.local_autosave_interval) || 15,
     cloudEndpoint: data.cloud_endpoint || '',
     cloudBackupEnabled: data.cloud_backup_enabled || false,
@@ -1512,10 +1629,6 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
     invoice_extra_footer_message: config.invoiceExtraFooterMessage,
     tax_rate: config.taxRate,
     currency_symbol: config.currencySymbol,
-    selected_receipt_printer: config.selectedReceiptPrinter,
-    selected_report_printer: config.selectedReportPrinter,
-    receipt_paper_size: config.receiptPaperSize,
-    connection_type: config.connectionType,
     local_autosave_interval: config.localAutosaveInterval,
     cloud_endpoint: config.cloudEndpoint,
     cloud_backup_enabled: config.cloudBackupEnabled,
@@ -1526,7 +1639,7 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
     idle_logout_minutes: config.idleLogoutMinutes,
     setup_mode_active: config.setupModeActive,
   };
-  const { error } = await supabase.from('system_config').upsert(payload);
+  const { error } = await supabase.from('system_config').upsert(withCurrentClinicId(payload));
   if (error) throw error;
 }
 
@@ -1548,7 +1661,7 @@ export async function fetchSuppliers(): Promise<Supplier[]> {
 export async function upsertSupplier(supplier: Supplier): Promise<void> {
   if (!supplier || !supplier.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('suppliers').upsert(supplier);
+  const { error } = await supabase.from('suppliers').upsert(withCurrentClinicId(supplier));
   if (error) throw error;
 }
 
@@ -1577,7 +1690,7 @@ export async function fetchInventoryCategories(): Promise<InventoryCategory[]> {
 export async function upsertInventoryCategory(cat: InventoryCategory): Promise<void> {
   if (!cat || !cat.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('inventory_categories').upsert(cat);
+  const { error } = await supabase.from('inventory_categories').upsert(withCurrentClinicId(cat));
   if (error) throw error;
 }
 
