@@ -90,7 +90,7 @@ import {
 import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
-  ActiveShift, ClinicQueueItem, User,
+  ActiveShift, ClinicQueueItem, User, ClinicSettings,
   Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, InvoiceSourceRef
 } from './types';
 
@@ -114,6 +114,7 @@ import GroomingManager from './components/GroomingManager';
 import ShiftManager from './components/ShiftManager';
 import StaffManager from './components/StaffManager';
 import SuppliersManager from './components/SuppliersManager';
+import SuperAdminLayout from './components/SuperAdminLayout';
 
 import { 
   fetchAppointments,
@@ -139,12 +140,13 @@ import {
   deleteMedicalRecord, 
   upsertInvoice,
   commitCheckoutInvoiceAndStock,
+  processCheckoutEffects,
+  processPendingCheckoutEffects,
   upsertAlert,
   upsertVaccination,
   upsertGroomingLog,
   upsertLabResult,
   upsertBoardingRecord,
-  addToClinicQueue,
   upsertClinicQueueItem,
   removeFromClinicQueue,
   atomicStockDecrement,
@@ -160,15 +162,43 @@ import {
   upsertSystemConfig,
   fetchStaffProfiles,
   fetchTimeEntries,
-  fetchScheduleEntries,
-   upsertStaffProfile,
+    fetchScheduleEntries,
+    upsertStaffProfile,
   upsertTimeEntry,
   upsertScheduleEntry,
   deleteScheduleEntry,
-  insertDeletionAudit
-} from './lib/db';
+   insertDeletionAudit,
+    setCurrentClinicId,
+    fetchClinicSettings
+ } from './lib/db';
 import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, getAuthSession, onAuthStateChange } from './lib/supabase';
 import { fetchStaffForAuthUser } from './lib/auth';
+
+const ACTIVE_VIEW_STORAGE_KEY = 'ceylonpets.activeView';
+
+function getStoredActiveView(): string {
+  try {
+    return window.sessionStorage.getItem(ACTIVE_VIEW_STORAGE_KEY) || 'dashboard';
+  } catch {
+    return 'dashboard';
+  }
+}
+
+function rememberActiveView(view: string): void {
+  try {
+    window.sessionStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, view);
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browsers.
+  }
+}
+
+function forgetActiveView(): void {
+  try {
+    window.sessionStorage.removeItem(ACTIVE_VIEW_STORAGE_KEY);
+  } catch {
+    // Session storage can be unavailable in privacy-restricted browsers.
+  }
+}
 
 function App() {
   // SYSTEM BOOT STATE
@@ -207,10 +237,6 @@ function App() {
     invoiceExtraFooterMessage: 'POWERED BY ASH POINT SOLUTIONS',
     taxRate: 0.0825,
     currencySymbol: 'Rs. ',
-    selectedReceiptPrinter: '',
-    selectedReportPrinter: '',
-    receiptPaperSize: '58mm',
-    connectionType: 'usb',
     localAutosaveInterval: 15,
     cloudEndpoint: '',
     cloudBackupEnabled: false,
@@ -218,18 +244,17 @@ function App() {
     recipientEmails: [],
     digestSchedule: 'daily_end',
       rolePermissions: {
-        cashier: ['pos', 'appointments', 'pets', 'customers', 'shift'],
+        cashier: ['pos', 'appointments', 'pets', 'customers'],
       veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
       // HOTFIX-1: 'manager' had NO entry anywhere, so isViewPermitted fell through
       // to `|| []` and every manager account could log in but saw zero views.
       // Operational floor above cashier; no 'reminders'/'portal' (owner-only).
       // 'settings' is impossible here regardless — hard-blocked above.
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'boarding', 'grooming', 'shift'],
-      // PROVIDER-1: 'groomer' gets a real floor (grooming + shift) so it does not
-      // repeat the manager zero-panels bug. 'admin' is no longer root — this is
+       // PROVIDER-1: 'groomer' gets a real grooming floor. 'admin' is no longer root — this is
       // its ordinary default, based on what 'owner' gets; provider can grant or
       // revoke panels per role from the Panel Access Matrix in Settings.
-      groomer: ['grooming', 'shift'],
+       groomer: ['grooming'],
       admin: ['dashboard', 'reports', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'reports', 'pos', 'appointments', 'inventory', 'suppliers', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       // 'provider' is root and bypasses isViewPermitted; this value is documentary.
@@ -246,21 +271,42 @@ function App() {
     let isMounted = true;
     async function bootSequence() {
       try {
+        const testAuthUser = import.meta.env.DEV
+          ? ((window as any).__KP_TEST_AUTH__ as User | undefined)
+          : undefined;
+        setCurrentClinicId(testAuthUser?.clinicId ?? null);
+
         // Cloud-only boot: every required matrix must come from Supabase.
         try {
           // With production RLS, cloud tables are unreadable until Supabase Auth
           // resolves to an active staff row. Never misreport that as local DB damage.
            let bootStaff: User | null = null;
-           if (SYNC_ENABLED && !(import.meta.env.DEV && (window as any).__KP_TEST_AUTH__)) {
+           if (SYNC_ENABLED && !testAuthUser) {
              const session = await getAuthSession();
-            if (!session?.user) {
-              if (isMounted) setIsBooting(false);
-              return;
-            }
-             bootStaff = await fetchStaffForAuthUser(session.user.id);
-             if (!bootStaff) {
-              if (isMounted) setIsBooting(false);
-              return;
+             if (!session?.user) {
+               setCurrentClinicId(null);
+               if (isMounted) setIsBooting(false);
+               return;
+             }
+              bootStaff = await fetchStaffForAuthUser(session.user.id);
+              if (!bootStaff?.clinicId && !bootStaff?.isSuperadmin) {
+                setCurrentClinicId(null);
+                await signOut();
+                if (isMounted) setIsBooting(false);
+                return;
+              }
+               setCurrentClinicId(bootStaff.clinicId ?? null);
+               if (bootStaff.isSuperadmin) {
+                 if (isMounted) {
+                   setCurrentUser(bootStaff);
+                   setIsBooting(false);
+                 }
+                 return;
+               }
+             try {
+               await processPendingCheckoutEffects();
+            } catch (effectsError) {
+              if (import.meta.env.DEV) console.warn('[CeylonPets] Pending checkout effects will be retried later:', effectsError);
             }
           }
 
@@ -385,13 +431,58 @@ function App() {
 
   // Session states
   const [isOnline, setIsOnline] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [activeView, setActiveView] = useState<string>('pos');
+  // The authenticated staff record, including clinicId, stays in root React
+  // state and is never persisted to browser storage.
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeView, setActiveView] = useState<string>(getStoredActiveView);
   const [viewPayload, setViewPayload] = useState<any>(null);
   const [historyStack, setHistoryStack] = useState<string[]>(['dashboard']);
   const [consentPayload, setConsentPayload] = useState<{ clientName: string, petName: string } | null>(null);
   const [idleMessage, setIdleMessage] = useState<string | null>(null);
-
+  useEffect(() => {
+    setCurrentClinicId(currentUser?.clinicId ?? null);
+  }, [currentUser]);
+  const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
+  const [routePath, setRoutePath] = useState(() => window.location.pathname);
+  const navigateRoute = (path: string) => {
+    if (window.location.pathname !== path) window.history.pushState({}, '', path);
+    setRoutePath(path);
+  };
+  useEffect(() => {
+    const handlePopState = () => setRoutePath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+  useEffect(() => {
+    if (!currentUser || currentUser.isSuperadmin || !currentUser.clinicId) {
+      setClinicSettings(null);
+      return;
+    }
+    let active = true;
+    fetchClinicSettings(currentUser.clinicId)
+      .then(settings => { if (active) setClinicSettings(settings); })
+      .catch(error => {
+        if (import.meta.env.DEV) console.error('[ClinicSettings] Load failed:', error);
+        if (active) setClinicSettings({ clinicId: currentUser.clinicId!, taxEnabled: true, groomingEnabled: true, boardingEnabled: true });
+      });
+    return () => { active = false; };
+  }, [currentUser?.id, currentUser?.clinicId, currentUser?.isSuperadmin]);
+  useEffect(() => {
+    if (!currentUser || currentUser.isSuperadmin || !clinicSettings) return;
+    const disabledView = (activeView === 'grooming' && !clinicSettings.groomingEnabled)
+      || (activeView === 'boarding' && !clinicSettings.boardingEnabled);
+    if (disabledView) {
+      rememberActiveView('dashboard');
+      setActiveView('dashboard');
+    }
+  }, [currentUser, clinicSettings, activeView]);
+  useEffect(() => {
+    if (currentUser?.isSuperadmin && routePath !== '/superadmin') {
+      navigateRoute('/superadmin');
+    } else if (currentUser && !currentUser.isSuperadmin && routePath === '/superadmin') {
+      navigateRoute('/');
+    }
+  }, [currentUser?.id, currentUser?.isSuperadmin, routePath]);
   // Sync status indicator: reflect browser online/offline state in the existing
   // isOnline flag.
   useEffect(() => {
@@ -476,14 +567,15 @@ function App() {
       if (!active || !session?.user) return;
       const staff = await fetchStaffForAuthUser(session.user.id);
       if (!active) return;
-      if (staff) setCurrentUser(staff);
-      else { await signOut(); setCurrentUser(null); }
+        if (staff?.clinicId || staff?.isSuperadmin) setCurrentUser(staff);
+        else { await signOut(); setCurrentUser(null); }
     })();
     const unsubscribe = onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') { setCurrentUser(null); return; }
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         const staff = await fetchStaffForAuthUser(session.user.id);
-        if (staff) setCurrentUser(staff);
+          if (staff?.clinicId || staff?.isSuperadmin) setCurrentUser(staff);
+          else { await signOut(); setCurrentUser(null); }
       }
     });
     return () => { active = false; unsubscribe(); };
@@ -509,9 +601,15 @@ function App() {
 
   useEffect(() => {
     if (currentUser && !isViewPermitted(activeView, currentUser)) {
-      setActiveView(getDefaultViewForUser(currentUser));
+      const nextView = getDefaultViewForUser(currentUser);
+      rememberActiveView(nextView);
+      setActiveView(nextView);
     }
   }, [currentUser, activeView, systemConfig]);
+
+  useEffect(() => {
+    if (currentUser) rememberActiveView(activeView);
+  }, [currentUser, activeView]);
 
   const handleAddProduct = useCallback(async (product: InventoryItem) => {
     try {
@@ -650,8 +748,11 @@ function App() {
               if (!client) return false;
               return normalize(client.primary_phone) === normalize(apt.ownerPhone) || client.primary_phone === apt.ownerPhone;
             });
+            const existingQueueItem = clinicQueue.find(q => q.appointmentId === apt.id && q.status === 'active' && !q.is_deleted);
             const queueItem: ClinicQueueItem = {
-              id: `queue_${apt.id}_${crypto.randomUUID().slice(0,8)}`,
+              // Re-check-in and double-clicks must update one queue row, not
+              // create another visit for the same appointment.
+              id: existingQueueItem?.id || `queue_${apt.id}`,
               petId: matchedPet ? matchedPet.id : `${(apt.petName || '').trim().toLowerCase()}_${apt.ownerPhone.replace(/\D/g, '').slice(-9)}`,
               petName: apt.petName,
               ownerName: apt.ownerName,
@@ -663,11 +764,14 @@ function App() {
               priority: apt.urgency === 'emergency' ? 0 : (apt.urgency === 'non-emergency' ? 1 : 2),
               assignedVet: apt.veterinarian,
               urgency: apt.urgency || 'routine',
-              emergencyBackfillRequired: apt.emergencyBackfillRequired || false
+              emergencyBackfillRequired: apt.emergencyBackfillRequired || false,
+              is_deleted: false
             };
-            await addToClinicQueue(queueItem);
+            await upsertClinicQueueItem(queueItem);
             setClinicQueue(prev => {
-              const next = [queueItem, ...prev];
+              const next = prev.some(q => q.id === queueItem.id)
+                ? prev.map(q => q.id === queueItem.id ? queueItem : q)
+                : [queueItem, ...prev];
               return next.sort((a, b) => {
                 const pA = a.priority ?? 2;
                 const pB = b.priority ?? 2;
@@ -1090,131 +1194,55 @@ function App() {
   // FIX 4: Use functional state updates instead of destructive re-fetches
   const handleAtomicCheckout = useCallback(async (invoice: Invoice, cart: any[]) => {
     try {
-      // ATOMIC (invoice + inventory ONLY): persist the invoice and decrement all
-      // of its stock items in one DB transaction via the RPC. A failure here means
-      // NOTHING committed, so it propagates to the outer catch as a real checkout
-      // error. Idempotent by invoice id on retry.
-      // The post-commit effects below (shift, client value, visit, source billing)
-      // are NOT part of this transaction.
+      // The server resolves catalog values, tax, cost, shift ownership, and stock
+      // inside one transaction. The outbox records the remaining effects before
+      // this call returns, so a lost response is recoverable and idempotent.
       const stockItems = cart
         .filter((ci: any) => !['service', 'lab_service'].includes(ci.category))
         .map((ci: any) => ({ item_id: ci.id, qty: ci.cartQuantity }));
       const commit = await commitCheckoutInvoiceAndStock(invoice, stockItems);
-      setInvoices(prev => (prev.some(i => i.id === invoice.id) ? prev : [invoice, ...prev]));
+      const committedInvoice = commit.invoice || invoice;
+      setInvoices(prev => (prev.some(i => i.id === committedInvoice.id)
+        ? prev.map(i => i.id === committedInvoice.id ? committedInvoice : i)
+        : [committedInvoice, ...prev]));
       setInventory(prev => prev.map(item =>
         Object.prototype.hasOwnProperty.call(commit.remaining_stock, item.id)
           ? { ...item, stock: commit.remaining_stock[item.id] }
           : item
       ));
 
-      // Retry of an already-committed sale: the invoice, stock decrement, and shift
-      // revenue were all applied on the first success, and every post-commit effect
-      // below (client lifetime value, visit close, source billing) ALSO already ran.
-      // Skip them now — re-running would double-count lifetime value and re-bill
-      // source records. Local UI is already reconciled from the RPC result above.
-      if (commit.already_committed) {
-        if (import.meta.env.DEV) console.info('[CeylonPets] Checkout already committed (retry) — skipping post-commit effects.');
-        return;
+      let effects: Awaited<ReturnType<typeof processCheckoutEffects>>;
+      try {
+        effects = await processCheckoutEffects(committedInvoice.id);
+      } catch (effectsError: any) {
+        // The invoice, stock, shift, appointment, and queue are already durable.
+        // The pending outbox row makes this safe to retry from an operational job.
+        showToast('Sale saved, but linked customer/service updates are pending retry.', 'warning');
+        if (import.meta.env.DEV) console.error('[CeylonPets] Checkout effects pending:', effectsError);
+        return committedInvoice;
       }
 
-      // Shift revenue is now attributed to the invoice's OWN shiftId INSIDE
-      // commitCheckoutInvoiceAndStock (one transaction, exactly once per invoice) —
-      // no separate post-commit "find the latest open shift" attach step.
-
-      // MISSION 3: Update Client Lifetime Value
-      if (invoice.patientId && invoice.patientId !== 'RETAIL') {
-        const pet = pets.find(p => p.id === invoice.patientId);
-        if (pet) {
-          const client = clients.find(c => c.client_id === pet.clientId);
-          if (client) {
-            const updatedClient = {
-              ...client,
-              lifetime_value: (client.lifetime_value || 0) + invoice.sales_total,
-              updated_at: new Date().toISOString()
-            };
-            await handleUpdateClient(updatedClient);
-          }
+      if (effects.processed && effects.client_id && effects.client_value_delta) {
+        setClients(prev => prev.map(client => client.client_id === effects.client_id
+          ? { ...client, lifetime_value: (client.lifetime_value || 0) + Number(effects.client_value_delta), updated_at: new Date().toISOString() }
+          : client));
+      }
+      if (effects.processed) {
+        const sourceRefs = effects.source_refs || [];
+        for (const ref of sourceRefs) {
+          if (ref.type === 'vaccination') setVaccinations(prev => prev.map(row => row.id === ref.id ? { ...row, billed: true } : row));
+          if (ref.type === 'grooming') setGroomingLogs(prev => prev.map(row => row.id === ref.id ? { ...row, billed: true } : row));
+          if (ref.type === 'lab') setLabResults(prev => prev.map(row => row.id === ref.id ? { ...row, billed: true } : row));
+          if (ref.type === 'boarding') setBoardingRecords(prev => prev.map(row => row.id === ref.id ? { ...row, billed: true } : row));
         }
       }
-
-      // (Stock decrements now happen inside commitCheckoutInvoiceAndStock above,
-      // atomically with the invoice write — the separate loop was removed.)
-
-      // Close visit (appointment complete + queue removal) via unified path
-      if (invoice.appointmentId) {
-        await closeVisit(invoice.appointmentId);
+      if (committedInvoice.appointmentId) {
+        setAppointments(prev => prev.map(apt => apt.id === committedInvoice.appointmentId
+          ? { ...apt, status: 'completed' as const, updated_at: new Date().toISOString() }
+          : apt));
+        setClinicQueue(prev => prev.filter(item => item.appointmentId !== committedInvoice.appointmentId));
       }
-
-      // Mark swept records as billed
-      const uniqueRefs = new Map<string, { type: string; id: string }>();
-      for (const cartItem of cart) {
-        if (cartItem.sourceRefs) {
-          for (const ref of cartItem.sourceRefs) {
-            uniqueRefs.set(`${ref.type}-${ref.id}`, ref);
-          }
-        }
-      }
-
-      // Source records live in Supabase. Load each needed collection with its fail-closed
-      // helper, isolated per type so one failed read cannot block the others and
-      // cannot void the already-committed sale. Source-billing failures are tracked
-      // separately so a linked-record failure cannot be mistaken for a completed
-      // billing update.
-      let sourceBillingFailed = false;
-      const refTypes = new Set([...uniqueRefs.values()].map(r => r.type));
-      const vaccById = new Map<string, Vaccination>();
-      const groomById = new Map<string, GroomingLog>();
-      const labById = new Map<string, LabResult>();
-      const boardById = new Map<string, BoardingRecord>();
-
-      if (refTypes.has('vaccination')) {
-        try { (await fetchVaccinations()).forEach(r => vaccById.set(r.id, r)); }
-        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Vaccination read for billing failed:', e); }
-      }
-      if (refTypes.has('grooming')) {
-        try { (await fetchGroomingLogs()).forEach(r => groomById.set(r.id, r)); }
-        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Grooming read for billing failed:', e); }
-      }
-      if (refTypes.has('lab')) {
-        try { (await fetchLabResults()).forEach(r => labById.set(r.id, r)); }
-        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Lab read for billing failed:', e); }
-      }
-      if (refTypes.has('boarding')) {
-        try { (await fetchBoardingRecords()).forEach(r => boardById.set(r.id, r)); }
-        catch (e) { sourceBillingFailed = true; if (import.meta.env.DEV) console.error('[CeylonPets] Boarding read for billing failed:', e); }
-      }
-
-      for (const ref of uniqueRefs.values()) {
-        try {
-          let rec: Vaccination | GroomingLog | LabResult | BoardingRecord | undefined;
-          if (ref.type === 'vaccination') {
-            rec = vaccById.get(ref.id);
-            if (rec) await upsertVaccination({ ...rec, billed: true, updated_at: new Date().toISOString() });
-          } else if (ref.type === 'grooming') {
-            rec = groomById.get(ref.id);
-            if (rec) await upsertGroomingLog({ ...rec, billed: true, updated_at: new Date().toISOString() });
-          } else if (ref.type === 'lab') {
-            rec = labById.get(ref.id);
-            if (rec) await upsertLabResult({ ...rec, billed: true, updated_at: new Date().toISOString() });
-          } else if (ref.type === 'boarding') {
-            rec = boardById.get(ref.id);
-            if (rec) await upsertBoardingRecord({ ...rec, billed: true, updated_at: new Date().toISOString() });
-          }
-          // A referenced ID absent from its successfully fetched map means the
-          // record could not be billed — flag it rather than silently skipping.
-          if ((ref.type === 'vaccination' || ref.type === 'grooming' || ref.type === 'lab' || ref.type === 'boarding') && !rec) {
-            sourceBillingFailed = true;
-            if (import.meta.env.DEV) console.error(`[CeylonPets] Source record not found for billing (type=${ref.type}).`);
-          }
-        } catch (e) {
-          sourceBillingFailed = true;
-          if (import.meta.env.DEV) console.error(`Failed to mark swept record billed:`, e);
-        }
-      }
-
-      // The sale is cloud-committed. Any linked record that could not be marked
-      // billed is reported explicitly; it is never described as locally saved.
-      if (sourceBillingFailed) showToast('Sale saved, but one or more linked service records were not billed in the cloud.', 'warning');
+      return committedInvoice;
     } catch (error: any) {
       if (import.meta.env.DEV) console.error('Checkout failed:', error);
       // The invoice+stock RPC rolls back on INSUFFICIENT_STOCK, so nothing was
@@ -1227,7 +1255,7 @@ function App() {
       showToast(msg, 'error');
       throw error;
     }
-  }, [closeVisit]);
+  }, []);
 
   /**
    * AUTH-6: the ONLY roles any UI may mint. 'provider' (vendor root) and 'admin'
@@ -1248,8 +1276,15 @@ function App() {
     // Staff operations are deferred from the active beta release. Keep the
     // underlying records and handlers intact without exposing this view.
     if (viewName === 'staff') return false;
-    // AUTH-6: root tier = admin (vendor-root today) and provider (above it).
-    // Deliberate and explicit — not the accidental bypass this used to be.
+    // Executive reporting and system configuration are never staff-floor
+    // surfaces, even if a persisted panel matrix was edited incorrectly.
+    if (viewName === 'reports' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
+    if (viewName === 'settings') {
+      return ROOT_ROLES.includes(user.role as any) || ['manager', 'owner', 'dummy_admin'].includes(user.role);
+    }
+    if (viewName === 'shift' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
+    // Application roots can open every application panel. Provider-only
+    // settings surfaces are checked separately by SystemSettings.
     if (ROOT_ROLES.includes(user.role)) return true;
     if (user.role === 'dummy_admin') return viewName === 'settings';
     if (user.role === 'pet_parent') return viewName === 'portal';
@@ -1259,10 +1294,10 @@ function App() {
     // always populated, so it normally wins. Both must stay in sync; a role
     // missing from EITHER falls through to `|| []` (= zero views).
     const defaultPermissions: Record<string, string[]> = {
-      cashier: ['pos', 'appointments', 'pets', 'customers', 'shift'],
+      cashier: ['pos', 'appointments', 'pets', 'customers'],
       veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
       manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
-      groomer: ['grooming', 'shift'],
+      groomer: ['grooming'],
       admin: ['dashboard', 'reports', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
       owner: ['dashboard', 'reports', 'pos', 'appointments', 'inventory', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
        provider: ['dashboard', 'reports', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
@@ -1278,7 +1313,7 @@ function App() {
 
   const getDefaultViewForUser = (user: any): any => {
     if (!user) return 'portal';
-    if (ROOT_ROLES.includes(user.role) || user.role === 'dummy_admin') return 'settings';
+    if (ROOT_ROLES.includes(user.role) || user.role === 'dummy_admin') return 'dashboard';
     if (user.role === 'pet_parent') return 'portal';
     const priorityViews = ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'portal'] as const;
     for (const view of priorityViews) {
@@ -1330,9 +1365,18 @@ function App() {
         setLoginMessage('Staff account is not linked. Contact your administrator.');
         return;
       }
+      if (!staff.clinicId && !staff.isSuperadmin) {
+        await signOut();
+        setCurrentUser(null);
+        setLoginMessage('Staff account is not assigned to a clinic. Contact your administrator.');
+        return;
+      }
       resetAttempts(key);
       setCurrentUser(staff);
-      setActiveView(getDefaultViewForUser(staff));
+      navigateRoute(staff.isSuperadmin ? '/superadmin' : '/');
+      const nextView = getDefaultViewForUser(staff);
+      rememberActiveView(nextView);
+      setActiveView(nextView);
        setEnteredPassword(''); setLoginEmail(''); setLockoutSeconds(0); setLoginMessage('');
       // Boot hydration is deliberately gated on an authenticated session. Reload
       // once after sign-in so the cloud data path starts from that session.
@@ -1402,13 +1446,21 @@ function App() {
     { id: 'suppliers', label: 'Suppliers', icon: Truck, isLive: true },
     { id: 'invoices', label: 'Invoices', icon: FileText, isLive: true }, // ACTIVATED
     { id: 'shift', label: 'Shift & Drawer', icon: Lock, isLive: true },
-     { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true }
+    { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true }
   ];
+  const visibleTenantNavItems = navItems.filter(item =>
+    (item.id !== 'grooming' || clinicSettings?.groomingEnabled !== false)
+    && (item.id !== 'boarding' || clinicSettings?.boardingEnabled !== false)
+  );
+  const effectiveSystemConfig = clinicSettings?.taxEnabled === false
+    ? { ...systemConfig, taxRate: 0 }
+    : systemConfig;
 
   const renderCanvas = () => {
+    if (currentUser && !isViewPermitted(activeView, currentUser)) return null;
     switch (activeView) {
       case 'pos': {
-         const safeSystemConfig = systemConfig;
+          const safeSystemConfig = effectiveSystemConfig;
         return (
           <POSRegister
             inventory={inventory} 
@@ -1423,24 +1475,24 @@ function App() {
             activeShift={activeShift} activeShiftId={activeShift?.id} incomingClient={viewPayload?.client ? { phone: viewPayload.client.primary_phone || '', name: viewPayload.client.full_name || '', id: viewPayload.client.client_id || '' } : null}
             onUpdateRecord={handleUpdateRecord}
             onAtomicCheckout={handleAtomicCheckout}
-            onNavigateToShift={() => { setActiveView('shift'); setHistoryStack(prev => [...prev, 'shift']); }}
+             onNavigateToShift={() => { if (isViewPermitted('shift', currentUser)) { setActiveView('shift'); setHistoryStack(prev => [...prev, 'shift']); } }}
           />
         );
       }
-      case 'appointments': return <AppointmentsManager appointments={appointments} records={records} users={users} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
-      case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} activeShift={activeShift} currentUser={currentUser} />;
-      case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} systemConfig={systemConfig} />;
+       case 'appointments': return <AppointmentsManager appointments={appointments} records={records} clinicQueue={clinicQueue} users={users} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
+       case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} activeShift={activeShift} currentUser={currentUser} onChangeConfig={async (config) => { await upsertSystemConfig(config); setSystemConfig(config); }} />;
+       case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onUpdateInventory={handleUpdateInventoryItem} systemConfig={systemConfig} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
-       case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser} activeShift={activeShift} setActiveShift={async (s) => { setActiveShift(s); }} />;
+        case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser as User} activeShift={activeShift} setActiveShift={async (s) => { setActiveShift(s); }} />;
       case 'dashboard':
         // FIX 8: Pass activeShift and onNavigate props
-        return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} activeShift={activeShift} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} currentUser={currentUser} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
+         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
-         return <ReportsManager currentUser={currentUser} config={systemConfig} />;
+          return <ReportsManager />;
       case 'staff': 
-         return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
+          return <StaffManager staffProfiles={staffProfiles} users={users} currentUser={currentUser as User} timeEntries={timeEntries} onSaveTimeEntry={handleSaveTimeEntry} scheduleEntries={scheduleEntries} onSaveScheduleEntry={handleSaveScheduleEntry} onDeleteScheduleEntry={handleDeleteScheduleEntry} onSaveProfile={handleSaveStaffProfile} onDeactivateProfile={handleDeactivateStaffProfile} onSaveUser={async (user) => { if (!assertIssuableRole(user.role)) return; await upsertUser(user); setUsers(await fetchUsers()); }} />;
        case 'examinations': return <MedicalRecordsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} boardingRecords={boardingRecords} inventory={inventory as any} appointments={appointments} systemConfig={systemConfig} viewPayload={viewPayload} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} onCompleteVisit={closeVisit} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'settings': {
          const safeSystemConfig = systemConfig;
@@ -1553,13 +1605,31 @@ function App() {
     );
   }
 
+  if (routePath === '/superadmin' && currentUser?.isSuperadmin) {
+    return (
+      <SuperAdminLayout
+        currentUser={currentUser}
+        onSignOut={async () => {
+          await signOut();
+          setCurrentUser(null);
+          navigateRoute('/');
+        }}
+      />
+    );
+  }
+
+  if ((routePath === '/superadmin' && currentUser && !currentUser.isSuperadmin)
+    || (routePath !== '/superadmin' && currentUser?.isSuperadmin)) {
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-sm font-black text-white">Checking route access...</div>;
+  }
+
   return (
     <>
       <div className="h-screen max-h-screen overflow-hidden bg-slate-50 flex flex-col font-sans relative antialiased leading-none text-xs text-slate-800 print:hidden">
         {!currentUser ? (
-          <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl border border-sky-100 max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 overflow-hidden shadow-2xl animate-fade-in text-xs">
-              <div className="p-8 bg-sky-600 text-white flex flex-col justify-between space-y-8 relative overflow-hidden">
+          <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-md overflow-y-auto flex items-start md:items-center justify-center p-4">
+            <div className="my-4 md:my-8 bg-white rounded-3xl border border-sky-100 max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 overflow-hidden shadow-2xl animate-fade-in text-xs">
+              <div className="p-6 md:p-8 bg-sky-600 text-white flex flex-col justify-between space-y-8 relative overflow-hidden">
                 <div className="relative z-10 font-sans flex flex-col h-full justify-between">
                   <div className="space-y-6">
                     <span className="px-3 py-1 bg-white/20 text-white font-bold rounded-full text-[10px] uppercase tracking-wider flex items-center gap-1.5 w-max">
@@ -1581,7 +1651,7 @@ function App() {
                 </div>
                 <div className="absolute -bottom-8 -left-8 w-44 h-44 bg-sky-500 rounded-full blur-xl opacity-50" />
               </div>
-              <div className="p-8 flex flex-col justify-between space-y-6 font-sans">
+              <div className="p-6 md:p-8 flex flex-col justify-center gap-8 font-sans">
                 <div className="space-y-4">
                   {idleMessage && (
                     <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-xl text-xs font-bold animate-fade-in flex items-center gap-2">
@@ -1617,7 +1687,7 @@ function App() {
                         <label htmlFor="login-password" className="font-bold text-slate-700 block text-[10px]">Password</label>
                         {(loginError || loginMessage) && <span data-testid="login-error" className="text-[10px] text-rose-600 font-bold animate-pulse">{loginMessage || 'Incorrect email or password.'}</span>}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <div className="relative flex-1">
                           <input
                             id="login-password"
@@ -1648,7 +1718,7 @@ function App() {
                           type="submit"
                           data-testid="btn-signin"
                           disabled={isVerifying || lockoutSeconds > 0}
-                          className="px-5 bg-slate-800 hover:bg-slate-900 font-bold text-white rounded-xl transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[76px]"
+                          className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-900 font-bold text-white rounded-xl transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[76px]"
                         >
                           {isVerifying ? <span data-testid="login-spinner" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
                         </button>
@@ -1667,9 +1737,9 @@ function App() {
         ) : null}
 
         {currentUser && (
-          <div className="flex h-screen w-full bg-gray-50 overflow-hidden font-sans text-gray-900">
-            <aside className={`w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0 z-30 shadow-sm fixed md:relative inset-y-0 left-0 transform transition-transform duration-200 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-              <div className="h-16 flex items-center px-6 border-b border-gray-100">
+          <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans text-slate-900">
+            <aside className={`w-64 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-30 shadow-sm fixed md:relative inset-y-0 left-0 transform transition-transform duration-200 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+              <div className="h-16 flex items-center px-6 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="bg-indigo-600 p-1.5 rounded-xl shadow-sm"><PawPrint className="w-5 h-5 text-white" /></div>
                   <div>
@@ -1677,28 +1747,28 @@ function App() {
                       <h1 className="text-lg font-bold leading-none tracking-tight">{systemConfig.appName || 'CeylonPets'}</h1>
                       <span className="text-[8px] font-black uppercase tracking-widest text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full">Beta</span>
                     </div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{systemConfig.resellerName || 'Ash Point'}</p>
                   </div>
                 </div>
               </div>
               <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-                {navItems.map((item) => {
+                 {visibleTenantNavItems.map((item) => {
                   const Icon = item.icon;
-                  if (!item.isLive) return <a key={item.id} data-testid={`nav-${item.id}`} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-gray-400 hover:bg-gray-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
-                  const permissionKey = item.id === 'reports' || item.id === 'dashboard' ? 'dashboard' : item.id;
+                  if (!item.isLive) return <a key={item.id} data-testid={`nav-${item.id}`} href="#" onClick={(e) => e.preventDefault()} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:bg-slate-50 transition-colors opacity-80 cursor-default"><Icon className="w-5 h-5" />{item.label}</a>;
+                  const permissionKey = item.id;
                   if (!isViewPermitted(permissionKey, currentUser)) return null;
-                  const isSelected = activeView === item.id || (activeView === 'reports' && item.id === 'dashboard');
+                  const isSelected = activeView === item.id;
                   return (
-                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}>
-                      <Icon className={`w-5 h-5 ${isSelected ? 'text-indigo-600' : 'text-gray-500'}`} />{item.label}
+                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { rememberActiveView(item.id); setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+                      <Icon className={`w-5 h-5 ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`} />{item.label}
                     </button>
                   );
                 })}
               </nav>
-              <div className="p-4 border-t border-gray-100 flex items-center gap-3">
+              <div className="p-4 border-t border-slate-100 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <span className="block font-bold text-gray-800 text-xs truncate leading-tight">{currentUser.name}</span>
-                  <span className="block text-[10px] text-gray-400 capitalize font-bold mt-0.5 truncate">{currentUser.role} console</span>
+                  <span className="block font-bold text-slate-800 text-xs truncate leading-tight">{currentUser.name}</span>
+                  <span className="block text-[10px] text-slate-400 capitalize font-bold mt-0.5 truncate">{currentUser.role} console</span>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className={`w-2 h-2 rounded-full ${SYNC_ENABLED && isOnline ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                     <span className={`text-[10px] font-black uppercase tracking-widest ${SYNC_ENABLED && isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -1707,17 +1777,17 @@ function App() {
                   </div>
                 </div>
               </div>
-              <div className="p-3 border-t border-gray-200 bg-gray-50/50 space-y-1">
+              <div className="p-3 border-t border-slate-200 bg-slate-50/50 space-y-1">
                 {isViewPermitted('settings', currentUser) && (
                   <button
                     data-testid="nav-settings"
                     onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
                         ? 'bg-indigo-50 text-indigo-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                       }`}
                   >
-                    <Settings className={`w-5 h-5 ${activeView === 'settings' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                    <Settings className={`w-5 h-5 ${activeView === 'settings' ? 'text-indigo-600' : 'text-slate-500'}`} />
                     Settings
                   </button>
                 )}
@@ -1726,6 +1796,7 @@ function App() {
                     // Switching users ends the Supabase Auth session so the next
                     // person must sign in with their own credentials.
                     await signOut();
+                    forgetActiveView();
                     setCurrentUser(null);
                     setLoginEmail('');
                     setEnteredPassword('');
@@ -1742,6 +1813,7 @@ function App() {
                 <button
                   onClick={async () => {
                     await signOut();
+                    forgetActiveView();
                     setCurrentUser(null);
                     setLoginEmail('');
                     setEnteredPassword('');
@@ -1766,12 +1838,13 @@ function App() {
             )}
 
             {/* MAIN CANVAS */}
-            <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-gray-100">
-              <div className="bg-white border-b border-gray-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs justify-between">
+            <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-slate-100">
+              <div className="bg-white border-b border-slate-200 h-14 flex items-center px-6 gap-4 shrink-0 shadow-xs justify-between">
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className="md:hidden p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                    aria-label="Open navigation"
+                    className="md:hidden p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100"
                   >
                     <Menu className="w-5 h-5" />
                   </button>
@@ -1788,7 +1861,7 @@ function App() {
                       <ChevronLeft className="w-3 h-3" /> Back
                     </button>
                   )}
-                  <span className="text-xs font-bold text-slate-500 capitalize">{activeView}</span>
+                  <span className="text-xs font-bold text-slate-500">{navItems.find(item => item.id === activeView)?.label || activeView}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="hidden md:flex items-center gap-2 text-slate-500">
