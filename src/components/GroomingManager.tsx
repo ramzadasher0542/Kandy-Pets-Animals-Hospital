@@ -1,3 +1,4 @@
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -464,7 +465,6 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                           <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">Clear Signature</button>
                         </div>
                       </div>
-                    </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
                       {GROOMING_SERVICES.map(group => (
