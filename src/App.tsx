@@ -215,6 +215,9 @@ function App() {
   const [pets, setPets] = useState<import('./types').Pet[]>([]);
   const [clients, setClients] = useState<import('./types').Client[]>([]);
   const [boardingRecords, setBoardingRecords] = useState<import('./types').BoardingRecord[]>([]);
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+  const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
+  const [labResults, setLabResults] = useState<LabResult[]>([]);
   const [notifications, setNotifications] = useState<ClientNotification[]>([]);
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
