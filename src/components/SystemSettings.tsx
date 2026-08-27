@@ -975,12 +975,12 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
                     <p className="text-sm font-black text-rose-900">This makes the clinic look brand new.</p>
-                    <p className="mt-1 text-xs font-bold leading-relaxed text-rose-800">All application records, configuration, audit history, inventory, appointments, clinical records, invoices, shifts, and staff-management data will be cleared.</p>
+                    <p className="mt-1 text-xs font-bold leading-relaxed text-rose-800">Application records for the signed-in provider's clinic will be cleared; the clinic record, login accounts, roles, and Supabase Auth passwords are preserved.</p>
                   </div>
                   <ul className="space-y-2 text-xs font-bold leading-relaxed text-slate-600">
                     <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />Login accounts, roles, credentials, and Supabase Auth passwords are preserved.</li>
                     <li className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />This cannot be undone. Create and keep a backup first.</li>
-                    <li className="flex gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />Only an administrator or provider can perform this reset.</li>
+                    <li className="flex gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />Only the active provider can perform this reset.</li>
                   </ul>
                 </div>
               </Modal>
@@ -1139,13 +1139,13 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 <div className="absolute -right-12 -top-12 opacity-10"><ShieldAlert className="w-64 h-64 text-rose-500" /></div>
                 <div className="relative z-10">
                   <h3 className="text-lg font-black text-rose-800 flex items-center gap-2 mb-2"><ShieldAlert className="w-6 h-6" /> Critical Data Operations</h3>
-                    <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">Permanent erasure remains disabled in the browser. Backup restore is a separately protected beta merge; provider-managed recovery is still required for catastrophic database loss.</p>
+                    <p className="text-xs font-bold text-rose-600/80 mb-6 max-w-2xl">This reset permanently clears the signed-in provider's clinic data only. Backup restore is a separately protected beta merge; provider-managed recovery is still required for catastrophic database loss.</p>
                   
                   <div className="space-y-4">
                     <div className="bg-white border-2 border-rose-300 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
                       <div>
                         <h4 className="text-sm font-black text-slate-700 flex items-center gap-2"><Database className="w-4 h-4 text-rose-500" /> Reset Application Data</h4>
-                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Clears every public application table except users. Supabase Auth passwords are never touched.</p>
+                        <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Clears application records for the signed-in provider's clinic only. The clinic record, login accounts, roles, and Supabase Auth passwords are preserved.</p>
                       </div>
                       <button onClick={() => { setPurgeError(null); setShowPurgeConfirm(true); }} disabled={isPurgingAll} data-testid="btn-purge-application-data" className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-[10px] uppercase tracking-widest whitespace-nowrap disabled:opacity-60">
                         {isPurgingAll ? 'Resetting...' : 'Reset application'}

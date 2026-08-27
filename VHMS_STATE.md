@@ -2,10 +2,10 @@
 
 ## Migration Status
 
-- Current phase: Phase 6 RBAC/UI Refactor verified complete
+- Current phase: Phase 6 RBAC/UI Refactor and tenant reset hardening verified complete
 - Backup phase: skipped; code and SQL backups are already secured locally
-- Last completed phase: Phase 6 RBAC/UI Refactor
-- Next pending step: Phase 7, awaiting CEO instructions; no database migration is required
+- Last completed phase: Phase 6 RBAC/UI Refactor and tenant reset hardening
+- Next pending step: Phase 7, awaiting CEO instructions; recovery reset is clinic-scoped and was not executed against production data.
 
 ## Current Database Structure
 
@@ -24,6 +24,8 @@
 - Existing `public.clinics` table: present with `id uuid primary key default gen_random_uuid()`, `name text not null`, nullable `address text`, nullable `phone text`, and `created_at timestamptz not null default now()`
 - Existing `public.clinic_settings` table: present with `clinic_id uuid primary key` referencing `public.clinics(id)` with cascade delete; `tax_enabled`, `grooming_enabled`, and `boarding_enabled` are non-null booleans defaulting to `true`
 - Existing data backfill: one `Kandy Pets Animals Hospital` clinic was inserted; three users were assigned to it; `ramzadasher0542@gmail.com` was marked as the single active superadmin and intentionally remains clinic-less
+- Recovery reset function: `public.purge_application_data_auth()` is `SECURITY DEFINER`, executable by `authenticated` users only, provider-only, and deletes only rows with the assigned clinic_id; `public.users` and `public.clinics` rows are preserved.
+- Recovery reset grants: `authenticated` can select `public.users(clinic_id, is_superadmin)` and `public.clinics`; production `/superadmin` auth hydration was verified after these grants.
 
 ## Public Tables
 
@@ -67,6 +69,10 @@
 - Phase 6 verification hardening applied in `src/App.tsx`: denied persisted/deep-linked views render nothing synchronously until the permitted default view is restored; the POS Shift & Drawer shortcut also checks the same guard.
 - Phase 6 source verification passed by direct source inspection: Reports, Settings, and Shift & Drawer are blocked for cashier, veterinarian, and groomer roles; DashboardAnalytics contains no gross revenue/profit variables; ReportsManager contains no cash-adjustment or Z-Report components.
 
+- Post-merge recovery Step 2 applied in Supabase: granted `authenticated` SELECT on `public.users(clinic_id, is_superadmin)` and `public.clinics`; production `/superadmin` hydration was verified.
+- Post-merge recovery Step 3 applied in `supabase/migrations/20260827_tenant_scoped_purge.sql` and Supabase: replaced the unscoped public-table `TRUNCATE` with provider-authorized, clinic-scoped deletes ordered by foreign-key ancestry; no destructive reset call was run against production data.
+- Post-merge recovery Step 4 applied in `src/components/SystemSettings.tsx`: reset warnings now state the signed-in provider clinic scope, preserved clinic/login records, and active-provider authorization.
+
 ## Next Action
 
-Await CEO instructions for Phase 7. Preserve strict `clinic_id` filtering for all database queries.
+Await CEO instructions for Phase 7. Preserve strict `clinic_id` filtering for all database queries, and do not run the destructive reset in production without a verified backup.
