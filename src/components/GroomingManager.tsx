@@ -597,6 +597,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
           </div>
         )}
       </div>
+      </div>
     </PageShell>
   );
 }
