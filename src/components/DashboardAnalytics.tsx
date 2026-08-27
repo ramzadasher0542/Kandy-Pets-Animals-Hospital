@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Activity, Clock, Users, AlertTriangle, PackageX, Calendar, 
-  CreditCard, ChevronRight, CheckCircle, FileSignature,
-  TrendingUp, Home
+  CreditCard, ChevronRight, CheckCircle, FileSignature, Home
 } from 'lucide-react';
 import { 
-  Appointment, InventoryItem, ActiveShift, Invoice, MedicalRecord, 
+  Appointment, InventoryItem, Invoice, MedicalRecord, 
   ClinicQueueItem, ScheduleEntry, TimeEntry, StaffProfile,
   BoardingRecord, GroomingLog
 } from '../types';
-import { supabase } from '../lib/supabase';
 import { fetchBoardingRecords, fetchGroomingLogs } from '../lib/db';
-import { formatDisplayDate } from '../utils/time';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import PageShell from './ui/PageShell';
 import { EmptyState } from './ui/EmptyState';
@@ -21,12 +18,10 @@ interface DashboardProps {
   records: MedicalRecord[];
   inventory: InventoryItem[];
   appointments: Appointment[];
-  activeShift?: ActiveShift | null;
   clinicQueue?: ClinicQueueItem[];
   scheduleEntries?: ScheduleEntry[];
   timeEntries?: TimeEntry[];
   staffProfiles?: StaffProfile[];
-  currentUser?: any;
   onNavigate?: (tab: string) => void;
 }
 
@@ -35,65 +30,27 @@ export default function DashboardAnalytics({
   records = [],
   appointments = [],
   inventory = [],
-  activeShift = null,
   clinicQueue = [],
   scheduleEntries = [],
   timeEntries = [],
   staffProfiles = [],
-  currentUser = null,
   onNavigate = () => {}
 }: DashboardProps) {
 
-  // ACL: only owner/admin see clinic-wide financial performance (revenue,
-  // profit, analytics). Cashiers/vets see operational widgets only — drawer
-  // balance and shift status stay visible to everyone.
-  // PROVIDER-1: provider is root and must see everything, incl. financials.
-  const canSeeFinancials = currentUser?.role === 'provider' || currentUser?.role === 'admin' || currentUser?.role === 'owner';
-  
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
-  const [vaultBalance, setVaultBalance] = useState<number>(0);
   const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
   const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
-  const [weekInvoices, setWeekInvoices] = useState<Invoice[]>([]);
 
   useEffect(() => {
     let isMounted = true;
-    const loadDashboard = async () => {
+    const loadOperationalSignals = async () => {
       try {
-        // Cash adjustments from Supabase (IndexedDB is empty after the migration)
-        let cIn = 0, cOut = 0;
-        if (supabase) {
-          const { data: adjData } = await supabase.from('cash_adjustments').select('*');
-          (adjData || []).forEach((a: any) => {
-            if (a.type === 'IN') cIn += Number(a.amount || 0);
-            else cOut += Number(a.amount || 0);
-          });
-        }
-
-        // Boarding records + grooming logs from Supabase. Full arrays are kept
-        // (not just counts) because the alert panel below scans them for
-        // boarding-charge overages and missing grooming consent signatures.
-        const boarding = await fetchBoardingRecords();
-        const grooming = await fetchGroomingLogs();
-
-        // Today's cash sales from the invoices prop (parent loads today only).
-        const today = formatDisplayDate(new Date());
-        let cSales = 0;
-        invoices
-          .filter(inv => inv.date === today && inv.paymentStatus === 'paid')
-          .forEach(inv => {
-            const method = (inv.paymentMethod || '').toLowerCase();
-            if (method === 'cash') cSales += inv.sales_total || 0;
-            else if (method === 'split' && inv.splitPayments) {
-              const cashSplit = inv.splitPayments.find((p: any) => p.method === 'cash');
-              if (cashSplit) cSales += (cashSplit.amount || 0);
-            }
-          });
-
+        // Keep the dashboard focused on operational signals, not financial
+        // reporting. These reads are already scoped by the shared DB helpers.
+        const [boarding, grooming] = await Promise.all([fetchBoardingRecords(), fetchGroomingLogs()]);
         if (isMounted) {
-          setVaultBalance(cSales + cIn - cOut);
           setBoardingRecords(boarding);
           setGroomingLogs(grooming);
         }
@@ -101,31 +58,7 @@ export default function DashboardAnalytics({
         console.error('Dashboard load failed:', e);
       }
     };
-    loadDashboard();
-    return () => { isMounted = false; };
-  }, [invoices]);
-
-  // 7-day revenue chart fetches its own window — the invoices prop only holds
-  // today's rows since the boot sequence moved to fetchTodaysInvoices().
-  useEffect(() => {
-    let isMounted = true;
-    const loadWeek = async () => {
-      if (!supabase) return;
-      const dates: string[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        dates.push(formatDisplayDate(d));
-      }
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('*')
-        .in('date', dates)
-        .eq('paymentStatus', 'paid');
-      if (error) console.error('[DB]', error.message);
-      if (isMounted) setWeekInvoices((data || []) as Invoice[]);
-    };
-    loadWeek();
+    loadOperationalSignals();
     return () => { isMounted = false; };
   }, []);
 
@@ -136,9 +69,6 @@ export default function DashboardAnalytics({
   const completedAppointments = todaysAppointments.filter(a => a.status === 'completed');
   const remainingAppointments = todaysAppointments.filter(a => a.status === 'booked' || a.status === 'in-progress');
   
-  const todaysInvoices = invoices.filter(i => i.date?.startsWith(todayStr) && i.paymentStatus === 'paid');
-  const todaysRevenue = todaysInvoices.reduce((sum, i) => sum + (i.sales_total || 0), 0);
-
   // 2. NEEDS ATTENTION
   const needsAttention = useMemo(() => {
     const alerts: Array<{ id: string; type: string; title: string; subtitle: string; icon: any; color: string; tab: string }> = [];
@@ -234,31 +164,6 @@ export default function DashboardAnalytics({
     });
   }, [scheduleEntries, timeEntries, staffProfiles, todayStr]);
 
-  // 5. REVENUE THIS WEEK MINI CHART
-  const weekChart = useMemo(() => {
-    const days = [];
-    const maxDate = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(maxDate);
-      d.setDate(d.getDate() - i);
-      const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      
-      const dayRevs = weekInvoices
-        .filter(inv => inv.date?.startsWith(dStr) && inv.paymentStatus === 'paid')
-        .reduce((sum, inv) => sum + (inv.sales_total || 0), 0);
-        
-      days.push({
-        label: d.toLocaleDateString('en-US', { weekday: 'short' }),
-        value: dayRevs,
-        date: dStr
-      });
-    }
-    const maxVal = Math.max(...days.map(d => d.value), 1);
-    return { days, maxVal };
-  }, [weekInvoices]);
-
-  const formatCurrency = (val: number) => 'Rs. ' + new Intl.NumberFormat('en-LK', { maximumFractionDigits: 0 }).format(val || 0);
-
   const hasAnyData = invoices.length > 0 || appointments.length > 0 || records.length > 0 || inventory.length > 0;
   if (!hasAnyData) {
     return (
@@ -274,7 +179,7 @@ export default function DashboardAnalytics({
       <div className="flex flex-col h-full w-full overflow-hidden font-sans relative">
       <main className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
         {/* TOP ROW: TODAY AT A GLANCE */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
               <Users className="w-7 h-7 text-indigo-600" />
@@ -298,31 +203,6 @@ export default function DashboardAnalytics({
             </div>
           </div>
 
-          {canSeeFinancials && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-7 h-7 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Today's Revenue</h3>
-              <div className="text-xl font-black text-slate-800 font-mono">
-                {formatCurrency(todaysRevenue)}
-              </div>
-            </div>
-          </div>
-          )}
-
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-              <CreditCard className="w-7 h-7 text-slate-600" />
-            </div>
-            <div>
-              <h3 className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Cash in Drawer</h3>
-              <div className="text-xl font-black text-slate-800 font-mono">
-                {formatCurrency(vaultBalance)}
-              </div>
-            </div>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -360,32 +240,6 @@ export default function DashboardAnalytics({
 
           {/* RIGHT COLUMN */}
           <div className="flex flex-col gap-6 h-[450px]">
-            {/* REVENUE CHART */}
-            {canSeeFinancials && (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 shrink-0">
-              <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-emerald-500" /> Revenue This Week
-              </h2>
-              <div className="flex items-end justify-between h-24 gap-1">
-                {weekChart.days.map((d, i) => (
-                  <div key={i} className="flex flex-col items-center flex-1 group">
-                    <div className="w-full relative flex justify-center h-full items-end rounded-t bg-slate-50">
-                      <div 
-                        className="w-full bg-emerald-400 rounded-t group-hover:bg-emerald-500 transition-all"
-                        style={{ height: `${(d.value / weekChart.maxVal) * 100}%`, minHeight: d.value > 0 ? '4px' : '0' }}
-                      ></div>
-                      {/* Tooltip */}
-                      <div className="absolute -top-8 bg-slate-800 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                        {formatCurrency(d.value)}
-                      </div>
-                    </div>
-                    <div className="text-[10px] font-bold text-slate-400 uppercase mt-1">{d.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            )}
-
             {/* TODAY'S SCHEDULE */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex-1 flex flex-col min-h-0">
               <div className="p-4 border-b border-slate-100 shrink-0 bg-slate-50 rounded-t-2xl">
@@ -447,7 +301,7 @@ export default function DashboardAnalytics({
                         <div className="text-sm font-black text-slate-800 flex items-center gap-1.5">
                           {q.petName}
                           {q.urgency === 'emergency' && <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-widest rounded shrink-0">EMERGENCY</span>}
-                          {q.urgency === 'non-emergency' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded shrink-0">URGENT</span>}
+                          {q.urgency === 'non-emergency' && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded shrink-0">NON-EMERGENCY</span>}
                         </div>
                         {q.emergencyBackfillRequired && (
                           <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 mt-0.5">⚠ DETAILS PENDING</div>
