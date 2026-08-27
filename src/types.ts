@@ -9,7 +9,11 @@
 // never issuable from any UI — only the onboarding script (AUTH-7) may mint one.
 export type UserRole = 'provider' | 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin' | 'groomer';
 
-export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; }
+export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; clinicId?: string | null; isSuperadmin?: boolean; }
+
+export interface Clinic { id: string; name: string; address?: string | null; phone?: string | null; created_at?: string; }
+
+export interface ClinicSettings { clinicId: string; taxEnabled: boolean; groomingEnabled: boolean; boardingEnabled: boolean; }
 
 export type ItemCategory = string;
 
@@ -96,6 +100,7 @@ export interface ClinicQueueItem {
   prescribedMeds?: Array<{ itemId: string; name: string; quantity: number }>;
   urgency?: 'routine' | 'non-emergency' | 'emergency';
   emergencyBackfillRequired?: boolean;
+  is_deleted?: boolean;
 }
 
 // PHASE 1: Added weight and sex as native first-class citizens

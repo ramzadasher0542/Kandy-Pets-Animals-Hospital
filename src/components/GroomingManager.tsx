@@ -22,6 +22,7 @@ interface GroomingProps {
   clinicQueue?: ClinicQueueItem[];
   onUpdateRecord: (record: MedicalRecord) => void;
   systemConfig?: any;
+  onUpdateInventory?: (item: InventoryItem) => Promise<void>;
 }
 
 const GROOMING_SERVICES = [
@@ -30,13 +31,35 @@ const GROOMING_SERVICES = [
   { category: 'Medical Add-Ons', items: ['Medicated Bath'] }
 ];
 
-export default function GroomingManager({ clients, pets, records, inventory, clinicQueue = [], onUpdateRecord, systemConfig }: GroomingProps) {
+export default function GroomingManager({ clients, pets, records, inventory, clinicQueue = [], onUpdateRecord, systemConfig, onUpdateInventory }: GroomingProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'new_session' | 'history'>('new_session');
 
   const [groomingLogs, setGroomingLogs] = useState<GroomingLog[]>([]);
+  const groomingRateItems = useMemo(() => inventory.filter(item =>
+    String(item.category).toLowerCase() === 'service' && /groom|bath|nail|shav|trim|deshed|de-shed|ear|styling/i.test(item.name)
+  ), [inventory]);
+  const [groomingRateDraft, setGroomingRateDraft] = useState<Record<string, number>>({});
+  const [isSavingGroomingRates, setIsSavingGroomingRates] = useState(false);
+
+  React.useEffect(() => {
+    setGroomingRateDraft(Object.fromEntries(groomingRateItems.map(item => [item.id, item.price])));
+  }, [groomingRateItems]);
+
+  const saveGroomingRates = async () => {
+    if (!onUpdateInventory) return;
+    setIsSavingGroomingRates(true);
+    try {
+      await Promise.all(groomingRateItems.map(item => onUpdateInventory({ ...item, price: groomingRateDraft[item.id] ?? item.price })));
+      showToast('Grooming rates saved.', 'success');
+    } catch (error: any) {
+      showToast(`Grooming rates failed: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setIsSavingGroomingRates(false);
+    }
+  };
   
   const [groomingInstructions, setGroomingInstructions] = useState({
     bathe: false,
@@ -312,8 +335,32 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
         placeholder: "Search Patient or Owner..."
       }}
     >
-      <div className="h-full w-full" id="grooming-module-container">
-        <MasterDetailLayout
+      <div className="flex-1 min-h-0 w-full flex flex-col gap-3" id="grooming-module-container">
+        <details open className="shrink-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <summary className="cursor-pointer px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600">Grooming service rates</summary>
+          <div className="px-5 pb-4 space-y-4">
+            {groomingRateItems.length === 0 ? (
+              <p className="text-xs font-medium text-slate-500">Add grooming services under Inventory &amp; Stock to manage their prices here.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {groomingRateItems.map(item => (
+                  <label key={item.id} className="text-[10px] font-black uppercase tracking-widest text-slate-500">{item.name}
+                    <div className="relative mt-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">{systemConfig?.currencySymbol || 'Rs. '}</span>
+                      <input type="number" min="0" step="1" value={groomingRateDraft[item.id] ?? item.price} onChange={e => setGroomingRateDraft(prev => ({ ...prev, [item.id]: Number(e.target.value) || 0 }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-violet-500/20" />
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-medium text-slate-500">These prices are the same service prices used by POS.</p>
+              <button type="button" onClick={() => void saveGroomingRates()} disabled={isSavingGroomingRates || groomingRateItems.length === 0} className="rounded-lg bg-violet-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:opacity-50">{isSavingGroomingRates ? 'Saving...' : 'Save rates'}</button>
+            </div>
+          </div>
+        </details>
+        <div className="flex-1 min-h-0">
+          <MasterDetailLayout
           listHeader={renderActiveQueue()}
           list={
             <>
@@ -411,13 +458,13 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
                             onTouchStart={(e) => { e.preventDefault(); startDrawing(e); }}
                             onTouchMove={(e) => { e.preventDefault(); draw(e); }}
                             onTouchEnd={stopDrawing}
-                          />
-                        </div>
+          />
+        </div>
+      </div>
                         <div className="mt-2">
                           <button onClick={clearSignature} className="px-3 py-1.5 text-[10px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">Clear Signature</button>
                         </div>
                       </div>
-                    </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 flex-1">
                       {GROOMING_SERVICES.map(group => (
@@ -549,6 +596,7 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
             </div>
           </div>
         )}
+      </div>
       </div>
     </PageShell>
   );

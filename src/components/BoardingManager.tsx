@@ -27,13 +27,14 @@ interface BoardingProps {
   onDischargeToQueue?: (item: ClinicQueueItem) => Promise<void>;
   activeShift?: ActiveShift | null;
   currentUser?: User | null;
+  onChangeConfig?: (config: any) => Promise<void>;
 }
 
 const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue, activeShift, currentUser }: BoardingProps) {
+export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue, activeShift, currentUser, onChangeConfig }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
@@ -48,6 +49,43 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [cleaningFeeRupees, setCleaningFeeRupees] = useState<number>(0);
 
   const depositCents = systemConfig?.defaultDepositCents ?? 1500000;
+  const [rateDraft, setRateDraft] = useState({
+    catNofoodCents: 0,
+    catWithfoodCents: 0,
+    dogNofoodCents: 0,
+    dogWithfoodCents: 0,
+    catLitterCents: 0,
+    dogLitterCents: 0,
+    milkCupCents: 0,
+  });
+  const [depositDraft, setDepositDraft] = useState(depositCents);
+  const [isSavingRates, setIsSavingRates] = useState(false);
+
+  React.useEffect(() => {
+    setRateDraft({
+      catNofoodCents: systemConfig?.boardingRates?.catNofoodCents ?? 0,
+      catWithfoodCents: systemConfig?.boardingRates?.catWithfoodCents ?? 0,
+      dogNofoodCents: systemConfig?.boardingRates?.dogNofoodCents ?? 0,
+      dogWithfoodCents: systemConfig?.boardingRates?.dogWithfoodCents ?? 0,
+      catLitterCents: systemConfig?.boardingRates?.catLitterCents ?? 0,
+      dogLitterCents: systemConfig?.boardingRates?.dogLitterCents ?? 0,
+      milkCupCents: systemConfig?.boardingRates?.milkCupCents ?? 0,
+    });
+    setDepositDraft(systemConfig?.defaultDepositCents ?? 1500000);
+  }, [systemConfig]);
+
+  const saveBoardingRates = async () => {
+    if (!onChangeConfig) return;
+    setIsSavingRates(true);
+    try {
+      await onChangeConfig({ ...systemConfig, boardingRates: rateDraft, defaultDepositCents: depositDraft });
+      showToast('Boarding rates saved.', 'success');
+    } catch (error: any) {
+      showToast(`Boarding rates failed: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setIsSavingRates(false);
+    }
+  };
   
   // Guardrail State
   const [showDepositGuard, setShowDepositGuard] = useState(false);
@@ -502,7 +540,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                 <div className="font-bold text-sm truncate flex items-center gap-1.5">
                   {q.petName}
                   {q.urgency === 'emergency' && <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">EMERGENCY</span>}
-                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">URGENT</span>}
+                  {q.urgency === 'non-emergency' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">NON-EMERGENCY</span>}
                 </div>
                 <div className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded shrink-0 ${selectedPatientId === q.petId ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                   Waiting
@@ -686,6 +724,40 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
 
       {/* RIGHT PANE: Intake Configuration (60%) */}
       <main className="flex-1 bg-white rounded-2xl flex flex-col border border-slate-200 shadow-sm overflow-hidden relative">
+        <details open className="shrink-0 border-b border-slate-200 bg-slate-50">
+          <summary className="cursor-pointer px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600">Boarding rates &amp; admission deposit</summary>
+          <div className="px-5 pb-4 space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {([
+                ['catNofoodCents', 'Cat / no food'],
+                ['catWithfoodCents', 'Cat / with food'],
+                ['dogNofoodCents', 'Dog / no food'],
+                ['dogWithfoodCents', 'Dog / with food'],
+                ['catLitterCents', 'Cat litter extra'],
+                ['dogLitterCents', 'Dog litter extra'],
+                ['milkCupCents', 'Milk cup extra'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  {label}
+                  <div className="relative mt-1">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">{systemConfig?.currencySymbol || 'Rs. '}</span>
+                    <input type="number" min="0" step="1" value={Math.round((rateDraft[key] || 0) / 100)} onChange={e => setRateDraft(prev => ({ ...prev, [key]: Math.round(parseWholeRupees(e.target.value) * 100) }))} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                </label>
+              ))}
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Admission deposit
+                <div className="relative mt-1">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">{systemConfig?.currencySymbol || 'Rs. '}</span>
+                  <input data-testid="boarding-deposit-input" type="number" min="0" step="1" value={Math.round(depositDraft / 100)} onChange={e => setDepositDraft(Math.round(parseWholeRupees(e.target.value) * 100))} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                </div>
+              </label>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-medium text-slate-500">Rates are stored with the clinic configuration and applied to new admissions.</p>
+              <button type="button" onClick={() => void saveBoardingRates()} disabled={isSavingRates} className="rounded-lg bg-indigo-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700 disabled:opacity-50">{isSavingRates ? 'Saving...' : 'Save rates'}</button>
+            </div>
+          </div>
+        </details>
         {!selectedCage ? (
           <div className="flex-1 flex flex-col items-center justify-center relative opacity-60">
             <Home className="h-12 w-12 text-slate-300 mb-3" />
@@ -1028,4 +1100,3 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     </PageShell>
   );
 }
-

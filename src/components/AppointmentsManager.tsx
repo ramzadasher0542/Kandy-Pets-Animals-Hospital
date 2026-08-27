@@ -11,7 +11,7 @@ import {
   Activity, X, ChevronLeft, ChevronRight, List as ListIcon,
   Edit2, Trash2, Lock, Stethoscope, Phone, PenTool, History, SearchCode, UserX
 } from 'lucide-react';
-import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client } from '../types';
+import { Appointment, AppointmentStatus, MedicalRecord, PetClassification, User as AppUser, Pet, Client, ClinicQueueItem } from '../types';
 import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
 import { formatDisplayDate, formatDisplayTime } from '../utils/time';
@@ -23,6 +23,7 @@ import PageShell from './ui/PageShell';
 interface AppointmentsProps {
   appointments: Appointment[];
   records: MedicalRecord[];
+  clinicQueue?: ClinicQueueItem[];
   /** Supabase-backed staff registry; the attending-vet list is derived from it. */
   users?: AppUser[];
   isOnline?: boolean;
@@ -71,7 +72,7 @@ const getNextAptNumber = (apts: Appointment[]) => {
 
 export default function AppointmentsManager({
   appointments, records, users, isOnline, onAddAppointment, onUpdateStatus,
-  onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent, onUpdateClient, onUpdatePet
+  clinicQueue = [], onAddRecord, onUpdateAppointment, preFilledClient, preFilledPet, onGenerateConsent, onUpdateClient, onUpdatePet
 }: AppointmentsProps) {
   
   // ---------------------------------------------------------
@@ -651,6 +652,10 @@ export default function AppointmentsManager({
   });
 
   const todayStr = toLocalISODate(new Date());
+  const staleActiveQueue = clinicQueue.filter(q => {
+    if (q.status !== 'active' || q.is_deleted || !q.checkInTime) return false;
+    return formatDisplayDate(q.checkInTime) < todayStr;
+  });
   
   const todaysListApts = listFilteredApts.filter(a => a.date === todayStr).sort((a, b) => {
     const getUrgencyVal = (u?: string) => u === 'emergency' ? 3 : u === 'non-emergency' ? 2 : 1;
@@ -875,7 +880,7 @@ export default function AppointmentsManager({
             <div className="font-bold text-slate-800 flex items-center gap-2">
               {apt.petName}
               {apt.urgency === 'emergency' && <Badge tone="rose">EMERGENCY</Badge>}
-              {apt.urgency === 'non-emergency' && <Badge tone="amber">URGENT</Badge>}
+              {apt.urgency === 'non-emergency' && <Badge tone="amber">NON-EMERGENCY</Badge>}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded shadow-xs border border-slate-200">{apt.aptNumber || 'N/A'}</span>
@@ -953,6 +958,14 @@ export default function AppointmentsManager({
         
         {/* TODAY SECTION - HIGH PRIORITY */}
         <section>
+          {staleActiveQueue.length > 0 && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900" role="status">
+              <div className="text-[10px] font-black uppercase tracking-widest">Active visits need review</div>
+              <p className="mt-1 text-xs font-bold leading-relaxed">
+                {staleActiveQueue.slice(0, 3).map(q => q.petName).join(', ')}{staleActiveQueue.length > 3 ? ` and ${staleActiveQueue.length - 3} more` : ''} remain in the clinical queue from a previous date. Complete or reconcile them before treating today as clear.
+              </p>
+            </div>
+          )}
           <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2 border-b border-slate-200 pb-2">
             <span className="bg-indigo-600 w-2 h-6 rounded-full"></span> TODAY'S APPOINTMENTS ({todaysListApts.length})
           </h3>

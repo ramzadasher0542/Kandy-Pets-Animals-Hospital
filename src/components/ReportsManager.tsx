@@ -1,27 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Wallet, TrendingUp, ArrowDownRight, ArrowUpRight, FileText, Download, Trash2,
-  Printer, Mail, Users, Stethoscope, PieChart, Package
+  TrendingUp, ArrowDownRight, ArrowUpRight, Download, Trash2,
+  Users, Stethoscope, PieChart, Package, ShieldCheck
 } from 'lucide-react';
 import PageShell from './ui/PageShell';
 import { EmptyState } from './ui/EmptyState';
 import { showToast } from './Toast';
-import { fetchInvoices, fetchAppointments, fetchClients, fetchCashAdjustments, fetchShiftReconciliations, fetchDeletionAudits } from '../lib/db';
-import { User, DeletionAudit } from '../types';
-import type { SystemConfig } from './SystemSettings';
+import { fetchInvoices, fetchAppointments, fetchClients, fetchDeletionAudits } from '../lib/db';
+import { DeletionAudit } from '../types';
 import { formatRupees } from '../utils/currency';
 
 // --- Types ---
-interface CashAdjustment {
-  id: string;
-  type: 'IN' | 'OUT';
-  amount: number;
-  category: 'Expense' | 'Income' | 'Investment' | 'Owner Draw' | 'Starting Float' | 'Other';
-  reason: string;
-  date: string;
-  createdBy: string;
-}
-
 interface InvoiceItemLite { itemId?: string; sku?: string; name?: string; category?: string; quantity?: number; unitPrice?: number; totalPrice?: number; }
 
 // Support both legacy and new invoice schemas
@@ -51,6 +40,7 @@ interface VaultInvoice {
 }
 
 type RangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'custom';
+type ReportTab = 'financials' | 'clinical' | 'audit';
 
 // =====================================================================
 // PURE RANGE HELPERS (local-time boundaries)
@@ -156,88 +146,43 @@ const pctChange = (cur: number, prev: number): { pct: number; isNew: boolean } =
   return { pct: ((cur - prev) / prev) * 100, isNew: false };
 };
 
-interface ReportsManagerProps {
-  currentUser: User;
-  config?: SystemConfig;
-}
-
-export default function ReportsManager({ currentUser, config }: ReportsManagerProps) {
+export default function ReportsManager() {
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<VaultInvoice[]>([]);
-  const [adjustments, setAdjustments] = useState<CashAdjustment[]>([]);
   const [deletions, setDeletions] = useState<DeletionAudit[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
-  const [shiftRecons, setShiftRecons] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<ReportTab>('financials');
 
   const [rangePreset, setRangePreset] = useState<RangePreset>('this_month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
-  // Vault metrics (all-time cash position — intentionally NOT range-scoped)
-  const [metrics, setMetrics] = useState({ cashSales: 0, cashIn: 0, cashOut: 0, vaultBalance: 0 });
-
   const formatCurrency = (val: number) => 'Rs. ' + formatRupees(val);
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const formatPct = (n: number) => `${n >= 0 ? '' : ''}${n.toFixed(1)}%`;
   const normPhone = (p: string) => (p || '').replace(/\D/g, '').slice(-9);
-
-  // Vault balance (all-time) — unchanged logic, do not touch.
-  const calculateVault = useCallback((invs: VaultInvoice[], adjs: CashAdjustment[]) => {
-    let cSales = 0;
-    invs.filter(isPaid).forEach(inv => {
-      const total = invTotal(inv);
-      const method = (inv.paymentMethod || inv.method || '').toLowerCase();
-      if (method === 'cash') cSales += total;
-      else if (method === 'split' && inv.splitPayments) {
-        const cashSplit = inv.splitPayments.find((p: any) => p.method === 'cash');
-        if (cashSplit) cSales += (cashSplit.amount || (cashSplit.amountCents ? cashSplit.amountCents / 100 : 0));
-      }
-    });
-    let cIn = 0; let cOut = 0;
-    adjs.forEach(a => { if (a.type === 'IN') cIn += a.amount; else cOut += a.amount; });
-    setMetrics({ cashSales: cSales, cashIn: cIn, cashOut: cOut, vaultBalance: cSales + cIn - cOut });
-  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // ---- Supported cloud reads (fail-closed) ----
-      // Isolated from the deferred local reads below: on failure we keep the
-      // existing supported state + metrics untouched (no setter runs — Promise.all
-      // rejects before any of them), show the toast, and still fall through to the
-      // deferred reads. A cloud outage never becomes zero financial data.
+      // Fail closed: a cloud outage never becomes zero financial data.
       try {
-        const [cloudInvoices, cloudAdjustments, cloudAppointments, cloudClients] = await Promise.all([
+        const [cloudInvoices, cloudAppointments, cloudClients] = await Promise.all([
           fetchInvoices(),
-          fetchCashAdjustments(),
           fetchAppointments(),
           fetchClients(),
         ]);
         const invs = cloudInvoices as unknown as VaultInvoice[];
-        // Adjustments: newest first (unchanged ordering).
-        const adjs = (cloudAdjustments as CashAdjustment[]).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         // Non-deleted (the helpers already exclude soft-deleted rows).
         const appts = cloudAppointments.filter((v: any) => v && !v.is_deleted);
         const cls = cloudClients.filter((v: any) => v && !v.is_deleted);
 
-        setInvoices(invs); setAdjustments(adjs);
+        setInvoices(invs);
         setAppointments(appts); setClients(cls);
-        calculateVault(invs, adjs);
       } catch (e) {
-        if (import.meta.env.DEV) console.error('Vault Error:', e);
+        if (import.meta.env.DEV) console.error('Report data error:', e);
         showToast('Could not load report data from the cloud. Showing last known data.', 'error');
-      }
-
-      // Shift reconciliations are cloud-backed. Isolated from the block above so a
-      // failure here does not blank the vault/invoice sections (and vice versa).
-      // Fail-closed: on error the previous state is kept (no setter, no fabricated
-      // empty list) and the failure is surfaced — never a silent empty report.
-      try {
-        setShiftRecons(await fetchShiftReconciliations());
-      } catch (e) {
-        if (import.meta.env.DEV) console.error('Shift reconciliations read failed:', e);
-        showToast('Could not load shift reconciliations from the cloud. Showing last known data.', 'error');
       }
 
       // Audit data is cloud-backed and isolated so one unavailable report section
@@ -253,7 +198,7 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     } finally {
       setLoading(false);
     }
-  }, [calculateVault]);
+  }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -348,7 +293,7 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     completed.forEach(a => { const v = a.veterinarian || a.assignedVet || 'Unassigned'; vetMap[v] = (vetMap[v] || 0) + 1; });
     const vetProductivity = Object.entries(vetMap).map(([vet, count]) => ({ vet, count })).sort((a, b) => b.count - a.count);
 
-    // ---- Z-REPORT (payment methods, floats, voids, discounts) ----
+    // Payment mix and invoice controls stay range-scoped to this report.
     const methodTotals: Record<string, number> = { cash: 0, card: 0, bank_transfer: 0, e_wallet: 0, deposit: 0, unknown: 0 };
     paid.forEach(inv => {
       const total = invTotal(inv);
@@ -376,15 +321,6 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     const discountInvoices = paid.filter(i => (i.discount || 0) > 0);
     const discountTotal = discountInvoices.reduce((s, i) => s + (i.discount || 0), 0);
 
-    const reconsInRange = shiftRecons.filter(r => inRange(r.timestamp, range));
-    const openingFloat = reconsInRange.reduce((s, r) => s + (r.openingFloat || 0), 0);
-    const expectedClosing = reconsInRange.reduce((s, r) => s + (r.expectedClosing || 0), 0);
-    const actualClosing = reconsInRange.reduce((s, r) => s + (r.actualClosing || 0), 0);
-    const reconDiscrepancy = reconsInRange.reduce((s, r) => s + (r.discrepancy || 0), 0);
-    const adjustmentsInRange = adjustments.filter(a => inRange(a.date, range));
-    const cashInRange = adjustmentsInRange.filter(a => a.type === 'IN').reduce((s, a) => s + a.amount, 0);
-    const cashOutRange = adjustmentsInRange.filter(a => a.type === 'OUT').reduce((s, a) => s + a.amount, 0);
-
     return {
       grossRevenue, prevRevenue, cogs, grossProfit, grossMargin, netProfit,
       categories, catTotal, categoryPctSum,
@@ -398,10 +334,8 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
       topByRevenue, topByQty, vetProductivity,
       methodTotals, methodSum, voidedCount: voided.length, voidedValue,
       discountCount: discountInvoices.length, discountTotal,
-      openingFloat, expectedClosing, actualClosing, reconDiscrepancy, reconsCount: reconsInRange.length,
-      adjustmentsInRange, cashInRange, cashOutRange,
     };
-  }, [invoices, appointments, clients, adjustments, shiftRecons, range, prevRange]);
+  }, [invoices, appointments, clients, range, prevRange]);
 
   // --- CSV export of the full report ---
   const exportReportCSV = () => {
@@ -447,51 +381,6 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     showToast('Full report exported to CSV.', 'success');
   };
 
-  // --- Z-Report print / email ---
-  const buildZReportText = () => {
-    const l: string[] = [];
-    l.push(`Z-REPORT — ${range.label}`);
-    l.push(`${range.start.toLocaleDateString()} → ${range.end.toLocaleDateString()}`);
-    l.push(`Generated by ${currentUser?.name || 'Unknown'} at ${new Date().toLocaleString()}`);
-    l.push('');
-    l.push(`Total Sales: ${formatCurrency(report.grossRevenue)} (${report.txnCount} txns)`);
-    Object.entries(report.methodTotals as Record<string, number>).forEach(([m, v]) => { if (v) l.push(`  ${m}: ${formatCurrency(v)}`); });
-    l.push('');
-    l.push(`Opening Float: ${formatCurrency(report.openingFloat)}`);
-    l.push(`Expected Closing: ${formatCurrency(report.expectedClosing)}`);
-    l.push(`Actual Closing: ${formatCurrency(report.actualClosing)}`);
-    l.push(`Discrepancy: ${formatCurrency(report.reconDiscrepancy)}`);
-    l.push(`Cash In: ${formatCurrency(report.cashInRange)}  Cash Out: ${formatCurrency(report.cashOutRange)}`);
-    l.push(`Voided: ${report.voidedCount} (${formatCurrency(report.voidedValue)})`);
-    l.push(`Discounts: ${report.discountCount} (${formatCurrency(report.discountTotal)})`);
-    return l.join('\n');
-  };
-
-  const handlePrintZReport = () => { window.print(); };
-
-  const handleEmailZReport = async () => {
-    const sid = config?.emailjsServiceId?.trim();
-    const tid = config?.emailjsTemplateId?.trim();
-    const pk = config?.emailjsPublicKey?.trim();
-    if (!sid || !tid || !pk) {
-      showToast('Email not configured — set up EmailJS credentials in System Settings', 'error');
-      return;
-    }
-    const recipients = ((config?.recipientEmails && config.recipientEmails.length ? config.recipientEmails : [config?.hospitalEmail]).filter(Boolean) as string[]).join(',');
-    if (!recipients) {
-      showToast('No recipient email set. Add a Public Email in System Settings.', 'error');
-      return;
-    }
-    try {
-      const mod: any = await import('@emailjs/browser');
-      const emailjs = mod.default || mod;
-      await emailjs.send(sid, tid, { to_email: recipients, subject: `Z-Report — ${range.label}`, message: buildZReportText() }, { publicKey: pk });
-      showToast('Z-Report emailed successfully.', 'success');
-    } catch (err: any) {
-      showToast(`Email failed: ${err?.message || err}`, 'error');
-    }
-  };
-
   const rangeOptions: { key: RangePreset; label: string }[] = [
     { key: 'today', label: 'Today' },
     { key: 'this_week', label: 'This Week' },
@@ -499,6 +388,12 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     { key: 'last_month', label: 'Last Month' },
     { key: 'this_year', label: 'This Year' },
     { key: 'custom', label: 'Custom' },
+  ];
+
+  const reportTabs: { key: ReportTab; label: string }[] = [
+    { key: 'financials', label: 'Financials' },
+    { key: 'clinical', label: 'Clinical Volume' },
+    { key: 'audit', label: 'Audit & Compliance' },
   ];
 
   const Trend = ({ t }: { t: { pct: number; isNew: boolean } }) => {
@@ -511,12 +406,12 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
     );
   };
 
-  if (loading) return <div className="h-full flex items-center justify-center bg-slate-50"><div className="animate-pulse font-black tracking-widest text-slate-400 uppercase">Unlocking Vault...</div></div>;
+  if (loading) return <div className="h-full flex items-center justify-center bg-slate-50"><div className="flex items-center gap-3 font-black tracking-widest text-slate-400 uppercase"><span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-indigo-600 animate-spin" /> Loading reports...</div></div>;
 
   return (
     <PageShell
-      title="Owner's Vault"
-      subtitle={`Business Intelligence — ${range.label}`}
+      title="Business Intelligence"
+      subtitle={`${range.label} • Financial, clinical, and audit reporting`}
       filters={{
         options: rangeOptions.map(o => ({ id: o.key, label: o.label, testId: `range-${o.key}` })),
         active: rangePreset,
@@ -536,7 +431,24 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
       }
     >
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-8">
+        <div role="tablist" aria-label="Report sections" className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+          {reportTabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              data-testid={`report-tab-${tab.key}`}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer ${activeTab === tab.key ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
+        {activeTab === 'financials' && (
+          <>
         {/* PROFIT ANALYSIS */}
         <section>
           <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><TrendingUp className="w-4 h-4 text-indigo-500" /> Profit Analysis — {range.label}</h2>
@@ -620,22 +532,24 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
           </div>
         </section>
 
-        {/* OPERATIONAL METRICS */}
+        </>
+        )}
+
+        {activeTab === 'clinical' && (
+          <>
+        {/* CLINICAL VOLUME */}
         <section>
-          <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><Users className="w-4 h-4 text-indigo-500" /> Operational Metrics</h2>
+          <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><Users className="w-4 h-4 text-indigo-500" /> Clinical Volume</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'Patients Seen', value: report.patientsSeen },
               { label: 'New Clients', value: report.newClients },
               { label: 'Returning / New', value: report.totalActive ? `${Math.round(report.returningActive / report.totalActive * 100)}% / ${Math.round(report.newActive / report.totalActive * 100)}%` : '—' },
-              { label: 'Avg Transaction', value: formatCurrency(report.avgTxn) },
               { label: 'Busiest Day', value: report.busiestDay },
               { label: 'Busiest Hour', value: report.busiestHour },
               { label: 'Completed', value: report.completed },
               { label: 'Cancelled', value: report.cancelled },
-              { label: 'No-Show', value: 'n/a' },
               { label: 'Emergency Intakes', value: report.emergency },
-              { label: 'Transactions', value: report.txnCount },
             ].map(s => (
               <div key={s.label} className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm">
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">{s.label}</span>
@@ -643,20 +557,8 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
               </div>
             ))}
           </div>
-          <p className="text-[10px] font-bold text-slate-400 mt-2">* No-show is not a tracked appointment status in this system, so it cannot be reported.</p>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-            {/* Top by revenue */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Package className="w-3.5 h-3.5" /> Top Items — Revenue</h3>
-              {report.topByRevenue.length === 0 ? <div className="py-8"><EmptyState title="No sales recorded" /></div> : report.topByRevenue.map((it, i) => (
-                <div key={i} className="flex justify-between items-center py-1.5 border-b border-slate-50 last:border-0">
-                  <span className="text-[10px] font-bold text-slate-700 truncate pr-2">{i + 1}. {it.name}</span>
-                  <span className="text-[10px] font-mono font-black text-slate-800 shrink-0">{formatCurrency(it.revenue)}</span>
-                </div>
-              ))}
-            </div>
-            {/* Top by qty */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            {/* Top by quantity */}
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Package className="w-3.5 h-3.5" /> Top Items — Quantity</h3>
               {report.topByQty.length === 0 ? <div className="py-8"><EmptyState title="No sales recorded" /></div> : report.topByQty.map((it, i) => (
@@ -679,120 +581,18 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
           </div>
         </section>
 
-        {/* Z-REPORT */}
-        <section id="z-report-section">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-6 bg-slate-900 flex flex-wrap gap-3 justify-between items-center">
-              <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-emerald-400" />
-                <div>
-                  <h2 className="text-sm font-black text-white tracking-tight uppercase">Z-Report — End of Day</h2>
-                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">{range.label} • {range.start.toLocaleDateString()} → {range.end.toLocaleDateString()} • {report.reconsCount} shift(s)</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 no-print">
-                <button data-testid="btn-print-zreport" onClick={handlePrintZReport} className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"><Printer className="w-3.5 h-3.5" /> Print Z-Report</button>
-                <button data-testid="btn-email-zreport" onClick={handleEmailZReport} className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-indigo-500 text-white hover:bg-indigo-600 transition-colors cursor-pointer flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email Z-Report</button>
-              </div>
-            </div>
+        </>
+        )}
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Payment methods */}
-              <div>
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Sales by Payment Method</h3>
-                <div className="space-y-1.5">
-                  {Object.entries(report.methodTotals as Record<string, number>).filter(([, v]) => v !== 0).map(([m, v]) => (
-                    <div key={m} className="flex justify-between text-xs font-bold text-slate-700"><span className="capitalize">{m.replace('_', ' ')}</span><span className="font-mono">{formatCurrency(v)}</span></div>
-                  ))}
-                  <div className="flex justify-between text-xs font-black text-slate-900 pt-2 border-t border-slate-100">
-                    <span>Total Sales</span>
-                    <span className="font-mono" data-testid="zreport-method-sum" data-value={report.methodSum}>{formatCurrency(report.methodSum)}</span>
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                    <span>Invoiced total</span>
-                    <span className="font-mono" data-testid="zreport-total-sales" data-value={report.grossRevenue}>{formatCurrency(report.grossRevenue)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Floats + counts */}
-              <div>
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Cash Reconciliation</h3>
-                <div className="space-y-1.5 text-xs font-bold text-slate-700">
-                  <div className="flex justify-between"><span>Opening Float</span><span className="font-mono">{formatCurrency(report.openingFloat)}</span></div>
-                  <div className="flex justify-between"><span>Expected Closing</span><span className="font-mono">{formatCurrency(report.expectedClosing)}</span></div>
-                  <div className="flex justify-between"><span>Actual Closing</span><span className="font-mono">{formatCurrency(report.actualClosing)}</span></div>
-                  <div className={`flex justify-between ${report.reconDiscrepancy !== 0 ? 'text-rose-600' : ''}`}><span>Discrepancy</span><span className="font-mono">{formatCurrency(report.reconDiscrepancy)}</span></div>
-                  <div className="flex justify-between pt-1.5 border-t border-slate-100"><span>Cash In / Out</span><span className="font-mono">{formatCurrency(report.cashInRange)} / {formatCurrency(report.cashOutRange)}</span></div>
-                  <div className="flex justify-between"><span>Transactions</span><span className="font-mono">{report.txnCount}</span></div>
-                  <div className="flex justify-between"><span>Voided</span><span className="font-mono">{report.voidedCount} ({formatCurrency(report.voidedValue)})</span></div>
-                  <div className="flex justify-between"><span>Discounts Given</span><span className="font-mono">{report.discountCount} ({formatCurrency(report.discountTotal)})</span></div>
-                </div>
-              </div>
-            </div>
-
-            {report.adjustmentsInRange.length > 0 && (
-              <div className="px-6 pb-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Cash Adjustments (with reasons)</h3>
-                <div className="space-y-1">
-                  {report.adjustmentsInRange.map(a => (
-                    <div key={a.id} className="flex justify-between text-[10px] font-bold text-slate-600"><span>{a.category} — {a.reason}</span><span className={`font-mono ${a.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>{a.type === 'IN' ? '+' : '-'}{formatCurrency(a.amount)}</span></div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 text-[10px] font-bold text-slate-400">
-              Generated by {currentUser?.name || 'Unknown'} • {new Date().toLocaleString()}
-            </div>
+        {activeTab === 'audit' && (
+          <>
+        <section>
+          <h2 className="text-sm font-black text-slate-800 tracking-tight flex items-center gap-2 uppercase mb-4"><ShieldCheck className="w-4 h-4 text-rose-500" /> Audit & Compliance — {range.label}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Voided Invoices</span><span className="text-2xl font-black text-rose-600 font-mono">{report.voidedCount}</span><span className="text-xs font-bold text-slate-500 ml-2">{formatCurrency(report.voidedValue)}</span></div>
+            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm"><span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Discounted Invoices</span><span className="text-2xl font-black text-amber-600 font-mono">{report.discountCount}</span><span className="text-xs font-bold text-slate-500 ml-2">{formatCurrency(report.discountTotal)} granted</span></div>
           </div>
-        </section>
-
-        {/* VAULT (all-time cash position) + CASH ADJUSTMENT HISTORY — unchanged */}
-        <section className="no-print">
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-1 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden">
-              <div className="p-6 bg-slate-900 border-b border-slate-800 shrink-0 text-center">
-                <Wallet className="w-8 h-8 text-emerald-400 mx-auto mb-3" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Physical Cash Vault (All-Time)</span>
-                <span className="text-4xl font-black text-white font-mono tracking-tight">{formatCurrency(metrics.vaultBalance)}</span>
-                <div className="flex justify-center gap-4 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3 text-emerald-400" /> {formatCurrency(metrics.cashSales + metrics.cashIn)} IN</span>
-                  <span className="flex items-center gap-1"><ArrowDownRight className="w-3 h-3 text-rose-400" /> {formatCurrency(metrics.cashOut)} OUT</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="xl:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden">
-              <div className="p-4 bg-slate-50 border-b border-slate-200 shrink-0">
-                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cash Adjustment History (All-Time)</h3>
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-2 max-h-[300px]">
-                {adjustments.length === 0 ? (
-                  <div className="p-8 flex flex-col items-center justify-center text-slate-300">
-                    <span className="text-[10px] uppercase tracking-widest font-black text-center">No manual cash adjustments logged.</span>
-                  </div>
-                ) : (
-                  <div className="space-y-2 p-2">
-                    {adjustments.map(adj => (
-                      <div key={adj.id} className="p-4 bg-white border border-slate-100 rounded-xl shadow-xs flex justify-between items-center">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${adj.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{adj.category}</span>
-                            <span className="text-[10px] font-mono text-slate-400">{formatDate(adj.date)}</span>
-                          </div>
-                          <div className="text-xs font-black text-slate-800 line-clamp-1">{adj.reason}</div>
-                        </div>
-                        <div className={`text-sm font-black font-mono whitespace-nowrap ${adj.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {adj.type === 'IN' ? '+' : '-'}{formatCurrency(adj.amount)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <p className="text-[10px] font-bold text-slate-400 mt-2">Invoice controls are range-scoped. Register reconciliation is managed in Shift & Drawer.</p>
         </section>
 
         {/* F-3: DELETION AUDIT LOG — read-only owner oversight */}
@@ -841,6 +641,8 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
             </table>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       <style>{`
@@ -849,9 +651,6 @@ export default function ReportsManager({ currentUser, config }: ReportsManagerPr
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         @media print {
-          body * { visibility: hidden !important; }
-          #z-report-section, #z-report-section * { visibility: visible !important; }
-          #z-report-section { position: absolute !important; left: 0; top: 0; width: 100% !important; padding: 16px !important; }
           .no-print { display: none !important; }
         }
       `}</style>
