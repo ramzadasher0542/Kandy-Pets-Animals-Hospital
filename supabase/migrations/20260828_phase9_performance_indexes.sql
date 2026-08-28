@@ -1,0 +1,30 @@
+-- Phase 9: support tenant-scoped RLS scans on every clinic-scoped table.
+-- clinic_settings is already covered by its clinic_id primary key.
+
+CREATE INDEX IF NOT EXISTS idx_appointments_clinic_id ON public.appointments USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_auth_audit_clinic_id ON public.auth_audit USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_boarding_records_clinic_id ON public.boarding_records USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_cash_adjustments_clinic_id ON public.cash_adjustments USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_clients_clinic_id ON public.clients USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_clinic_queue_clinic_id ON public.clinic_queue USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_deletion_audit_clinic_id ON public.deletion_audit USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_grooming_logs_clinic_id ON public.grooming_logs USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_clinic_id ON public.inventory USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_batches_clinic_id ON public.inventory_batches USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_categories_clinic_id ON public.inventory_categories USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_clinic_id ON public.invoices USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_lab_results_clinic_id ON public.lab_results USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_medical_records_clinic_id ON public.medical_records USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_clinic_id ON public.notifications USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_clinic_id ON public.payslips USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_pets_clinic_id ON public.pets USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_entries_clinic_id ON public.schedule_entries USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_shift_reconciliations_clinic_id ON public.shift_reconciliations USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_shifts_clinic_id ON public.shifts USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_staff_profiles_clinic_id ON public.staff_profiles USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_suppliers_clinic_id ON public.suppliers USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_clinic_id ON public.system_alerts USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_system_config_clinic_id ON public.system_config USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_clinic_id ON public.time_entries USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_users_clinic_id ON public.users USING btree (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_vaccinations_clinic_id ON public.vaccinations USING btree (clinic_id);
