@@ -391,6 +391,9 @@ function App() {
                 if (!merged.rolePermissions) merged.rolePermissions = prev.rolePermissions;
                 if (!merged.rolePermissions.cashier || merged.rolePermissions.cashier.length === 0) merged.rolePermissions.cashier = prev.rolePermissions.cashier;
                 if (!merged.rolePermissions.veterinarian) merged.rolePermissions.veterinarian = prev.rolePermissions.veterinarian;
+                if (!merged.rolePermissions.veterinarian.includes('dashboard')) {
+                  merged.rolePermissions.veterinarian = [...merged.rolePermissions.veterinarian, 'dashboard'];
+                }
                 // HOTFIX-1: without this backfill, any installation with a config
                 // already persisted before 'manager' existed (i.e. every live one)
                 // would never gain the key, and managers would stay locked out
@@ -406,8 +409,8 @@ function App() {
               });
             }
 
-            // Allow 500ms for UI painting to stabilize
-            setTimeout(() => setIsBooting(false), 500);
+// Empty cloud matrices are valid after purge; finish boot as soon as hydration settles.
+            setIsBooting(false);
           }
         } catch (hydrationError) {
           if (import.meta.env.DEV) {
@@ -1311,6 +1314,9 @@ function App() {
     const rolePerms: Record<string, string[]> = (systemConfig.rolePermissions as any) || defaultPermissions;
     const permissions = rolePerms[user.role] || defaultPermissions[user.role] || [];
     if (checkedView === 'portal') return true;
+    // Dashboard is an operational surface for veterinarians even when an older
+    // persisted permission matrix omitted it.
+    if (user.role === 'veterinarian' && checkedView === 'dashboard') return true;
     return permissions.includes(checkedView);
   };
 
@@ -1491,7 +1497,7 @@ function App() {
         case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser as User} activeShift={activeShift} setActiveShift={async (s) => { setActiveShift(s); }} />;
       case 'dashboard':
         // FIX 8: Pass activeShift and onNavigate props
-         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
+         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} showFinancials={currentUser?.role !== 'veterinarian'} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
           return <ReportsManager />;
       case 'staff': 
