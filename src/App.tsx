@@ -325,6 +325,18 @@ function App() {
             fetchBoardingRecords()
           ]);
 
+           if (isMounted) {
+             setInventory(Array.isArray(inv) ? inv as any : []);
+             setAppointments(Array.isArray(appts) ? appts as any : []);
+             setRecords(Array.isArray(recs) ? recs as any : []);
+             setInvoices(Array.isArray(invs) ? invs as any : []);
+             setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
+             setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
+             setBoardingRecords(Array.isArray(fetchedBoardingRecords) ? fetchedBoardingRecords as any : []);
+             // Empty core matrices are valid after purge; do not wait for secondary hydration.
+             setIsBooting(false);
+           }
+
            const [hStaffProfiles, hTimeEntries, hScheduleEntries] = await Promise.all([
              fetchStaffProfiles(),
              fetchTimeEntries(),
@@ -409,7 +421,7 @@ function App() {
               });
             }
 
-// Empty cloud matrices are valid after purge; finish boot as soon as hydration settles.
+            // Empty cloud matrices are valid after purge; finish boot as soon as hydration settles.
             setIsBooting(false);
           }
         } catch (hydrationError) {
