@@ -1651,6 +1651,12 @@ function App() {
             setCurrentClinicId(null);
           });
           await signOut();
+          authRequestRef.current += 1;
+          flushSync(() => {
+            setCurrentUser(null);
+            setCurrentClinicId(null);
+          });
+          await signOut();
           setCurrentUser(null);
           navigateRoute('/');
         }}
