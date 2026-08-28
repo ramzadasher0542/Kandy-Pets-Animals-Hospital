@@ -4,6 +4,7 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
@@ -1830,11 +1831,10 @@ function App() {
                     // Switching users ends the Supabase Auth session so the next
                     // person must sign in with their own credentials.
                     authRequestRef.current += 1;
-                    setCurrentUser(null);
-                    setCurrentClinicId(null);
-                    authRequestRef.current += 1;
-                    setCurrentUser(null);
-                    setCurrentClinicId(null);
+                    flushSync(() => {
+                      setCurrentUser(null);
+                      setCurrentClinicId(null);
+                    });
                     await signOut();
                     forgetActiveView();
                     setCurrentUser(null);
@@ -1852,6 +1852,11 @@ function App() {
                 </button>
                 <button
                   onClick={async () => {
+                    authRequestRef.current += 1;
+                    flushSync(() => {
+                      setCurrentUser(null);
+                      setCurrentClinicId(null);
+                    });
                     await signOut();
                     forgetActiveView();
                     setCurrentUser(null);
