@@ -205,6 +205,7 @@ function App() {
   const [isBooting, setIsBooting] = useState(true);
   const [dbCorrupted, setDbCorrupted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const authRequestRef = React.useRef(0);
 
   // CORE DATA MATRICES (Now initialized empty, hydrated by DB)
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -306,6 +307,7 @@ function App() {
                  }
                  return;
                }
+               if (isMounted) setCurrentUser(bootStaff);
              try {
                await processPendingCheckoutEffects();
             } catch (effectsError) {
@@ -566,39 +568,49 @@ function App() {
     setPolicyOverrides((systemConfig as any).actionPolicies);
   }, [systemConfig]);
 
-  // Phase C2 (Step 32): Supabase Auth is the ONLY production login. Restore an
-  // existing authenticated session on startup, map it to a staff record via
-  // auth_user_id, and clear currentUser on sign-out. There is no local/PIN
-  // login path in production — the PIN survives only as a second-confirmation
-  // gate for sensitive actions (see requireAuth).
+  // Supabase Auth is the only session authority. Boot owns initial restore;
+  // this listener handles later sign-in, refresh, and sign-out events.
   useEffect(() => {
-    // Development-only harness support is stripped from production builds and is
-    // never a login path for real users.
     if (import.meta.env.DEV && (window as any).__KP_TEST_AUTH__) {
       setCurrentUser((window as any).__KP_TEST_AUTH__ as User);
       return;
     }
     if (!supabase) return;
     let active = true;
-    (async () => {
-      const session = await getAuthSession();
-      if (!active || !session?.user) return;
-      const staff = await fetchStaffForAuthUser(session.user.id);
-      if (!active) return;
-        if (staff?.clinicId || staff?.isSuperadmin) setCurrentUser(staff);
-        else { await signOut(); setCurrentUser(null); }
-    })();
-    const unsubscribe = onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') { setCurrentUser(null); return; }
-      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        const staff = await fetchStaffForAuthUser(session.user.id);
-          if (staff?.clinicId || staff?.isSuperadmin) setCurrentUser(staff);
-          else { await signOut(); setCurrentUser(null); }
+    const unsubscribe = onAuthStateChange((event, session) => {
+      const request = ++authRequestRef.current;
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        setCurrentUser(null);
+        setCurrentClinicId(null);
+        setIsBooting(false);
+        return;
       }
+      if (event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED') return;
+      setIsBooting(true);
+      void fetchStaffForAuthUser(session.user.id)
+        .then(staff => {
+          if (!active || request !== authRequestRef.current) return;
+          if (!staff || (!staff.clinicId && !staff.isSuperadmin)) {
+            setCurrentUser(null);
+            setCurrentClinicId(null);
+            setIsBooting(false);
+            void signOut();
+            return;
+          }
+          setCurrentClinicId(staff.clinicId ?? null);
+          setCurrentUser(staff);
+          setIsBooting(false);
+        })
+        .catch(error => {
+          if (!active || request !== authRequestRef.current) return;
+          if (import.meta.env.DEV) console.error('[Auth] Staff verification failed:', error);
+          setCurrentUser(null);
+          setCurrentClinicId(null);
+          setIsBooting(false);
+        });
     });
     return () => { active = false; unsubscribe(); };
   }, []);
-
   // Step 32: staff sign in with their Supabase Auth email + password. The email
   // is the lockout key (there is no staff selector before authentication).
   const [loginEmail, setLoginEmail] = useState('');
@@ -1393,6 +1405,7 @@ function App() {
         return;
       }
       resetAttempts(key);
+      setIsBooting(true);
       setCurrentUser(staff);
       navigateRoute(staff.isSuperadmin ? '/superadmin' : '/');
       const nextView = getDefaultViewForUser(staff);
@@ -1816,6 +1829,12 @@ function App() {
                   onClick={async () => {
                     // Switching users ends the Supabase Auth session so the next
                     // person must sign in with their own credentials.
+                    authRequestRef.current += 1;
+                    setCurrentUser(null);
+                    setCurrentClinicId(null);
+                    authRequestRef.current += 1;
+                    setCurrentUser(null);
+                    setCurrentClinicId(null);
                     await signOut();
                     forgetActiveView();
                     setCurrentUser(null);
