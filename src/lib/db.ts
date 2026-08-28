@@ -1018,7 +1018,11 @@ export async function fetchClients(): Promise<Client[]> {
     }
   }
 
-  if (!hasWalkIn && supabase) {
+  if (!hasWalkIn) {
+    // Hydration reads must stay read-only. Under tenant RLS, an orphaned legacy
+    // walk-in row can be hidden; trying to upsert it here turns a valid empty
+    // result into the global Cloud Data Unavailable screen. The normal scoped
+    // write path can persist this row when the clinic explicitly needs it.
     const walkInClient: Client = {
       client_id: 'walk_in_retail',
       full_name: 'Walk-In / Retail Customer',
@@ -1032,8 +1036,6 @@ export async function fetchClients(): Promise<Client[]> {
       lifetime_value: 0,
       administrative_notes: 'Permanent default account for anonymous over-the-counter retail sales.'
     };
-    const { error: walkInError } = await supabase.from('clients').upsert(withCurrentClinicId(walkInClient));
-    if (walkInError) throw walkInError;
     clients.unshift(walkInClient);
   }
   return clients;
