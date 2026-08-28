@@ -1645,6 +1645,11 @@ function App() {
       <SuperAdminLayout
         currentUser={currentUser}
         onSignOut={async () => {
+          authRequestRef.current += 1;
+          flushSync(() => {
+            setCurrentUser(null);
+            setCurrentClinicId(null);
+          });
           await signOut();
           setCurrentUser(null);
           navigateRoute('/');
