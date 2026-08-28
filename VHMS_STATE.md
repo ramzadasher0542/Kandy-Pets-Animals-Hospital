@@ -2,10 +2,10 @@
 
 ## Migration Status
 
-- Current phase: Phase 6 RBAC/UI Refactor and tenant reset hardening verified complete
+- Current phase: Phase 8 Synthetic Data Quarantine verified complete
 - Backup phase: skipped; code and SQL backups are already secured locally
-- Last completed phase: Phase 6 RBAC/UI Refactor and tenant reset hardening
-- Next pending step: Phase 7, awaiting CEO instructions; recovery reset is clinic-scoped and was not executed against production data.
+- Last completed phase: Phase 8 Synthetic Data Quarantine
+- Next pending step: Phase 9, awaiting CEO instructions; synthetic test data has been quarantined and baseline verification passed.
 
 ## Current Database Structure
 
@@ -40,6 +40,8 @@
 5. Phase 4.5: Data Migration and Superadmin DB Override. Create the legacy clinic, assign orphaned users, add the superadmin flag/helper, and extend clinic RLS policies with a secure superadmin escape hatch.
 6. Phase 5: Customization Toggles. Create `clinic_settings` and conditionally render modules from its settings.
 7. Phase 6: RBAC/UI Refactor. Restrict navigation, make the dashboard operational-only, separate executive report tabs, and keep drawer reconciliation in Shift & Drawer.
+8. Phase 7: Production clinic onboarding and hydration hardening. Complete the legacy clinic backfill, preserve the clinic-less superadmin, and keep client hydration read-only.
+9. Phase 8: Synthetic Data Quarantine. Remove synthetic clinical, inventory, financial, operational, and audit records before client handoff.
 
 ## Change Log
 
@@ -73,6 +75,10 @@
 - Post-merge recovery Step 3 applied in `supabase/migrations/20260827_tenant_scoped_purge.sql` and Supabase: replaced the unscoped public-table `TRUNCATE` with provider-authorized, clinic-scoped deletes ordered by foreign-key ancestry; no destructive reset call was run against production data.
 - Post-merge recovery Step 4 applied in `src/components/SystemSettings.tsx`: reset warnings now state the signed-in provider clinic scope, preserved clinic/login records, and active-provider authorization.
 
+- Phase 7 fully complete in Supabase and production: the legacy Kandy clinic backfill was verified with 0 orphaned application rows and 1 intentionally clinic-less superadmin preserved.
+- Phase 8 executed in Supabase: hard-deleted 5 synthetic pets, 5 clients, 7 appointments, 5 medical records, 3 lab results, 2 vaccinations, 4 grooming logs, 5 boarding records, 9 clinic-queue records, 23 invoices, 6 cash adjustments, 8 shift reconciliations, 8 shifts, 3 inventory batches, 4 inventory items, 2 suppliers, and 2 synthetic deletion-audit records.
+- Phase 8 verification passed: all targeted synthetic markers returned 0 rows; clinic financial baseline is 0 invoices, 0 sales, 0 tax, 0 COGS, and 0 profit; clinical baseline is 0 appointments, pets, medical records, lab results, vaccinations, grooming logs, and boarding records, with 1 baseline client retained. Application user/access rows and clinic configuration were preserved.
+
 ## Next Action
 
-Await CEO instructions for Phase 7. Preserve strict `clinic_id` filtering for all database queries, and do not run the destructive reset in production without a verified backup.
+Await CEO instructions for Phase 9. Preserve strict `clinic_id` filtering for all database queries.
