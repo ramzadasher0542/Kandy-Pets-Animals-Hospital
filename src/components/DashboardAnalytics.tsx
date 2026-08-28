@@ -22,6 +22,7 @@ interface DashboardProps {
   scheduleEntries?: ScheduleEntry[];
   timeEntries?: TimeEntry[];
   staffProfiles?: StaffProfile[];
+  showFinancials?: boolean;
   onNavigate?: (tab: string) => void;
 }
 
@@ -34,6 +35,7 @@ export default function DashboardAnalytics({
   scheduleEntries = [],
   timeEntries = [],
   staffProfiles = [],
+  showFinancials = true,
   onNavigate = () => {}
 }: DashboardProps) {
 
@@ -137,7 +139,7 @@ export default function DashboardAnalytics({
 
     // Unbilled completed visits
     todaysAppointments.forEach(apt => {
-      if (apt.status === 'completed') {
+      if (showFinancials && apt.status === 'completed') {
         const hasPaidInvoice = invoices.some(i => i.appointmentId === apt.id && i.paymentStatus === 'paid');
         if (!hasPaidInvoice) {
           alerts.push({ id: `unbilled-${apt.id}`, type: 'unbilled', title: `Unbilled visit for ${apt.petName}`, subtitle: 'Appointment completed, no invoice found', icon: CreditCard, color: 'text-sky-500 bg-sky-50 border-sky-200', tab: 'pos' });
@@ -148,7 +150,7 @@ export default function DashboardAnalytics({
     // Sort: red (emergency/expired) first, then amber, then blue
     const order: Record<string, number> = { emergency: 1, expired: 1, late: 2, low_stock: 2, expiring: 2, boarding: 2, grooming: 2, unbilled: 3 };
     return alerts.sort((a, b) => (order[a.type] || 99) - (order[b.type] || 99));
-  }, [appointments, inventory, todaysAppointments, invoices, boardingRecords, groomingLogs]);
+  }, [appointments, inventory, todaysAppointments, invoices, boardingRecords, groomingLogs, showFinancials]);
 
   // 3. LIVE QUEUE — single shared urgency sort (emergency first, FIFO within tier)
   const sortedQueue = useMemo(() => {
@@ -164,7 +166,7 @@ export default function DashboardAnalytics({
     });
   }, [scheduleEntries, timeEntries, staffProfiles, todayStr]);
 
-  const hasAnyData = invoices.length > 0 || appointments.length > 0 || records.length > 0 || inventory.length > 0;
+  const hasAnyData = (showFinancials && invoices.length > 0) || appointments.length > 0 || records.length > 0 || inventory.length > 0;
   if (!hasAnyData) {
     return (
       <EmptyState
