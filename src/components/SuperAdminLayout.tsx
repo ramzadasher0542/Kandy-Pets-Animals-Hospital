@@ -10,7 +10,7 @@ interface SuperAdminLayoutProps {
 
 export default function SuperAdminLayout({ currentUser, onSignOut }: SuperAdminLayoutProps) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans">
+    <div className="h-screen overflow-hidden bg-slate-950 text-slate-100 flex font-sans">
       <aside className="hidden md:flex w-72 shrink-0 border-r border-white/10 bg-slate-950 flex-col">
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -40,7 +40,11 @@ export default function SuperAdminLayout({ currentUser, onSignOut }: SuperAdminL
           </button>
         </div>
       </aside>
-      <main className="flex-1 min-w-0 bg-slate-100 text-slate-900">
+      <main
+        aria-label="Super Admin dashboard content"
+        className="flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar bg-slate-100 text-slate-900"
+        tabIndex={0}
+      >
         <SuperAdminDashboard currentUser={currentUser} />
       </main>
     </div>
