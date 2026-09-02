@@ -2,10 +2,10 @@
 
 ## Migration Status
 
-- Current phase: Phase 12 Secure Tenant Owner Provisioning and Super Admin UI Optimization deployed and live-verified
+- Current phase: Phase 13 Tenant User Visibility and Secure Account Deletion implemented locally; production deployment pending
 - Backup phase: skipped; code and SQL backups are already secured locally
 - Last completed phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements
-- Next pending step: Complete the remaining controlled-beta gates after the live Owner provisioning and tenant Settings smoke tests.
+- Next pending step: Deploy and live-verify clinic-scoped user rosters, protected Super Admin handling, and Auth-backed tenant user deletion.
 
 ## Current Database Structure
 
@@ -49,6 +49,7 @@
 11. Phase 10: Auth Bootstrap and Super Admin Control Plane. Resolve the Supabase session before mounting React, eliminate duplicate startup session ownership, and enforce global configuration/tenant registry writes at the database boundary.
 12. Phase 11: Tenant Staff RBAC and Clinic Entitlements. Keep tenant staff writes clinic-scoped, move business identity and product entitlements into the Super Admin control plane, and gate tenant navigation from persisted clinic settings.
 13. Phase 12: Secure Tenant Owner Provisioning and Super Admin UI Optimization. Reduce panel-entitlement height with responsive grid layout and provision tenant Owner Auth/staff identities through an authenticated serverless function without replacing the Super Admin session.
+14. Phase 13: Tenant User Visibility and Secure Account Deletion. Show each clinic's filtered user roster in the Super Admin accordion and delete only a verified non-Super-Admin Auth identity through a server-side service-role endpoint while preserving the staff record as soft-deleted.
 
 ## Change Log
 
@@ -111,7 +112,10 @@
 - Phase 12 live Owner RBAC smoke passed: Owner sign-in showed `CLOUD SYNC ACTIVE`; Settings displayed `Access Control & Registry` and local Inventory/Staff surfaces, while global Business Identity and provider database/backup surfaces were absent. A hard reload at `/settings` returned the same authorized Owner Settings view.
 - Phase 12 scroll follow-up deployed in `src/components/SuperAdminLayout.tsx` and `src/components/SuperAdminDashboard.tsx` through commits `c05fc25` and `74ac099`: the Super Admin shell now owns one visible, keyboard-focusable internal scrollbar, while the dashboard content grows naturally so expanded clinic controls remain reachable.
 - Phase 12 scroll verification passed on the latest `Ready` Vercel deployment `https://kpah-261sjh9e9-asher-sajahan-s-projects.vercel.app/`: the expanded Kandy clinic measured 1,462px of content inside an 824px scroll viewport, and the bottom database-policy confirmation was reachable after scrolling.
+- Phase 13 implementation applied locally in `src/components/SuperAdminDashboard.tsx`: every expanded clinic loads a `clinic_id`-filtered roster with name, username, role, active status, and Auth-link status; Super Admin rows are visibly protected; legacy rows without an Auth link remain visible but cannot be deleted from this control.
+- Phase 13 secure endpoint added locally in `api/delete-user.ts`: same-origin POST input validation, bearer-session verification through the server-only service-role client, active Super Admin authorization, target `user_id` plus `clinic_id` ownership verification, Super Admin deletion protection, `auth.admin.deleteUser`, and clinic staff soft deletion (`active=false`, `is_deleted=true`).
+- Phase 13 deletion UX added locally in `src/components/SuperAdminDashboard.tsx`: the destructive action names the target username, requires explicit confirmation, removes the row optimistically, and restores it with an error if the server call fails.
 
 ## Next Action
 
-Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 12 revision. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, obtain explicit approval to remove or quarantine remaining synthetic QA rows, and keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
+Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 12 revision until Phase 13 is live-verified. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, obtain explicit approval to remove or quarantine remaining synthetic QA rows, and keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
