@@ -567,9 +567,9 @@ function App({ initialSession, initialAuthError }: AppProps) {
   }, []);
   useEffect(() => {
     if (!currentUser || currentUser.isSuperadmin || !clinicSettings) return;
-    const disabledView = !clinicSettings.enabledPanels.includes(activeView)
+    const disabledView = activeView !== 'settings' && (!clinicSettings.enabledPanels.includes(activeView)
       || (activeView === 'grooming' && !clinicSettings.groomingEnabled)
-      || (activeView === 'boarding' && !clinicSettings.boardingEnabled);
+      || (activeView === 'boarding' && !clinicSettings.boardingEnabled));
     if (disabledView) {
       rememberActiveView('dashboard');
       setActiveView('dashboard');
