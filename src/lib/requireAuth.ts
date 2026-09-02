@@ -139,10 +139,11 @@ export function isProviderOnlyTab(tab: SettingsTab): boolean {
   return PROVIDER_ONLY_TABS.includes(tab);
 }
 
-/** Only 'provider' may see provider-only tabs — admin is explicitly below it. */
-export function canViewSettingsTab(role: string | undefined, tab: SettingsTab): boolean {
-  if (!isProviderOnlyTab(tab)) return true;
-return ROOT_ROLES.includes(role as any);
+/** Settings are global control-plane surfaces and require the immutable flag. */
+export function canViewSettingsTab(role: string | undefined, tab: SettingsTab, isSuperadmin = false): boolean {
+  void role;
+  void tab;
+  return isSuperadmin;
 }
 
 /**
@@ -231,7 +232,7 @@ export async function requireAuth(currentUser: User | null, action: AuthAction):
     attempted_by_role: currentUser.role,
   };
 
-  const permitted = isRoleAllowed(currentUser.role, action);
+  const permitted = currentUser.isSuperadmin === true || isRoleAllowed(currentUser.role, action);
   if (!permitted) {
     await writeAudit({ ...base, allowed: false, is_override: false, reason: 'role_denied' });
     return denied;
