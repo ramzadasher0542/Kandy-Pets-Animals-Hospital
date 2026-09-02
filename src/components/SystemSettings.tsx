@@ -95,6 +95,7 @@ export default function SystemSettings({
   autoOpenProviderPassword, onAutoOpenHandled
 }: SettingsProps) {
 
+  const isSuperAdmin = currentUser?.isSuperadmin === true;
 
   const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates'>('profile');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
@@ -107,16 +108,16 @@ export default function SystemSettings({
   // AUTH-6: never leave the user stranded on a provider-only tab (e.g. a provider
   // signs out and an admin signs in while 'database' was active).
   useEffect(() => {
-    if (!canViewSettingsTab(currentUser?.role, activeTab as SettingsTab)) {
+    if (!canViewSettingsTab(currentUser?.role, activeTab as SettingsTab, isSuperAdmin)) {
       setActiveTab('profile');
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, isSuperAdmin]);
 
   // ---- AUTH-4: admin-editable access matrix -------------------------------
   // Root tier only (admin today, provider above it). Settings is already
   // root-gated by isViewPermitted, but dummy_admin can also reach Settings —
   // so gate explicitly.
-  const canEditMatrix = ROOT_ROLES.includes(currentUser?.role);
+  const canEditMatrix = isSuperAdmin;
   const effectiveRolesFor = (action: AuthAction): string[] =>
     (localConfig.actionPolicies?.[action]) ?? ACTION_POLICIES[action].allowedRoles;
 
@@ -132,7 +133,7 @@ if (ROOT_ROLES.includes(role as any)) return; // full-access roles are never edi
   };
 
   // ---- PROVIDER-1: Panel (view) access matrix — provider ONLY -------------
-const canEditPanelMatrix = ROOT_ROLES.includes(currentUser?.role as any);
+  const canEditPanelMatrix = isSuperAdmin;
   const effectivePanelsFor = (role: string): string[] =>
     ((localConfig.rolePermissions as any)?.[role]) ?? [];
 
@@ -503,7 +504,11 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
 
   // AUTH-6: provider-only surfaces (db-level config) are filtered out of the nav
   // entirely for anyone who isn't 'provider' — admin included, by design.
-  const visibleTabs = TABS.filter(t => canViewSettingsTab(currentUser?.role, t.id as SettingsTab));
+  const visibleTabs = TABS.filter(t => canViewSettingsTab(currentUser?.role, t.id as SettingsTab, isSuperAdmin));
+
+  // This component is a global control-plane surface, not a tenant settings
+  // page. Keep the guard here as well as in App.tsx for direct reuse/tests.
+  if (!isSuperAdmin) return null;
 
   return (
     <div className="flex h-[calc(100vh-80px)] w-full bg-slate-50 overflow-hidden font-sans gap-6 p-6">
@@ -985,7 +990,7 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 </div>
               </Modal>
 {/* TAB 4: DATA & OPERATIONS (Previously Danger Zone) */}
-          {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database') && (
+          {activeTab === 'database' && canViewSettingsTab(currentUser?.role, 'database', isSuperAdmin) && (
             <div className="space-y-6 animate-fade-in">
 
               <section className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
