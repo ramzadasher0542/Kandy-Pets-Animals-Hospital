@@ -5,6 +5,7 @@
 
 import React, { Component, ErrorInfo, ReactNode, useState, useEffect, useCallback } from 'react';
 import { flushSync } from 'react-dom';
+import type { Session } from '@supabase/supabase-js';
 
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
@@ -156,12 +157,11 @@ import {
   deletePet,
   voidInvoiceAndReverseRevenue,
   fetchActiveShiftDetails,
-  fetchUsers,
-  upsertUser,
-  deleteUser,
-  fetchSystemConfig,
-  upsertSystemConfig,
-  fetchStaffProfiles,
+   fetchUsers,
+   upsertUser,
+   deleteUser,
+   fetchSystemConfig,
+   fetchStaffProfiles,
   fetchTimeEntries,
     fetchScheduleEntries,
     upsertStaffProfile,
@@ -172,10 +172,15 @@ import {
     setCurrentClinicId,
     fetchClinicSettings
  } from './lib/db';
-import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, getAuthSession, onAuthStateChange } from './lib/supabase';
-import { fetchStaffForAuthUser } from './lib/auth';
+import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, onAuthStateChange } from './lib/supabase';
+import { fetchStaffForSession, upsertSystemConfig as saveSystemConfig } from './lib/auth';
 
 const ACTIVE_VIEW_STORAGE_KEY = 'ceylonpets.activeView';
+
+interface AppProps {
+  initialSession: Session | null;
+  initialAuthError: Error | null;
+}
 
 function getStoredActiveView(): string {
   try {
@@ -201,12 +206,14 @@ function forgetActiveView(): void {
   }
 }
 
-function App() {
+function App({ initialSession, initialAuthError }: AppProps) {
   // SYSTEM BOOT STATE
   const [isBooting, setIsBooting] = useState(true);
   const [dbCorrupted, setDbCorrupted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const authRequestRef = React.useRef(0);
+  const initialSessionRef = React.useRef(initialSession);
+  const initialAuthErrorRef = React.useRef(initialAuthError);
 
   // CORE DATA MATRICES (Now initialized empty, hydrated by DB)
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -270,184 +277,259 @@ function App() {
   // SECURE-1: banner deep-link flag — used to jump Settings straight to the
   // provider password modal when requested.
   const [autoOpenProviderPw, setAutoOpenProviderPw] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState('');
+  const [loginError, setLoginError] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginMessage, setLoginMessage] = useState('');
 
-  // --- CLOUD BOOTLOADER ---
+  // --- AUTHENTICATED CLOUD BOOTLOADER --------------------------------------
+  // Startup restore and later Auth events share one state machine. This avoids
+  // the old race where boot and onAuthStateChange hydrated the same user
+  // independently and a stale request could restore a signed-out session.
   useEffect(() => {
     let isMounted = true;
-    async function bootSequence() {
-      try {
-        const testAuthUser = import.meta.env.DEV
-          ? ((window as any).__KP_TEST_AUTH__ as User | undefined)
-          : undefined;
-        setCurrentClinicId(testAuthUser?.clinicId ?? null);
+    let hasHydrated = false;
+    const hydrationRequestRef = { current: 0 };
 
-        // Cloud-only boot: every required matrix must come from Supabase.
+    const isCurrent = (authRequest: number, hydrationRequest?: number) =>
+      isMounted
+      && authRequest === authRequestRef.current
+      && (hydrationRequest === undefined || hydrationRequest === hydrationRequestRef.current);
+
+    const clearAuthState = (message?: string) => {
+      if (!isMounted) return;
+      hasHydrated = false;
+      setCurrentUser(null);
+      setCurrentClinicId(null);
+      if (message) setLoginMessage(message);
+      setIsBooting(false);
+    };
+
+    const hydrateCloudData = async (staff: User, authRequest: number) => {
+      if (staff.isSuperadmin) {
+        // The clinic-less control plane does not hydrate tenant matrices.
         try {
-          // With production RLS, cloud tables are unreadable until Supabase Auth
-          // resolves to an active staff row. Never misreport that as local DB damage.
-           let bootStaff: User | null = null;
-           if (SYNC_ENABLED && !testAuthUser) {
-             const session = await getAuthSession();
-             if (!session?.user) {
-               setCurrentClinicId(null);
-               if (isMounted) setIsBooting(false);
-               return;
-             }
-              bootStaff = await fetchStaffForAuthUser(session.user.id);
-              if (!bootStaff?.clinicId && !bootStaff?.isSuperadmin) {
-                setCurrentClinicId(null);
-                await signOut();
-                if (isMounted) setIsBooting(false);
-                return;
-              }
-               setCurrentClinicId(bootStaff.clinicId ?? null);
-               if (bootStaff.isSuperadmin) {
-                 if (isMounted) {
-                   setCurrentUser(bootStaff);
-                   setIsBooting(false);
-                 }
-                 return;
-               }
-               if (isMounted) setCurrentUser(bootStaff);
-             try {
-               await processPendingCheckoutEffects();
-            } catch (effectsError) {
-              if (import.meta.env.DEV) console.warn('[CeylonPets] Pending checkout effects will be retried later:', effectsError);
-            }
+          const config = await fetchSystemConfig();
+          if (isCurrent(authRequest) && config) {
+            setSystemConfig(prev => ({ ...prev, ...(config as any) }));
           }
-
-          const [appts, recs, inv, invs, metrics, queue, fetchedPets, fetchedClients, fetchedBoardingRecords] = await Promise.all([
-            fetchAppointments(30),
-            fetchTodaysRecords(),
-            fetchInventory(),
-            fetchTodaysInvoices(),
-            fetchShiftMetrics(),
-            fetchClinicQueue(),
-            fetchPets(),
-            fetchClients(),
-            fetchBoardingRecords()
-          ]);
-
-           if (isMounted) {
-             setInventory(Array.isArray(inv) ? inv as any : []);
-             setAppointments(Array.isArray(appts) ? appts as any : []);
-             setRecords(Array.isArray(recs) ? recs as any : []);
-             setInvoices(Array.isArray(invs) ? invs as any : []);
-             setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
-             setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
-             setBoardingRecords(Array.isArray(fetchedBoardingRecords) ? fetchedBoardingRecords as any : []);
-             // Empty core matrices are valid after purge; do not wait for secondary hydration.
-             setIsBooting(false);
-           }
-
-           const [hStaffProfiles, hTimeEntries, hScheduleEntries] = await Promise.all([
-             fetchStaffProfiles(),
-             fetchTimeEntries(),
-             fetchScheduleEntries(),
-           ]);
-           const hNotifications = await fetchNotifications();
-          const hAlerts = await fetchAlerts();
-
-          // Staff login accounts now live in Supabase `users`, not IndexedDB.
-          const hUsers: any[] = await fetchUsers();
-
-          const { shift: cloudShift } = await fetchActiveShiftDetails();
-          const hActiveShift = cloudShift ? {
-            id: cloudShift.id,
-            openedAt: cloudShift.startTime,
-            openedBy: cloudShift.openedBy,
-            openedByName: cloudShift.openedBy,
-            openingFloat: cloudShift.opening_float || (cloudShift.openingFloatCents || 0) / 100
-          } : null;
-          const hConfig = await fetchSystemConfig();
-
-          if (isMounted) {
-            setInventory(Array.isArray(inv) ? inv as any : []);
-            setAppointments(Array.isArray(appts) ? appts as any : []);
-            setRecords(Array.isArray(recs) ? recs as any : []);
-            setInvoices(Array.isArray(invs) ? invs as any : []);
-            setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
-            setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
-            setUsers(Array.isArray(hUsers) ? hUsers as any : []);
-             const activeAppointmentIds = new Set(
-               (Array.isArray(appts) ? appts : [])
-                 .filter((a: any) => !a.is_deleted && !['cancelled', 'completed', 'no-show'].includes(a.status))
-                 .map((a: any) => a.id)
-             );
-             const activePetIds = new Set(
-               (Array.isArray(fetchedPets) ? fetchedPets : [])
-                 .filter((p: any) => !p.is_deleted)
-                 .map((p: any) => p.id)
-             );
-             // Active work must point at a live appointment, or at an active pet
-             // for follow-up rows such as boarding discharge. Cancelled/deleted
-             // history remains in the database but cannot reappear as work.
-             const validQueue = (Array.isArray(queue) ? queue : []).filter((q: any) => {
-               if (q.status !== 'active' || q.is_deleted) return false;
-               return q.appointmentId ? activeAppointmentIds.has(q.appointmentId) : activePetIds.has(q.petId);
-             });
-             setClinicQueue(validQueue.sort((a: any, b: any) => {
-              const pA = a.priority ?? 2;
-              const pB = b.priority ?? 2;
-              if (pA !== pB) return pA - pB;
-              return new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime();
-            }));
-            setStaffProfiles(hStaffProfiles);
-            setTimeEntries(hTimeEntries);
-            setScheduleEntries(hScheduleEntries);
-             setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
-            setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
-            setBoardingRecords(Array.isArray(fetchedBoardingRecords) ? fetchedBoardingRecords as any : []);
-            setActiveShift(hActiveShift as any);
-
-             if (hConfig) {
-              setSystemConfig(prev => {
-                const merged = { ...prev, ...(hConfig as any) };
-                if (!merged.rolePermissions) merged.rolePermissions = prev.rolePermissions;
-                if (!merged.rolePermissions.cashier || merged.rolePermissions.cashier.length === 0) merged.rolePermissions.cashier = prev.rolePermissions.cashier;
-                if (!merged.rolePermissions.veterinarian) merged.rolePermissions.veterinarian = prev.rolePermissions.veterinarian;
-                if (!merged.rolePermissions.veterinarian.includes('dashboard')) {
-                  merged.rolePermissions.veterinarian = [...merged.rolePermissions.veterinarian, 'dashboard'];
-                }
-                // HOTFIX-1: without this backfill, any installation with a config
-                // already persisted before 'manager' existed (i.e. every live one)
-                // would never gain the key, and managers would stay locked out
-                // even after the code fix.
-                if (!merged.rolePermissions.manager) merged.rolePermissions.manager = prev.rolePermissions.manager;
-                if (!merged.rolePermissions.admin) merged.rolePermissions.admin = prev.rolePermissions.admin;
-                if (!merged.rolePermissions.owner) merged.rolePermissions.owner = prev.rolePermissions.owner;
-                // PROVIDER-1: backfill new role keys so existing persisted configs
-                // gain them instead of silently falling through to zero panels.
-                if (!merged.rolePermissions.groomer) merged.rolePermissions.groomer = prev.rolePermissions.groomer;
-                if (!merged.rolePermissions.provider) merged.rolePermissions.provider = prev.rolePermissions.provider;
-                 return merged;
-              });
-            }
-
-            // Empty cloud matrices are valid after purge; finish boot as soon as hydration settles.
-            setIsBooting(false);
-          }
-        } catch (hydrationError) {
-          if (import.meta.env.DEV) {
-            console.error('[Bootloader] Critical Phase 2 Hydration Failed:', hydrationError);
-          }
-          if (isMounted) {
-            setDbCorrupted(true);
-            setIsBooting(false);
-          }
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn('[SuperAdmin] Global config load failed:', error);
         }
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error('[Bootloader] Fatal Init Error', err);
+        if (isCurrent(authRequest)) setIsBooting(false);
+        return;
+      }
+
+      const hydrationRequest = ++hydrationRequestRef.current;
+      try {
+        try {
+          await processPendingCheckoutEffects();
+        } catch (effectsError) {
+          if (import.meta.env.DEV) console.warn('[CeylonPets] Pending checkout effects will be retried later:', effectsError);
         }
-        if (isMounted) {
+
+        const [appts, recs, inv, invs, _metrics, queue, fetchedPets, fetchedClients, fetchedBoardingRecords] = await Promise.all([
+          fetchAppointments(30),
+          fetchTodaysRecords(),
+          fetchInventory(),
+          fetchTodaysInvoices(),
+          fetchShiftMetrics(),
+          fetchClinicQueue(),
+          fetchPets(),
+          fetchClients(),
+          fetchBoardingRecords(),
+        ]);
+
+        if (!isCurrent(authRequest, hydrationRequest)) return;
+        setInventory(Array.isArray(inv) ? inv as any : []);
+        setAppointments(Array.isArray(appts) ? appts as any : []);
+        setRecords(Array.isArray(recs) ? recs as any : []);
+        setInvoices(Array.isArray(invs) ? invs as any : []);
+        setPets(Array.isArray(fetchedPets) ? fetchedPets as any : []);
+        setClients(Array.isArray(fetchedClients) ? fetchedClients as any : []);
+        setBoardingRecords(Array.isArray(fetchedBoardingRecords) ? fetchedBoardingRecords as any : []);
+        // Empty core matrices are valid after a purge; do not wait for secondary hydration.
+        setIsBooting(false);
+        hasHydrated = true;
+
+        const [hStaffProfiles, hTimeEntries, hScheduleEntries] = await Promise.all([
+          fetchStaffProfiles(),
+          fetchTimeEntries(),
+          fetchScheduleEntries(),
+        ]);
+        const hNotifications = await fetchNotifications();
+        const hAlerts = await fetchAlerts();
+        const hUsers: any[] = await fetchUsers();
+        const { shift: cloudShift } = await fetchActiveShiftDetails();
+        const hActiveShift = cloudShift ? {
+          id: cloudShift.id,
+          openedAt: cloudShift.startTime,
+          openedBy: cloudShift.openedBy,
+          openedByName: cloudShift.openedBy,
+          openingFloat: cloudShift.opening_float || (cloudShift.openingFloatCents || 0) / 100,
+        } : null;
+        const hConfig = await fetchSystemConfig();
+
+        if (!isCurrent(authRequest, hydrationRequest)) return;
+        setNotifications(Array.isArray(hNotifications) ? hNotifications as any : []);
+        setAlerts(Array.isArray(hAlerts) ? hAlerts as any : []);
+        setUsers(Array.isArray(hUsers) ? hUsers as any : []);
+        const activeAppointmentIds = new Set(
+          (Array.isArray(appts) ? appts : [])
+            .filter((a: any) => !a.is_deleted && !['cancelled', 'completed', 'no-show'].includes(a.status))
+            .map((a: any) => a.id),
+        );
+        const activePetIds = new Set(
+          (Array.isArray(fetchedPets) ? fetchedPets : [])
+            .filter((p: any) => !p.is_deleted)
+            .map((p: any) => p.id),
+        );
+        const validQueue = (Array.isArray(queue) ? queue : []).filter((q: any) => {
+          if (q.status !== 'active' || q.is_deleted) return false;
+          return q.appointmentId ? activeAppointmentIds.has(q.appointmentId) : activePetIds.has(q.petId);
+        });
+        setClinicQueue(validQueue.sort((a: any, b: any) => {
+          const pA = a.priority ?? 2;
+          const pB = b.priority ?? 2;
+          if (pA !== pB) return pA - pB;
+          return new Date(a.checkInTime).getTime() - new Date(b.checkInTime).getTime();
+        }));
+        setStaffProfiles(hStaffProfiles);
+        setTimeEntries(hTimeEntries);
+        setScheduleEntries(hScheduleEntries);
+        setActiveShift(hActiveShift as any);
+
+        if (hConfig) {
+          setSystemConfig(prev => {
+            const merged = { ...prev, ...(hConfig as any) };
+            if (!merged.rolePermissions) merged.rolePermissions = prev.rolePermissions;
+            if (!merged.rolePermissions.cashier?.length) merged.rolePermissions.cashier = prev.rolePermissions.cashier;
+            if (!merged.rolePermissions.veterinarian) merged.rolePermissions.veterinarian = prev.rolePermissions.veterinarian;
+            if (!merged.rolePermissions.veterinarian.includes('dashboard')) {
+              merged.rolePermissions.veterinarian = [...merged.rolePermissions.veterinarian, 'dashboard'];
+            }
+            if (!merged.rolePermissions.manager) merged.rolePermissions.manager = prev.rolePermissions.manager;
+            if (!merged.rolePermissions.admin) merged.rolePermissions.admin = prev.rolePermissions.admin;
+            if (!merged.rolePermissions.owner) merged.rolePermissions.owner = prev.rolePermissions.owner;
+            if (!merged.rolePermissions.groomer) merged.rolePermissions.groomer = prev.rolePermissions.groomer;
+            if (!merged.rolePermissions.provider) merged.rolePermissions.provider = prev.rolePermissions.provider;
+            return merged;
+          });
+        }
+      } catch (hydrationError) {
+        if (import.meta.env.DEV) console.error('[Bootloader] Cloud hydration failed:', hydrationError);
+        if (isCurrent(authRequest, hydrationRequest)) {
           setDbCorrupted(true);
           setIsBooting(false);
         }
       }
+    };
+
+    const applySession = async (session: Session | null, authRequest: number, shouldHydrate: boolean) => {
+      if (!isCurrent(authRequest)) return;
+      if (!session?.user) {
+        clearAuthState();
+        return;
+      }
+
+      const staff = await fetchStaffForSession(session);
+      if (!isCurrent(authRequest)) return;
+      if (!staff) {
+        clearAuthState('Staff account is not linked. Contact your administrator.');
+        void signOut().catch(error => {
+          if (import.meta.env.DEV) console.error('[Auth] Failed to clear an unlinked session:', error);
+        });
+        return;
+      }
+      if (!staff.clinicId && !staff.isSuperadmin) {
+        clearAuthState('Staff account is not assigned to a clinic. Contact your administrator.');
+        void signOut().catch(error => {
+          if (import.meta.env.DEV) console.error('[Auth] Failed to clear an unassigned session:', error);
+        });
+        return;
+      }
+
+      setDbCorrupted(false);
+      setCurrentClinicId(staff.clinicId ?? null);
+      setCurrentUser(staff);
+      setEnteredPassword('');
+      setLoginEmail('');
+      setLockoutSeconds(0);
+      setLoginMessage('');
+
+      if (shouldHydrate || !hasHydrated) {
+        setIsBooting(true);
+        hasHydrated = false;
+        await hydrateCloudData(staff, authRequest);
+      } else {
+        setIsBooting(false);
+      }
+    };
+
+    const handleAuthEvent = (event: string, session: import('@supabase/supabase-js').Session | null) => {
+      // The root bootstrap owns the initial getSession call. Ignoring this event
+      // prevents a second initial staff lookup from racing the boot sequence.
+      if (event === 'INITIAL_SESSION') return;
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        const request = ++authRequestRef.current;
+        hydrationRequestRef.current += 1;
+        clearAuthState();
+        if (request === authRequestRef.current) setRoutePath('/');
+        return;
+      }
+      if (event === 'TOKEN_REFRESHED' && hasHydrated) return;
+      if (event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED' && event !== 'USER_UPDATED') return;
+
+      const request = ++authRequestRef.current;
+      const shouldHydrate = event !== 'TOKEN_REFRESHED' || !hasHydrated;
+      // Supabase recommends not awaiting network work inside its auth callback.
+      window.setTimeout(() => {
+        void applySession(session, request, shouldHydrate).catch(error => {
+          if (!isCurrent(request)) return;
+          if (import.meta.env.DEV) console.error('[Auth] Session hydration failed:', error);
+          clearAuthState('Authentication could not be completed. Try again.');
+        });
+      }, 0);
+    };
+
+    const testAuthUser = import.meta.env.DEV
+      ? ((window as any).__KP_TEST_AUTH__ as User | undefined)
+      : undefined;
+    if (testAuthUser) {
+      const request = ++authRequestRef.current;
+      setCurrentClinicId(testAuthUser.clinicId ?? null);
+      setCurrentUser(testAuthUser);
+      void hydrateCloudData(testAuthUser, request);
+      return () => { isMounted = false; hydrationRequestRef.current += 1; };
     }
-    bootSequence();
-    return () => { isMounted = false; };
+
+    if (!SYNC_ENABLED || !supabase) {
+      setDbCorrupted(true);
+      setIsBooting(false);
+      return () => { isMounted = false; };
+    }
+
+    const unsubscribe = onAuthStateChange(handleAuthEvent);
+    const initialRequest = ++authRequestRef.current;
+    if (initialAuthErrorRef.current) {
+      if (import.meta.env.DEV) console.error('[Auth] Initial session restore failed:', initialAuthErrorRef.current);
+      clearAuthState('Authentication could not be restored. Try again.');
+    } else {
+      void applySession(initialSessionRef.current, initialRequest, true).catch(error => {
+        if (!isCurrent(initialRequest)) return;
+        if (import.meta.env.DEV) console.error('[Auth] Initial session restore failed:', error);
+        clearAuthState('Authentication could not be restored. Try again.');
+      });
+    }
+
+    return () => {
+      isMounted = false;
+      hydrationRequestRef.current += 1;
+      unsubscribe();
+    };
   }, []);
 
   // Session states
@@ -518,12 +600,6 @@ function App() {
     };
   }, []);
 
-  const [enteredPassword, setEnteredPassword] = useState('');
-  const [loginError, setLoginError] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [lockoutSeconds, setLockoutSeconds] = useState(0);
-  const [showPassword, setShowPassword] = useState(false);
-
   // AUTH-8: Idle timeout tracking
   useEffect(() => {
     if (!currentUser || !systemConfig.idleLogoutMinutes || systemConfig.idleLogoutMinutes <= 0) return;
@@ -569,53 +645,8 @@ function App() {
     setPolicyOverrides((systemConfig as any).actionPolicies);
   }, [systemConfig]);
 
-  // Supabase Auth is the only session authority. Boot owns initial restore;
-  // this listener handles later sign-in, refresh, and sign-out events.
-  useEffect(() => {
-    if (import.meta.env.DEV && (window as any).__KP_TEST_AUTH__) {
-      setCurrentUser((window as any).__KP_TEST_AUTH__ as User);
-      return;
-    }
-    if (!supabase) return;
-    let active = true;
-    const unsubscribe = onAuthStateChange((event, session) => {
-      const request = ++authRequestRef.current;
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        setCurrentUser(null);
-        setCurrentClinicId(null);
-        setIsBooting(false);
-        return;
-      }
-      if (event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED') return;
-      setIsBooting(true);
-      void fetchStaffForAuthUser(session.user.id)
-        .then(staff => {
-          if (!active || request !== authRequestRef.current) return;
-          if (!staff || (!staff.clinicId && !staff.isSuperadmin)) {
-            setCurrentUser(null);
-            setCurrentClinicId(null);
-            setIsBooting(false);
-            void signOut();
-            return;
-          }
-          setCurrentClinicId(staff.clinicId ?? null);
-          setCurrentUser(staff);
-          setIsBooting(false);
-        })
-        .catch(error => {
-          if (!active || request !== authRequestRef.current) return;
-          if (import.meta.env.DEV) console.error('[Auth] Staff verification failed:', error);
-          setCurrentUser(null);
-          setCurrentClinicId(null);
-          setIsBooting(false);
-        });
-    });
-    return () => { active = false; unsubscribe(); };
-  }, []);
   // Step 32: staff sign in with their Supabase Auth email + password. The email
   // is the lockout key (there is no staff selector before authentication).
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginMessage, setLoginMessage] = useState('');
   // Live lockout countdown for the entered email — re-enables the form the
   // moment the lockout expires, without needing a page refresh.
   useEffect(() => {
@@ -1311,7 +1342,10 @@ function App() {
     // surfaces, even if a persisted panel matrix was edited incorrectly.
     if (viewName === 'reports' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
     if (viewName === 'settings') {
-      return ROOT_ROLES.includes(user.role as any) || ['manager', 'owner', 'dummy_admin'].includes(user.role);
+      // System Settings is a control-plane surface. A tenant role must never
+      // gain it through a role matrix or a deep link; the server checks the
+      // same immutable superadmin flag before accepting writes.
+      return user.isSuperadmin === true;
     }
     if (viewName === 'shift' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
     // Application roots can open every application panel. Provider-only
@@ -1389,33 +1423,11 @@ function App() {
         setLoginMessage('Incorrect email or password.');
         return;
       }
-      // Map the authenticated identity to exactly one staff record.
-      const staff = await fetchStaffForAuthUser(data.user.id);
-      if (!staff) {
-        // Signed in, but this identity is not linked to a staff record. Do not
-        // grant any access — sign back out and tell them to see an administrator.
-        await signOut();
-        setCurrentUser(null);
-        setLoginMessage('Staff account is not linked. Contact your administrator.');
-        return;
-      }
-      if (!staff.clinicId && !staff.isSuperadmin) {
-        await signOut();
-        setCurrentUser(null);
-        setLoginMessage('Staff account is not assigned to a clinic. Contact your administrator.');
-        return;
-      }
+      // The single auth bootstrap effect owns identity mapping, route changes,
+      // and cloud hydration. Do not fetch staff or reload here: both would race
+      // the SIGNED_IN event and could render an incomplete tenant state.
       resetAttempts(key);
       setIsBooting(true);
-      setCurrentUser(staff);
-      navigateRoute(staff.isSuperadmin ? '/superadmin' : '/');
-      const nextView = getDefaultViewForUser(staff);
-      rememberActiveView(nextView);
-      setActiveView(nextView);
-       setEnteredPassword(''); setLoginEmail(''); setLockoutSeconds(0); setLoginMessage('');
-      // Boot hydration is deliberately gated on an authenticated session. Reload
-      // once after sign-in so the cloud data path starts from that session.
-      window.location.reload();
     } finally {
       setIsVerifying(false);
     }
@@ -1515,7 +1527,7 @@ function App() {
         );
       }
        case 'appointments': return <AppointmentsManager appointments={appointments} records={records} clinicQueue={clinicQueue} users={users} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
-       case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} activeShift={activeShift} currentUser={currentUser} onChangeConfig={async (config) => { await upsertSystemConfig(config); setSystemConfig(config); }} />;
+       case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} activeShift={activeShift} currentUser={currentUser} onChangeConfig={async (config) => { await saveSystemConfig(config, currentUser as User); setSystemConfig(config); }} />;
        case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onUpdateInventory={handleUpdateInventoryItem} systemConfig={systemConfig} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
@@ -1538,7 +1550,7 @@ function App() {
                // Merge the edited cloud settings onto the current config so fields
                // not visible in the active settings tab are preserved.
               const merged = { ...systemConfig, ...config } as SystemConfig;
-              await upsertSystemConfig(merged);
+               await saveSystemConfig(merged, currentUser as User);
                setSystemConfig(merged);
             }}
              users={users}
@@ -1960,6 +1972,6 @@ function App() {
   );
 }
 
-export default function AppWrapper() {
-  return <App />;
+export default function AppWrapper(props: AppProps) {
+  return <App {...props} />;
 }
