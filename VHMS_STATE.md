@@ -109,6 +109,8 @@
 - Phase 12 production deployment is `Ready` on Vercel at `https://kpah-5ofwx7997-asher-sajahan-s-projects.vercel.app/`, serving the production domain `https://kpah-aps.vercel.app/`.
 - Phase 12 live provisioning smoke passed on 2026-09-02: Super Admin created the active tenant Owner account `owner@kandypets.example` without losing the Super Admin session; no password was persisted in project documentation.
 - Phase 12 live Owner RBAC smoke passed: Owner sign-in showed `CLOUD SYNC ACTIVE`; Settings displayed `Access Control & Registry` and local Inventory/Staff surfaces, while global Business Identity and provider database/backup surfaces were absent. A hard reload at `/settings` returned the same authorized Owner Settings view.
+- Phase 12 scroll follow-up deployed in `src/components/SuperAdminLayout.tsx` and `src/components/SuperAdminDashboard.tsx` through commits `c05fc25` and `74ac099`: the Super Admin shell now owns one visible, keyboard-focusable internal scrollbar, while the dashboard content grows naturally so expanded clinic controls remain reachable.
+- Phase 12 scroll verification passed on the latest `Ready` Vercel deployment `https://kpah-261sjh9e9-asher-sajahan-s-projects.vercel.app/`: the expanded Kandy clinic measured 1,462px of content inside an 824px scroll viewport, and the bottom database-policy confirmation was reachable after scrolling.
 
 ## Next Action
 
