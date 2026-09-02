@@ -183,7 +183,7 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
   if (!currentUser.isSuperadmin) return null;
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-10 overflow-y-auto">
+    <div className="min-h-full p-4 sm:p-6 lg:p-10">
       <div className="max-w-7xl mx-auto space-y-8">
         <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
