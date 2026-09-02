@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronUp, Home,
   LayoutGrid, LoaderCircle, MapPin, Phone, Plus, ReceiptText, RefreshCw,
-  Save, Scissors, ShieldCheck, UserPlus
+  Save, Scissors, ShieldCheck, Trash2, UserPlus
 } from 'lucide-react';
 import { Clinic, ClinicSettings, DEFAULT_CLINIC_PANELS, User } from '../types';
 import {
@@ -13,6 +13,17 @@ import { supabase } from '../lib/supabase';
 import { showToast } from './Toast';
 
 interface SuperAdminDashboardProps { currentUser: User; }
+
+interface ClinicUser {
+  id: string;
+  auth_user_id: string | null;
+  clinic_id: string;
+  name: string;
+  username: string;
+  role: string;
+  active: boolean;
+  is_superadmin: boolean;
+}
 
 const defaults = (clinicId: string): ClinicSettings => ({
   clinicId,
@@ -43,6 +54,12 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
   const [ownerPassword, setOwnerPassword] = useState('');
   const [ownerProvisionError, setOwnerProvisionError] = useState<string | null>(null);
   const [isProvisioningOwner, setIsProvisioningOwner] = useState(false);
+  const [clinicUsers, setClinicUsers] = useState<Record<string, ClinicUser[]>>({});
+  const [loadingUsersClinicId, setLoadingUsersClinicId] = useState<string | null>(null);
+  const [userRosterErrors, setUserRosterErrors] = useState<Record<string, string>>({});
+  const [userDeleteTarget, setUserDeleteTarget] = useState<{ clinic: Clinic; user: ClinicUser } | null>(null);
+  const [userDeleteError, setUserDeleteError] = useState<string | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   const refresh = async () => {
     setIsLoading(true);
@@ -66,7 +83,46 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
     }
   };
 
+  const loadClinicUsers = async (clinicId: string) => {
+    setLoadingUsersClinicId(clinicId);
+    setUserRosterErrors(prev => {
+      const next = { ...prev };
+      delete next[clinicId];
+      return next;
+    });
+    try {
+      if (!supabase) throw new Error('Cloud user data is unavailable.');
+      const { data, error: usersError } = await supabase
+        .from('users')
+        .select('id, auth_user_id, clinic_id, name, username, role, active, is_superadmin')
+        .eq('clinic_id', clinicId)
+        .eq('is_deleted', false)
+        .order('name', { ascending: true });
+      if (usersError) throw usersError;
+      setClinicUsers(prev => ({
+        ...prev,
+        [clinicId]: (data || []).map((user: any) => ({
+          id: user.id,
+          auth_user_id: user.auth_user_id || null,
+          clinic_id: user.clinic_id,
+          name: user.name || 'Unnamed user',
+          username: user.username || 'No username',
+          role: user.role || 'unassigned',
+          active: user.active ?? true,
+          is_superadmin: user.is_superadmin === true,
+        })),
+      }));
+    } catch (err: any) {
+      setUserRosterErrors(prev => ({ ...prev, [clinicId]: err?.message || 'The user roster could not be loaded.' }));
+    } finally {
+      setLoadingUsersClinicId(current => current === clinicId ? null : current);
+    }
+  };
+
   useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    if (expandedClinicId) void loadClinicUsers(expandedClinicId);
+  }, [expandedClinicId]);
 
   const handleAddClinic = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -180,6 +236,50 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
     }
   };
 
+  const closeUserDelete = () => {
+    setUserDeleteTarget(null);
+    setUserDeleteError(null);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userDeleteTarget) return;
+    const { clinic, user } = userDeleteTarget;
+    if (user.is_superadmin || !user.auth_user_id) return;
+    const previousUsers = clinicUsers[clinic.id] || [];
+    setIsDeletingUser(true);
+    setUserDeleteError(null);
+    setClinicUsers(prev => ({
+      ...prev,
+      [clinic.id]: previousUsers.filter(row => row.id !== user.id),
+    }));
+    try {
+      if (!supabase) throw new Error('Cloud authentication is unavailable.');
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error('The Super Admin session has expired. Sign in again.');
+
+      const response = await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ user_id: user.auth_user_id, clinic_id: clinic.id }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || 'The user account could not be deleted.');
+
+      showToast(`${user.username} was deleted from ${clinic.name}.`, 'success');
+      closeUserDelete();
+    } catch (err: any) {
+      setClinicUsers(prev => ({ ...prev, [clinic.id]: previousUsers }));
+      setUserDeleteError(err?.message || 'The user account could not be deleted.');
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
   if (!currentUser.isSuperadmin) return null;
 
   return (
@@ -288,9 +388,54 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-500"><span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" /> Address</span><input value={clinicDraft.address || ''} onChange={event => setClinicDrafts(prev => ({ ...prev, [clinic.id]: { ...clinicDraft, address: event.target.value } }))} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" /></label>
                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-500"><span className="inline-flex items-center gap-1"><Phone className="w-3 h-3" /> Phone</span><input value={clinicDraft.phone || ''} onChange={event => setClinicDrafts(prev => ({ ...prev, [clinic.id]: { ...clinicDraft, phone: event.target.value } }))} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" /></label>
                          </div>
-                       </form>
+                        </form>
 
-                       <section className="space-y-3">
+                        <section className="space-y-3" aria-labelledby={`users-title-${clinic.id}`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h3 id={`users-title-${clinic.id}`} className="text-sm font-black text-slate-900 flex items-center gap-2"><UserPlus className="w-4 h-4 text-indigo-500" /> Clinic users</h3>
+                              <p className="mt-1 text-[11px] font-medium text-slate-500">Only users assigned to this clinic are shown. Auth-linked accounts can be removed from this roster.</p>
+                            </div>
+                            <button type="button" onClick={() => void loadClinicUsers(clinic.id)} disabled={loadingUsersClinicId === clinic.id} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 disabled:opacity-60" aria-label={`Refresh users for ${clinic.name}`}>
+                              <RefreshCw className={`w-3.5 h-3.5 ${loadingUsersClinicId === clinic.id ? 'animate-spin' : ''}`} /> Refresh
+                            </button>
+                          </div>
+                          {userRosterErrors[clinic.id] && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700">{userRosterErrors[clinic.id]}</p>}
+                          {loadingUsersClinicId === clinic.id && !clinicUsers[clinic.id] ? (
+                            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 flex items-center gap-2 text-xs font-bold text-slate-500"><LoaderCircle className="w-4 h-4 animate-spin" /> Loading clinic users...</div>
+                          ) : (clinicUsers[clinic.id] || []).length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-xs font-bold text-slate-500">No active user records are assigned to this clinic.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {(clinicUsers[clinic.id] || []).map(user => (
+                                <div key={user.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="truncate text-sm font-black text-slate-800">{user.name}</p>
+                                      <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-widest ${user.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{user.active ? 'Active' : 'Inactive'}</span>
+                                    </div>
+                                    <p className="mt-1 truncate text-xs font-medium text-slate-500">{user.username}</p>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                      <span className="rounded-full bg-white px-2 py-1">{user.role.replace(/_/g, ' ')}</span>
+                                      <span className="rounded-full bg-white px-2 py-1">{user.auth_user_id ? 'Auth linked' : 'No Auth identity'}</span>
+                                    </div>
+                                  </div>
+                                  {user.is_superadmin ? (
+                                    <span className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">Protected Super Admin</span>
+                                  ) : user.auth_user_id ? (
+                                    <button type="button" onClick={() => { setUserDeleteTarget({ clinic, user }); setUserDeleteError(null); }} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-rose-700 hover:bg-rose-50">
+                                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                                    </button>
+                                  ) : (
+                                    <span className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">No Auth account</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+
+                        <section className="space-y-3">
                          <div>
                            <h3 className="text-sm font-black text-slate-900">Premium feature access</h3>
                            <p className="mt-1 text-[11px] font-medium text-slate-500">These tenant-level switches control product capability, not staff role permissions.</p>
@@ -335,7 +480,7 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
              })}
           </section>
          )}
-        {ownerProvisionTarget && (
+         {ownerProvisionTarget && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
             <form onSubmit={handleProvisionOwner} role="dialog" aria-modal="true" aria-labelledby="owner-provision-title" className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
@@ -359,9 +504,31 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
                 </button>
               </div>
             </form>
-          </div>
-        )}
-      </div>
+           </div>
+         )}
+         {userDeleteTarget && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
+             <div role="dialog" aria-modal="true" aria-labelledby="user-delete-title" className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+               <div className="flex items-start justify-between gap-4">
+                 <div>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">Destructive action</p>
+                   <h2 id="user-delete-title" className="mt-1 text-xl font-black text-slate-950">Delete user account?</h2>
+                   <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">This permanently removes the Supabase Auth account for <strong className="text-slate-700">{userDeleteTarget.user.username}</strong> and revokes sign-in access. Clinic records are retained.</p>
+                 </div>
+                 <button type="button" onClick={closeUserDelete} disabled={isDeletingUser} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-700 disabled:opacity-50">Close</button>
+               </div>
+               {userDeleteError && <p role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700">{userDeleteError}</p>}
+               <div className="mt-6 flex justify-end gap-3">
+                 <button type="button" onClick={closeUserDelete} disabled={isDeletingUser} className="rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+                 <button type="button" onClick={() => void handleDeleteUser()} disabled={isDeletingUser} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-rose-700 disabled:opacity-60">
+                   {isDeletingUser ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                   {isDeletingUser ? 'Deleting...' : 'Delete account'}
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
+       </div>
     </div>
   );
 }
