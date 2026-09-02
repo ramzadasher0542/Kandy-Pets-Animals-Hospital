@@ -28,7 +28,8 @@ import {
   InventoryCategory,
   ShiftReconciliation,
   Clinic,
-  ClinicSettings
+  ClinicSettings,
+  DEFAULT_CLINIC_PANELS
 } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 
@@ -59,15 +60,24 @@ const defaultClinicSettings = (clinicId: string): ClinicSettings => ({
   taxEnabled: true,
   groomingEnabled: true,
   boardingEnabled: true,
+  enabledPanels: [...DEFAULT_CLINIC_PANELS],
 });
 
 function mapClinicSettings(row: any, clinicId: string): ClinicSettings {
+  const enabledPanels = Array.isArray(row?.enabled_panels)
+    ? row.enabled_panels.filter((panel: unknown): panel is string => typeof panel === 'string')
+    : [...DEFAULT_CLINIC_PANELS];
   return {
     clinicId,
     taxEnabled: row?.tax_enabled ?? true,
     groomingEnabled: row?.grooming_enabled ?? true,
     boardingEnabled: row?.boarding_enabled ?? true,
+    enabledPanels,
   };
+}
+
+function requireSuperAdmin(actor: User, resource: string): void {
+  if (!actor?.isSuperadmin) throw new Error(`Unauthorized: Only the Super Admin can modify ${resource}.`);
 }
 
 export async function fetchClinics(): Promise<Clinic[]> {
@@ -83,7 +93,7 @@ export async function fetchClinicSettings(clinicId: string): Promise<ClinicSetti
   if (!clinicId) throw new Error('A clinic is required to load clinic settings.');
   const { data, error } = await cloud()
     .from('clinic_settings')
-    .select('clinic_id, tax_enabled, grooming_enabled, boarding_enabled')
+    .select('clinic_id, tax_enabled, grooming_enabled, boarding_enabled, enabled_panels')
     .eq('clinic_id', clinicId)
     .maybeSingle();
   if (error) throw error;
@@ -93,22 +103,25 @@ export async function fetchClinicSettings(clinicId: string): Promise<ClinicSetti
 export async function fetchAllClinicSettings(): Promise<ClinicSettings[]> {
   const { data, error } = await cloud()
     .from('clinic_settings')
-    .select('clinic_id, tax_enabled, grooming_enabled, boarding_enabled');
+    .select('clinic_id, tax_enabled, grooming_enabled, boarding_enabled, enabled_panels');
   if (error) throw error;
   return (data || []).map((row: any) => mapClinicSettings(row, row.clinic_id));
 }
 
-export async function upsertClinicSettings(settings: ClinicSettings): Promise<void> {
+export async function upsertClinicSettings(settings: ClinicSettings, actor: User): Promise<void> {
+  requireSuperAdmin(actor, 'clinic settings');
   const { error } = await cloud().from('clinic_settings').upsert({
     clinic_id: settings.clinicId,
     tax_enabled: settings.taxEnabled,
     grooming_enabled: settings.groomingEnabled,
     boarding_enabled: settings.boardingEnabled,
+    enabled_panels: settings.enabledPanels,
   }, { onConflict: 'clinic_id' });
   if (error) throw error;
 }
 
-export async function createClinic(input: Pick<Clinic, 'name' | 'address' | 'phone'>): Promise<Clinic> {
+export async function createClinic(input: Pick<Clinic, 'name' | 'address' | 'phone'>, actor: User): Promise<Clinic> {
+  requireSuperAdmin(actor, 'clinics');
   const name = input.name.trim();
   if (!name) throw new Error('Clinic name is required.');
   const { data, error } = await cloud()
@@ -118,8 +131,26 @@ export async function createClinic(input: Pick<Clinic, 'name' | 'address' | 'pho
     .single();
   if (error) throw error;
   const clinic = data as Clinic;
-  await upsertClinicSettings(defaultClinicSettings(clinic.id));
+  await upsertClinicSettings(defaultClinicSettings(clinic.id), actor);
   return clinic;
+}
+
+export async function updateClinic(
+  clinicId: string,
+  input: Pick<Clinic, 'name' | 'address' | 'phone'>,
+  actor: User,
+): Promise<Clinic> {
+  requireSuperAdmin(actor, 'clinics');
+  const name = input.name.trim();
+  if (!name) throw new Error('Clinic name is required.');
+  const { data, error } = await cloud()
+    .from('clinics')
+    .update({ name, address: input.address?.trim() || null, phone: input.phone?.trim() || null })
+    .eq('id', clinicId)
+    .select('id, name, address, phone, created_at')
+    .single();
+  if (error) throw error;
+  return data as Clinic;
 }
 
 // ==========================================

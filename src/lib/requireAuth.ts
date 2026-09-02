@@ -139,11 +139,10 @@ export function isProviderOnlyTab(tab: SettingsTab): boolean {
   return PROVIDER_ONLY_TABS.includes(tab);
 }
 
-/** Settings are global control-plane surfaces and require the immutable flag. */
+/** Super Admin sees the full control plane; tenants only see local operations. */
 export function canViewSettingsTab(role: string | undefined, tab: SettingsTab, isSuperadmin = false): boolean {
-  void role;
-  void tab;
-  return isSuperadmin;
+  if (isSuperadmin) return true;
+  return ['owner', 'manager'].includes(role || '') && ['inventory', 'staff'].includes(tab);
 }
 
 /**
@@ -179,11 +178,11 @@ export const ALL_PANEL_ROLES: PanelRole[] = ['cashier', 'veterinarian', 'manager
 
 export interface PanelDef { id: string; label: string; }
 
-/** Grantable views (nav panels). 'settings' is deliberately absent — it is a
- *  provider-identity surface, not a grantable permission. 'reports' folds into
- *  'dashboard' (see App.tsx permissionKey), so it is not a separate row. */
+/** Grantable views (nav panels). 'settings' is deliberately absent because it
+ * is a separate local-operations surface, not a clinic product entitlement. */
 export const PANEL_VIEWS: PanelDef[] = [
-  { id: 'dashboard',    label: 'Dashboard & Reports' },
+  { id: 'dashboard',    label: 'Dashboard' },
+  { id: 'reports',      label: 'Reports' },
   { id: 'pos',          label: 'POS' },
   { id: 'appointments', label: 'Appointments' },
   { id: 'pets',         label: 'Pets' },
@@ -194,6 +193,7 @@ export const PANEL_VIEWS: PanelDef[] = [
   { id: 'boarding',     label: 'Boarding / Hotel' },
   { id: 'grooming',     label: 'Grooming Salon' },
   { id: 'inventory',    label: 'Inventory' },
+  { id: 'suppliers',    label: 'Suppliers' },
   { id: 'invoices',     label: 'Invoices' },
   { id: 'shift',        label: 'Shift & Drawer' },
 ];

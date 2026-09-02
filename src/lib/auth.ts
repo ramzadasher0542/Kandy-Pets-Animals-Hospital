@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 import {
   fetchUsers,
+  fetchClinicSettings,
   fetchSystemConfig as dbFetchSystemConfig,
   upsertUser,
   deleteUser as dbDeleteUser,
@@ -41,16 +42,16 @@ export async function fetchStaffUsers(): Promise<User[]> {
 }
 
 export async function upsertStaffUser(user: User, currentUser: User): Promise<void> {
-  if (!currentUser?.isSuperadmin) {
-    throw new Error('Unauthorized: Only the superadmin can modify staff records.');
+  if (!currentUser?.isSuperadmin && !['owner', 'manager'].includes(currentUser?.role || '')) {
+    throw new Error('Unauthorized: Only a clinic owner or manager can modify staff records.');
   }
   if (!user || !user.id) return;
   await upsertUser(user);
 }
 
 export async function deleteStaffUser(userId: string, currentUser: User): Promise<void> {
-  if (!currentUser?.isSuperadmin) {
-    throw new Error('Unauthorized: Only the superadmin can delete staff records.');
+  if (!currentUser?.isSuperadmin && !['owner', 'manager'].includes(currentUser?.role || '')) {
+    throw new Error('Unauthorized: Only a clinic owner or manager can delete staff records.');
   }
   if (!userId) return;
   await dbDeleteUser(userId);
@@ -90,6 +91,10 @@ export async function fetchStaffForAuthUser(authUserId: string | null | undefine
     .eq('is_deleted', false)
     .maybeSingle();
   if (error || !data) return null;
+  const clinicSettings = data.clinic_id
+    ? await fetchClinicSettings(data.clinic_id)
+    : null;
+
   return {
     id: data.id,
     name: data.name,
@@ -99,6 +104,7 @@ export async function fetchStaffForAuthUser(authUserId: string | null | undefine
     active: data.active ?? true,
     clinicId: data.clinic_id ?? null,
     isSuperadmin: data.is_superadmin === true,
+    clinicSettings,
   } as User;
 }
 
