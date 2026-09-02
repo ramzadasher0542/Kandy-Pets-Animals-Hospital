@@ -1,6 +1,7 @@
 import { User } from '../types';
 import { SystemConfig } from '../components/SystemSettings';
 import { supabase } from './supabase';
+import type { Session } from '@supabase/supabase-js';
 import {
   fetchUsers,
   fetchSystemConfig as dbFetchSystemConfig,
@@ -40,24 +41,24 @@ export async function fetchStaffUsers(): Promise<User[]> {
 }
 
 export async function upsertStaffUser(user: User, currentUser: User): Promise<void> {
-  if (currentUser.role !== 'admin' && currentUser.role !== 'owner') {
-    throw new Error('Unauthorized: Only administrators can modify staff records.');
+  if (!currentUser?.isSuperadmin) {
+    throw new Error('Unauthorized: Only the superadmin can modify staff records.');
   }
   if (!user || !user.id) return;
   await upsertUser(user);
 }
 
 export async function deleteStaffUser(userId: string, currentUser: User): Promise<void> {
-  if (currentUser.role !== 'admin' && currentUser.role !== 'owner') {
-    throw new Error('Unauthorized: Only administrators can delete staff records.');
+  if (!currentUser?.isSuperadmin) {
+    throw new Error('Unauthorized: Only the superadmin can delete staff records.');
   }
   if (!userId) return;
   await dbDeleteUser(userId);
 }
 
 export async function upsertSystemConfig(config: SystemConfig, currentUser: User): Promise<void> {
-  if (currentUser.role !== 'admin' && currentUser.role !== 'owner') {
-    throw new Error('Unauthorized: Only administrators can update global configuration.');
+  if (!currentUser?.isSuperadmin) {
+    throw new Error('Unauthorized: Only the superadmin can update global configuration.');
   }
   await dbUpsertSystemConfig(config);
 }
@@ -99,4 +100,9 @@ export async function fetchStaffForAuthUser(authUserId: string | null | undefine
     clinicId: data.clinic_id ?? null,
     isSuperadmin: data.is_superadmin === true,
   } as User;
+}
+
+/** Resolve a Supabase session to the only staff identity the app may trust. */
+export async function fetchStaffForSession(session: Session | null | undefined): Promise<User | null> {
+  return fetchStaffForAuthUser(session?.user?.id);
 }
