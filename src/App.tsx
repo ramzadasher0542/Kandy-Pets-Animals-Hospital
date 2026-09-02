@@ -80,7 +80,7 @@ export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, Pane
 
 import { stampRecord } from './lib/recordMeta';
 import { recordFailedAttempt, isLockedOut, resetAttempts } from './lib/credentials';
-import { requireAuth, setPolicyOverrides, ROOT_ROLES } from './lib/requireAuth';
+import { requireAuth, setPolicyOverrides, ROOT_ROLES, canViewSettingsTab } from './lib/requireAuth';
 
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
@@ -92,7 +92,7 @@ import {
 import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
-  ActiveShift, ClinicQueueItem, User, ClinicSettings,
+  ActiveShift, ClinicQueueItem, User, ClinicSettings, DEFAULT_CLINIC_PANELS,
   Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, InvoiceSourceRef
 } from './types';
 
@@ -169,9 +169,8 @@ import {
   upsertScheduleEntry,
   deleteScheduleEntry,
    insertDeletionAudit,
-    setCurrentClinicId,
-    fetchClinicSettings
- } from './lib/db';
+     setCurrentClinicId
+  } from './lib/db';
 import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, onAuthStateChange } from './lib/supabase';
 import { fetchStaffForSession, upsertSystemConfig as saveSystemConfig } from './lib/auth';
 
@@ -303,6 +302,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
       if (!isMounted) return;
       hasHydrated = false;
       setCurrentUser(null);
+      setClinicSettings(null);
       setCurrentClinicId(null);
       if (message) setLoginMessage(message);
       setIsBooting(false);
@@ -454,6 +454,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
 
       setDbCorrupted(false);
       setCurrentClinicId(staff.clinicId ?? null);
+      setClinicSettings(staff.clinicSettings ?? null);
       setCurrentUser(staff);
       setEnteredPassword('');
       setLoginEmail('');
@@ -501,6 +502,13 @@ function App({ initialSession, initialAuthError }: AppProps) {
     if (testAuthUser) {
       const request = ++authRequestRef.current;
       setCurrentClinicId(testAuthUser.clinicId ?? null);
+      setClinicSettings(testAuthUser.clinicSettings ?? (testAuthUser.clinicId ? {
+        clinicId: testAuthUser.clinicId,
+        taxEnabled: true,
+        groomingEnabled: true,
+        boardingEnabled: true,
+        enabledPanels: [...DEFAULT_CLINIC_PANELS],
+      } : null));
       setCurrentUser(testAuthUser);
       void hydrateCloudData(testAuthUser, request);
       return () => { isMounted = false; hydrationRequestRef.current += 1; };
@@ -544,6 +552,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
   const [idleMessage, setIdleMessage] = useState<string | null>(null);
   useEffect(() => {
     setCurrentClinicId(currentUser?.clinicId ?? null);
+    setClinicSettings(currentUser?.clinicSettings ?? null);
   }, [currentUser]);
   const [clinicSettings, setClinicSettings] = useState<ClinicSettings | null>(null);
   const [routePath, setRoutePath] = useState(() => window.location.pathname);
@@ -557,22 +566,9 @@ function App({ initialSession, initialAuthError }: AppProps) {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
   useEffect(() => {
-    if (!currentUser || currentUser.isSuperadmin || !currentUser.clinicId) {
-      setClinicSettings(null);
-      return;
-    }
-    let active = true;
-    fetchClinicSettings(currentUser.clinicId)
-      .then(settings => { if (active) setClinicSettings(settings); })
-      .catch(error => {
-        if (import.meta.env.DEV) console.error('[ClinicSettings] Load failed:', error);
-        if (active) setClinicSettings({ clinicId: currentUser.clinicId!, taxEnabled: true, groomingEnabled: true, boardingEnabled: true });
-      });
-    return () => { active = false; };
-  }, [currentUser?.id, currentUser?.clinicId, currentUser?.isSuperadmin]);
-  useEffect(() => {
     if (!currentUser || currentUser.isSuperadmin || !clinicSettings) return;
-    const disabledView = (activeView === 'grooming' && !clinicSettings.groomingEnabled)
+    const disabledView = !clinicSettings.enabledPanels.includes(activeView)
+      || (activeView === 'grooming' && !clinicSettings.groomingEnabled)
       || (activeView === 'boarding' && !clinicSettings.boardingEnabled);
     if (disabledView) {
       rememberActiveView('dashboard');
@@ -1335,6 +1331,13 @@ function App({ initialSession, initialAuthError }: AppProps) {
 
   const isViewPermitted = (viewName: string, user: any): boolean => {
     if (!user) return false;
+    // Network entitlements are evaluated before role permissions and root-role
+    // shortcuts. A tenant cannot bypass a Super Admin product decision by
+    // changing its local role or deep-linking to a disabled route.
+    if (!user.isSuperadmin && viewName !== 'settings' && !clinicSettings) return false;
+    if (!user.isSuperadmin && viewName !== 'settings' && clinicSettings && !clinicSettings.enabledPanels.includes(viewName)) return false;
+    if (!user.isSuperadmin && clinicSettings && viewName === 'grooming' && !clinicSettings.groomingEnabled) return false;
+    if (!user.isSuperadmin && clinicSettings && viewName === 'boarding' && !clinicSettings.boardingEnabled) return false;
     // Staff operations are deferred from the active beta release. Keep the
     // underlying records and handlers intact without exposing this view.
     if (viewName === 'staff') return false;
@@ -1342,10 +1345,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
     // surfaces, even if a persisted panel matrix was edited incorrectly.
     if (viewName === 'reports' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
     if (viewName === 'settings') {
-      // System Settings is a control-plane surface. A tenant role must never
-      // gain it through a role matrix or a deep link; the server checks the
-      // same immutable superadmin flag before accepting writes.
-      return user.isSuperadmin === true;
+      return user.isSuperadmin === true || canViewSettingsTab(user.role, 'staff', false);
     }
     if (viewName === 'shift' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
     // Application roots can open every application panel. Provider-only
@@ -1381,12 +1381,13 @@ function App({ initialSession, initialAuthError }: AppProps) {
 
   const getDefaultViewForUser = (user: any): any => {
     if (!user) return 'portal';
-    if (ROOT_ROLES.includes(user.role) || user.role === 'dummy_admin') return 'dashboard';
     if (user.role === 'pet_parent') return 'portal';
-    const priorityViews = ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'portal'] as const;
+    const priorityViews = ['dashboard', 'pos', 'appointments', 'examinations', 'inventory'] as const;
     for (const view of priorityViews) {
       if (isViewPermitted(view, user)) return view;
     }
+    if (canViewSettingsTab(user.role, 'staff', user.isSuperadmin === true)) return 'settings';
+    if (user.role === 'dummy_admin' && isViewPermitted('settings', user)) return 'settings';
     return 'portal';
   };
 
@@ -1496,8 +1497,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
     { id: 'reports', label: 'Reports', icon: BarChart3, isLive: true }
   ];
   const visibleTenantNavItems = navItems.filter(item =>
-    (item.id !== 'grooming' || clinicSettings?.groomingEnabled !== false)
-    && (item.id !== 'boarding' || clinicSettings?.boardingEnabled !== false)
+    isViewPermitted(item.id, currentUser)
   );
   const effectiveSystemConfig = clinicSettings?.taxEnabled === false
     ? { ...systemConfig, taxRate: 0 }
@@ -1546,8 +1546,12 @@ function App({ initialSession, initialAuthError }: AppProps) {
         return (
           <SystemSettings
             config={safeSystemConfig}
-            onChangeConfig={async (config) => {
-               // Merge the edited cloud settings onto the current config so fields
+             onChangeConfig={async (config) => {
+               if (!currentUser?.isSuperadmin) {
+                 showToast('Only the Super Admin can update global configuration.', 'error');
+                 return;
+               }
+                // Merge the edited cloud settings onto the current config so fields
                // not visible in the active settings tab are preserved.
               const merged = { ...systemConfig, ...config } as SystemConfig;
                await saveSystemConfig(merged, currentUser as User);

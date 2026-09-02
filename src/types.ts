@@ -9,11 +9,23 @@
 // never issuable from any UI — only the onboarding script (AUTH-7) may mint one.
 export type UserRole = 'provider' | 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin' | 'groomer';
 
-export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; clinicId?: string | null; isSuperadmin?: boolean; }
+export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; clinicId?: string | null; isSuperadmin?: boolean; clinicSettings?: ClinicSettings | null; }
 
 export interface Clinic { id: string; name: string; address?: string | null; phone?: string | null; created_at?: string; }
 
-export interface ClinicSettings { clinicId: string; taxEnabled: boolean; groomingEnabled: boolean; boardingEnabled: boolean; }
+export const DEFAULT_CLINIC_PANELS = [
+  'dashboard', 'reports', 'pos', 'appointments', 'pets', 'customers',
+  'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming',
+  'inventory', 'suppliers', 'invoices', 'shift',
+] as const;
+
+export interface ClinicSettings {
+  clinicId: string;
+  taxEnabled: boolean;
+  groomingEnabled: boolean;
+  boardingEnabled: boolean;
+  enabledPanels: string[];
+}
 
 export type ItemCategory = string;
 
