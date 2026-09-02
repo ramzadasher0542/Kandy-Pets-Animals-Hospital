@@ -5,10 +5,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from './ui/Modal';
-import { Building2, Printer, Users, ShieldAlert, Save, Plus,
+import { Printer, Users, ShieldAlert, Save, Plus,
   Trash2, Database, Lock, CheckCircle2, User,
   FileText, Download, Upload, Layers, AlertTriangle, DownloadCloud, UploadCloud, Banknote } from 'lucide-react';
-import PhoneInput from './PhoneInput';
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase, purgeApplicationData } from '../lib/db';
 import { downloadJsonFile } from '../lib/download';
@@ -96,8 +95,9 @@ export default function SystemSettings({
 }: SettingsProps) {
 
   const isSuperAdmin = currentUser?.isSuperadmin === true;
+  const isTenantManager = !isSuperAdmin && ['owner', 'manager'].includes(currentUser?.role || '');
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates'>('profile');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('staff');
   const [localConfig, setLocalConfig] = useState<SystemConfig>(config);
   const [hasChanges, setHasChanges] = useState(false);
   
@@ -109,14 +109,12 @@ export default function SystemSettings({
   // signs out and an admin signs in while 'database' was active).
   useEffect(() => {
     if (!canViewSettingsTab(currentUser?.role, activeTab as SettingsTab, isSuperAdmin)) {
-      setActiveTab('profile');
+      setActiveTab('staff');
     }
   }, [currentUser, activeTab, isSuperAdmin]);
 
-  // ---- AUTH-4: admin-editable access matrix -------------------------------
-  // Root tier only (admin today, provider above it). Settings is already
-  // root-gated by isViewPermitted, but dummy_admin can also reach Settings —
-  // so gate explicitly.
+  // ---- AUTH-4: Super Admin access matrix -----------------------------------
+  // Tenant owners/managers never receive the global role or panel matrices.
   const canEditMatrix = isSuperAdmin;
   const effectiveRolesFor = (action: AuthAction): string[] =>
     (localConfig.actionPolicies?.[action]) ?? ACTION_POLICIES[action].allowedRoles;
@@ -217,6 +215,10 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
   };
 
   const saveSettings = () => {
+    if (!isSuperAdmin) {
+      showToast('Only the Super Admin can update global configuration.', 'error');
+      return;
+    }
     onChangeConfig(localConfig);
     setHasChanges(false);
     showToast('System configuration saved globally.', 'success');
@@ -494,7 +496,6 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
   };
 
   const TABS = [
-    { id: 'profile', label: 'Hospital Profile', icon: Building2 },
     { id: 'pos', label: 'Hardware & POS', icon: Printer },
     { id: 'inventory', label: 'Inventory & Stock', icon: Layers },
     { id: 'staff', label: 'Staff & Security', icon: Users },
@@ -502,13 +503,12 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
     { id: 'rates', label: 'Billing & Rates', icon: Banknote }
   ];
 
-  // AUTH-6: provider-only surfaces (db-level config) are filtered out of the nav
-  // entirely for anyone who isn't 'provider' — admin included, by design.
+  // Global configuration and recovery surfaces stay out of the tenant nav.
   const visibleTabs = TABS.filter(t => canViewSettingsTab(currentUser?.role, t.id as SettingsTab, isSuperAdmin));
 
-  // This component is a global control-plane surface, not a tenant settings
-  // page. Keep the guard here as well as in App.tsx for direct reuse/tests.
-  if (!isSuperAdmin) return null;
+  // Business identity and network entitlements belong to Super Admin. Tenant
+  // owners/managers get only local operations and staff administration.
+  if (!isSuperAdmin && !isTenantManager) return null;
 
   return (
     <div className="flex h-[calc(100vh-80px)] w-full bg-slate-50 overflow-hidden font-sans gap-6 p-6">
@@ -516,8 +516,8 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       {/* LEFT NAVIGATION PANE */}
       <aside className="w-64 shrink-0 flex flex-col gap-2">
         <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm mb-2">
-          <h2 className="text-lg font-black text-slate-800 tracking-tight">System Root</h2>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Enterprise Configuration</p>
+           <h2 className="text-lg font-black text-slate-800 tracking-tight">{isSuperAdmin ? 'System Root' : 'Clinic Operations'}</h2>
+           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{isSuperAdmin ? 'Enterprise Configuration' : 'Local staff and stock'}</p>
         </div>
         
         <nav className="flex-1 space-y-2">
@@ -558,60 +558,7 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-20">
           
-          {/* TAB 1: HOSPITAL PROFILE */}
-          {activeTab === 'profile' && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-500" /> Identity & Branding</h3>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Hospital Name</label>
-                    <input type="text" value={localConfig.hospitalName} onChange={e => updateConfig('hospitalName', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">System Name (App Title)</label>
-                    <input type="text" value={localConfig.appName} onChange={e => updateConfig('appName', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Hospital Address</label>
-                    <input type="text" value={localConfig.hospitalAddress} onChange={e => updateConfig('hospitalAddress', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Contact Phone</label>
-                    <PhoneInput value={localConfig.hospitalPhone} onChange={val => updateConfig('hospitalPhone', val)} />
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Public Email</label>
-                    <input type="email" value={localConfig.hospitalEmail} onChange={e => updateConfig('hospitalEmail', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                <h3 className="text-sm font-black text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2"><Printer className="w-4 h-4 text-indigo-500" /> POS & Invoice Defaults</h3>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Currency Symbol</label>
-                    <input type="text" value={localConfig.currencySymbol} onChange={e => updateConfig('currencySymbol', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Tax Rate (e.g. 0.08 for 8%)</label>
-                    <input type="number" step="0.01" value={localConfig.taxRate} onChange={e => updateConfig('taxRate', parseFloat(e.target.value))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Invoice Footer Message</label>
-                    <input type="text" value={localConfig.invoiceFooterMessage} onChange={e => updateConfig('invoiceFooterMessage', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Receipt Sub-Footer Message</label>
-                    <input type="text" value={localConfig.invoiceSubFooterMessage} onChange={e => updateConfig('invoiceSubFooterMessage', e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: HARDWARE & POS */}
+          {/* TAB: HARDWARE & POS */}
           {activeTab === 'pos' && (
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
@@ -654,35 +601,37 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
                 </button>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0">
-                <div className="mb-3">
-                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Lock className="w-4 h-4 text-sky-500" /> Session Security</h3>
-                  <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Automatic logout due to terminal inactivity</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 max-w-[200px]">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Idle Timeout (Minutes)</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      disabled={localConfig.idleLogoutMinutes === undefined}
-                      value={localConfig.idleLogoutMinutes || ''}
-                      onChange={e => updateConfig('idleLogoutMinutes', parseInt(e.target.value) || 15)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed" 
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 mt-4">
-                    <input 
-                      type="checkbox" 
-                      id="neverLogout"
-                      checked={localConfig.idleLogoutMinutes === undefined || localConfig.idleLogoutMinutes === 0}
-                      onChange={e => updateConfig('idleLogoutMinutes', e.target.checked ? undefined : 15)}
-                      className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
-                    />
-                    <label htmlFor="neverLogout" className="text-xs font-bold text-slate-700 cursor-pointer">Never (Stay logged in)</label>
-                  </div>
-                </div>
-              </div>
+               {isSuperAdmin && (
+                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+                   <div className="mb-3">
+                     <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Lock className="w-4 h-4 text-sky-500" /> Session Security</h3>
+                     <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Automatic logout due to terminal inactivity</p>
+                   </div>
+                   <div className="flex items-center gap-4">
+                     <div className="flex-1 max-w-[200px]">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Idle Timeout (Minutes)</label>
+                       <input
+                         type="number"
+                         min="1"
+                         disabled={localConfig.idleLogoutMinutes === undefined}
+                         value={localConfig.idleLogoutMinutes || ''}
+                         onChange={e => updateConfig('idleLogoutMinutes', parseInt(e.target.value) || 15)}
+                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                       />
+                     </div>
+                     <div className="flex items-center gap-2 mt-4">
+                       <input
+                         type="checkbox"
+                         id="neverLogout"
+                         checked={localConfig.idleLogoutMinutes === undefined || localConfig.idleLogoutMinutes === 0}
+                         onChange={e => updateConfig('idleLogoutMinutes', e.target.checked ? undefined : 15)}
+                         className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                       />
+                       <label htmlFor="neverLogout" className="text-xs font-bold text-slate-700 cursor-pointer">Never (Stay logged in)</label>
+                     </div>
+                   </div>
+                 </div>
+               )}
 
               {/* SECURE-1: Change Provider (root) Password — provider only. Reuses
                   the AUTH-4 change-password modal (pwTarget), enforcing min 12. */}
@@ -896,38 +845,40 @@ const isProvider = ROOT_ROLES.includes(role as any);
             </div>
           )}
 
-          {/* TAB: INVENTORY & STOCK — bulk stock update, visible to anyone who can
-              reach Settings (admin/provider). The dangerous backup/restore + erase
-              operations deliberately stay in the provider-only "Data & Operations"
-              tab; routine stock updates do not belong behind that gate. */}
-          {activeTab === 'inventory' && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div>
-                  <h3 className="text-sm font-black text-slate-800">Stock Entry Mode</h3>
-                  <p className="text-xs text-slate-500 mt-1">Control how incoming stock is recorded in the system.</p>
-                </div>
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={localConfig.setupModeActive || false}
-                    onChange={e => {
-                      const updated = { ...localConfig, setupModeActive: e.target.checked };
-                      setLocalConfig(updated);
-                      onChangeConfig(updated);
-                    }}
-                    className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 mt-0.5"
-                  />
-                  <div>
-                    <span className="text-sm font-bold text-slate-800">Opening Stock / Setup Mode</span>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      When enabled, receiving stock does not require a supplier and marks batches as
-                      <span className="font-bold text-amber-700"> opening stock</span> rather than purchases.
-                      Use this during initial clinic setup or full stock counts.
-                    </p>
-                  </div>
-                </label>
-              </div>
+           {/* TAB: INVENTORY & STOCK — bulk stock update, visible to anyone who can
+               reach Settings (admin/provider). The dangerous backup/restore + erase
+               operations deliberately stay in the provider-only "Data & Operations"
+               tab; routine stock updates do not belong behind that gate. */}
+           {activeTab === 'inventory' && (
+             <div className="space-y-6 animate-fade-in">
+               {isSuperAdmin && (
+                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                   <div>
+                     <h3 className="text-sm font-black text-slate-800">Stock Entry Mode</h3>
+                     <p className="text-xs text-slate-500 mt-1">Control how incoming stock is recorded in the system.</p>
+                   </div>
+                   <label className="flex items-start gap-3 cursor-pointer">
+                     <input
+                       type="checkbox"
+                       checked={localConfig.setupModeActive || false}
+                       onChange={e => {
+                         const updated = { ...localConfig, setupModeActive: e.target.checked };
+                         setLocalConfig(updated);
+                         onChangeConfig(updated);
+                       }}
+                       className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 mt-0.5"
+                     />
+                     <div>
+                       <span className="text-sm font-bold text-slate-800">Opening Stock / Setup Mode</span>
+                       <p className="text-xs text-slate-500 mt-0.5">
+                         When enabled, receiving stock does not require a supplier and marks batches as
+                         <span className="font-bold text-amber-700"> opening stock</span> rather than purchases.
+                         Use this during initial clinic setup or full stock counts.
+                       </p>
+                     </div>
+                   </label>
+                 </div>
+               )}
 
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
                 <div>
