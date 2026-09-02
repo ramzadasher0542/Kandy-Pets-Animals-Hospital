@@ -2,10 +2,10 @@
 
 ## Migration Status
 
-- Current phase: Phase 13 Tenant User Visibility and Secure Account Deletion implemented locally; production deployment pending
+- Current phase: Phase 13 Tenant User Visibility and Secure Account Deletion deployed and live-verified
 - Backup phase: skipped; code and SQL backups are already secured locally
 - Last completed phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements
-- Next pending step: Deploy and live-verify clinic-scoped user rosters, protected Super Admin handling, and Auth-backed tenant user deletion.
+- Next pending step: Complete the remaining controlled-beta gates after the live tenant roster and deletion smoke tests.
 
 ## Current Database Structure
 
@@ -115,7 +115,10 @@
 - Phase 13 implementation applied locally in `src/components/SuperAdminDashboard.tsx`: every expanded clinic loads a `clinic_id`-filtered roster with name, username, role, active status, and Auth-link status; Super Admin rows are visibly protected; legacy rows without an Auth link remain visible but cannot be deleted from this control.
 - Phase 13 secure endpoint added locally in `api/delete-user.ts`: same-origin POST input validation, bearer-session verification through the server-only service-role client, active Super Admin authorization, target `user_id` plus `clinic_id` ownership verification, Super Admin deletion protection, `auth.admin.deleteUser`, and clinic staff soft deletion (`active=false`, `is_deleted=true`).
 - Phase 13 deletion UX added locally in `src/components/SuperAdminDashboard.tsx`: the destructive action names the target username, requires explicit confirmation, removes the row optimistically, and restores it with an error if the server call fails.
+- Phase 13 release published directly to the authenticated GitHub `main` branch in `src/components/SuperAdminDashboard.tsx`, `api/delete-user.ts`, and `VHMS_STATE.md`; all three remote file contents were compared byte-for-byte with the local release files.
+- Phase 13 production smoke passed on 2026-09-02 at `https://kpah-aps.vercel.app/superadmin`: the Kandy clinic roster loaded five clinic-scoped users with name, username, role, active status, and Auth-link status; a disposable Owner account was created, appeared after roster refresh, required the confirmation dialog, was deleted through the server endpoint, and disappeared from the roster while the Super Admin session remained active. Existing accounts were not deleted.
+- Phase 13 endpoint boundary smoke passed: an unauthenticated POST to `/api/delete-user` returned HTTP 401 with `A valid Super Admin session is required.`; source verification confirms the `is_superadmin` target guard returns HTTP 403 and the endpoint validates both `user_id` and `clinic_id` before calling `auth.admin.deleteUser`.
 
 ## Next Action
 
-Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 12 revision until Phase 13 is live-verified. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, obtain explicit approval to remove or quarantine remaining synthetic QA rows, and keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
+Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 13 revision. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, obtain explicit approval to remove or quarantine remaining synthetic QA rows, and keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
