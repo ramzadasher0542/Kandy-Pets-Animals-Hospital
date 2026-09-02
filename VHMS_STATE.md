@@ -2,10 +2,10 @@
 
 ## Migration Status
 
-- Current phase: Phase 10 Auth Bootstrap and Super Admin Control Plane implemented; production database migration applied; code deployment pending
+- Current phase: Phase 10 Auth Bootstrap and Super Admin Control Plane implemented; production database migration applied; frontend deployed and smoke-verified
 - Backup phase: skipped; code and SQL backups are already secured locally
 - Last completed phase: Phase 10 Auth Bootstrap and Super Admin Control Plane
-- Next pending step: Deploy the session-gated frontend revision, then repeat administrator and restricted-role smoke tests against the deployed build.
+- Next pending step: Complete the remaining controlled-beta gates: independent recovery rehearsal, approved boarding rates, credential rotation, and synthetic-data quarantine approval.
 
 ## Current Database Structure
 
@@ -88,7 +88,10 @@
 - Phase 10 Super Admin control plane is implemented in `src/components/SuperAdminDashboard.tsx` and `src/components/SuperAdminLayout.tsx`: the existing dashboard loads all registered clinics and their `clinic_settings`, and instantly persists Tax, Grooming Salon, and Boarding/Hotel toggles with optimistic rollback on failure. Tenant `SystemSettings.tsx` was not rebuilt or duplicated.
 - Phase 10 session race correction applied in `src/main.tsx` and `src/App.tsx`: `main.tsx` awaits `getAuthSession()` before calling `createRoot`; `App` consumes the resolved `Session`, maps it through `fetchStaffForSession`, and no longer performs a competing startup `getAuthSession()` call. Later `SIGNED_IN`, `SIGNED_OUT`, `TOKEN_REFRESHED`, and `USER_UPDATED` events remain owned by the single App auth state machine. The development `__KP_TEST_AUTH__` fixture remains supported without waiting for Supabase.
 - Phase 10 source review completed without Node execution, per the worker directive. No `npm`, lint, `tsc`, or build check was run. The production SQL preflight, migration execution, read-only control-plane test, and pre-deployment live admin/cashier smoke checks passed.
+- Phase 10 release commit was created locally as `db9e9b0` (`fix: stabilize auth bootstrap and superadmin control plane`). Direct CLI push was unavailable because this worker had no GitHub credential or `gh` executable; the same intended files were committed to the authenticated `main` branch through GitHub's web flow, with temporary transport files removed and exact case-sensitive paths verified.
+- Phase 10 production deployment completed on Vercel project `kpah-aps`: deployment `kpah-l9sgsnsh2-asher-sajahan-s-projects.vercel.app` is `Ready`, source `main`, deployment revision `4850781` (`chore: remove verification transport file`), and production domain remains `https://kpah-aps.vercel.app/`.
+- Phase 10 post-deployment smoke passed by browser inspection: the deployed app first showed `CeylonPets Vault / Hydrating Clinical Matrices...`, then restored the Super Admin control plane; Tax, Grooming Salon, and Boarding / Hotel toggles were present and enabled without changing production values. A fresh cashier session restored POS with `CLOUD SYNC ACTIVE`, and Settings was absent.
 
 ## Next Action
 
-Deploy the committed Phase 10 frontend revision to Vercel, verify the new root session gate with a fresh administrator login, verify cashier access remains tenant-scoped with no Settings surface, and preserve strict `clinic_id` filtering for all database queries. Keep the beta recovery, boarding-rate, password-rotation, and synthetic-data warnings from `GO_LIVE_PROGRESS.md` active.
+Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 10 revision. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, and obtain explicit approval to remove or quarantine remaining synthetic QA rows. Keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
