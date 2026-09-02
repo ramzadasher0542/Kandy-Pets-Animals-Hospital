@@ -2,30 +2,30 @@
 
 ## Migration Status
 
-- Current phase: Phase 10 Auth Bootstrap and Super Admin Control Plane implemented; production database migration applied; frontend deployed and smoke-verified
+- Current phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements implemented; production database migration applied; frontend deployed and smoke-verified
 - Backup phase: skipped; code and SQL backups are already secured locally
-- Last completed phase: Phase 10 Auth Bootstrap and Super Admin Control Plane
-- Next pending step: Complete the remaining controlled-beta gates: independent recovery rehearsal, approved boarding rates, credential rotation, and synthetic-data quarantine approval.
+- Last completed phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements
+- Next pending step: Complete the remaining controlled-beta gates: independent recovery rehearsal, approved boarding rates, credential rotation, synthetic-data quarantine approval, and the owner/manager Settings positive-path smoke test.
 
 ## Current Database Structure
 
 - Supabase project: Kandy-Pets-Animals-Hospital
 - Scope: `public` application schema
 - Tables: 29
-- Columns: 484 total, including 447 original columns, 27 new nullable `clinic_id` columns, 5 `public.clinics` columns, `public.users.is_superadmin`, and 4 `public.clinic_settings` columns
+- Columns: 485 total, including 447 original columns, 27 new nullable `clinic_id` columns, 5 `public.clinics` columns, `public.users.is_superadmin`, and 5 `public.clinic_settings` columns
 - Constraints: 73 total, including 29 primary keys, 36 foreign keys, 6 checks, and 2 unique constraints
 - RLS policies: 109 total in the last catalogued production snapshot; the 2026-09-02 control-plane migration replaced all policies on `system_config`, `clinics`, and `users` with explicit read and Super Admin-only write boundaries
 - RLS status: enabled on all 29 public tables; force RLS is disabled on all 29
 - Clinic isolation: authenticated access to tenant-owned application data is intersected with `clinic_id = public.current_clinic_id() OR public.is_current_user_superadmin()`; the control-plane tables use dedicated Super Admin write policies and clinic-or-Super-Admin read policies
 - Security helpers: `public.current_clinic_id()` and `public.is_current_user_superadmin()` exist as stable security-definer functions with execute granted to `authenticated`
-- Control-plane RLS: `system_config`, `users`, and `clinics` legacy tenant-write policies were replaced by Super Admin-only insert/update policies; active staff retain only the reads required for application operation. `clinic_settings` remains readable by the assigned clinic or Super Admin and writable only by Super Admin.
+- Control-plane RLS: `system_config`, `users`, and `clinics` legacy tenant-write policies were replaced by Super Admin-only insert/update policies; `users` also has owner/manager insert/update policies constrained to the actor's clinic and non-superadmin records. Active staff retain only the reads required for application operation. `clinic_settings` remains readable by the assigned clinic or Super Admin and writable only by Super Admin.
 - Control-plane migration: `supabase/migrations/20260902_superadmin_control_plane.sql` was applied to production on 2026-09-02 after a live schema preflight found no missing required columns or functions. The migration returned success with 0 rows and changed policies/grants only; no application rows were deleted.
 - Control-plane verification: `tests/sql/step33_superadmin_control_plane.test.sql` was executed in the production SQL Editor and returned success with 0 rows, confirming the helper, Super Admin-only writes, closed destructive grants, and removal of legacy tenant write policies.
-- Frontend auth state: root React `currentUser` now includes mapped `clinicId` and `isSuperadmin`; values are held in memory only and are not persisted to browser storage
+- Frontend auth state: root React `currentUser` now includes mapped `clinicId`, `isSuperadmin`, and clinic-local `clinicSettings` with panel entitlements; values are held in memory only and are not persisted to browser storage
 - Sequences: none in `public`
 - Existing `clinic_id` columns: present on all 27 original public application tables; all are nullable and reference `public.clinics(id)`
 - Existing `public.clinics` table: present with `id uuid primary key default gen_random_uuid()`, `name text not null`, nullable `address text`, nullable `phone text`, and `created_at timestamptz not null default now()`
-- Existing `public.clinic_settings` table: present with `clinic_id uuid primary key` referencing `public.clinics(id)` with cascade delete; `tax_enabled`, `grooming_enabled`, and `boarding_enabled` are non-null booleans defaulting to `true`
+- Existing `public.clinic_settings` table: present with `clinic_id uuid primary key` referencing `public.clinics(id)` with cascade delete; `tax_enabled`, `grooming_enabled`, and `boarding_enabled` are non-null booleans defaulting to `true`; `enabled_panels jsonb` is non-null with the 15-panel default
 - Existing data backfill: one `Kandy Pets Animals Hospital` clinic was inserted; three users were assigned to it; `ramzadasher0542@gmail.com` was marked as the single active superadmin and intentionally remains clinic-less
 - Recovery reset function: `public.purge_application_data_auth()` is `SECURITY DEFINER`, executable by `authenticated` users only, provider-only, and deletes only rows with the assigned clinic_id; `public.users` and `public.clinics` rows are preserved.
 - Recovery reset grants: `authenticated` can select `public.users(clinic_id, is_superadmin)` and `public.clinics`; production `/superadmin` auth hydration was verified after these grants.
@@ -47,6 +47,7 @@
 9. Phase 8: Synthetic Data Quarantine. Remove synthetic clinical, inventory, financial, operational, and audit records before client handoff.
 10. Phase 9: Performance Indexes. Add targeted indexes for clinic-scoped access and common operational queries.
 11. Phase 10: Auth Bootstrap and Super Admin Control Plane. Resolve the Supabase session before mounting React, eliminate duplicate startup session ownership, and enforce global configuration/tenant registry writes at the database boundary.
+12. Phase 11: Tenant Staff RBAC and Clinic Entitlements. Keep tenant staff writes clinic-scoped, move business identity and product entitlements into the Super Admin control plane, and gate tenant navigation from persisted clinic settings.
 
 ## Change Log
 
@@ -87,10 +88,15 @@
 - Phase 10 frontend authorization hardening applied locally in `src/App.tsx`, `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/requireAuth.ts`, and `src/components/SystemSettings.tsx`: the browser gate is Super Admin-only, global configuration writes require the immutable Super Admin identity, clinic-scoped writes continue to use the in-memory authenticated clinic, and stale auth/hydration requests cannot restore a signed-out session.
 - Phase 10 Super Admin control plane is implemented in `src/components/SuperAdminDashboard.tsx` and `src/components/SuperAdminLayout.tsx`: the existing dashboard loads all registered clinics and their `clinic_settings`, and instantly persists Tax, Grooming Salon, and Boarding/Hotel toggles with optimistic rollback on failure. Tenant `SystemSettings.tsx` was not rebuilt or duplicated.
 - Phase 10 session race correction applied in `src/main.tsx` and `src/App.tsx`: `main.tsx` awaits `getAuthSession()` before calling `createRoot`; `App` consumes the resolved `Session`, maps it through `fetchStaffForSession`, and no longer performs a competing startup `getAuthSession()` call. Later `SIGNED_IN`, `SIGNED_OUT`, `TOKEN_REFRESHED`, and `USER_UPDATED` events remain owned by the single App auth state machine. The development `__KP_TEST_AUTH__` fixture remains supported without waiting for Supabase.
-- Phase 10 source review completed without Node execution, per the worker directive. No `npm`, lint, `tsc`, or build check was run. The production SQL preflight, migration execution, read-only control-plane test, and pre-deployment live admin/cashier smoke checks passed.
+- Phase 10 source review completed without Node execution, per the worker directive. Automated `npx tsc --noEmit` remained unavailable because this worker has no Node, npm, or npx executable. The production SQL preflight, migration execution, read-only control-plane test, and pre-deployment live admin/cashier smoke checks passed.
 - Phase 10 release commit was created locally as `db9e9b0` (`fix: stabilize auth bootstrap and superadmin control plane`). Direct CLI push was unavailable because this worker had no GitHub credential or `gh` executable; the same intended files were committed to the authenticated `main` branch through GitHub's web flow, with temporary transport files removed and exact case-sensitive paths verified.
 - Phase 10 production deployment completed on Vercel project `kpah-aps`: the implementation revision `4850781` (`chore: remove verification transport file`) deployed successfully, and the subsequent state/documentation cleanup revisions on `main` also deployed successfully with status `Ready`; production domain remains `https://kpah-aps.vercel.app/`.
 - Phase 10 post-deployment smoke passed by browser inspection: the deployed app first showed `CeylonPets Vault / Hydrating Clinical Matrices...`, then restored the Super Admin control plane; Tax, Grooming Salon, and Boarding / Hotel toggles were present and enabled without changing production values. A fresh cashier session restored POS with `CLOUD SYNC ACTIVE`, and Settings was absent.
+- Phase 11 migration `supabase/migrations/20260902183121_tenant_users_rbac_and_clinic_entitlements.sql` was applied in the authenticated production SQL Editor on 2026-09-02; it returned success with 0 rows and changed the `clinic_settings.enabled_panels` schema plus the four intended `users` write policies without deleting application rows.
+- Phase 11 verification returned 6 rows: `enabled_panels` is non-null JSONB with the 15-panel default; the Kandy clinic has all 15 panels enabled; and `users_superadmin_insert`, `users_superadmin_update`, `users_tenant_insert`, and `users_tenant_update` have the expected policies.
+- Phase 11 frontend refactor was committed locally as `255a32b`; because direct GitHub push credentials were unavailable, equivalent authenticated GitHub web commits landed on `main` as `2984c47`, `fc7705b`, `5472774`, and `e79d0e3`.
+- Phase 11 production deployment is `Ready` on Vercel commit `e79d0e3` (`db: add tenant entitlements and staff RLS`), with deployment URL `https://kpah-7t6hexeoj-asher-sajahan-s-projects.vercel.app/` and production domain `https://kpah-aps.vercel.app/`.
+- Phase 11 post-deployment smoke passed by browser inspection: Super Admin loaded one clinic with Business Information, 3 feature flags, and 15/15 VHMS panels; the supplied cashier session loaded POS with `CLOUD SYNC ACTIVE`; and direct `/settings` access for cashier rendered POS without exposing Settings. The positive owner/manager Settings path remains untested because no such live test credentials were provided.
 
 ## Next Action
 
