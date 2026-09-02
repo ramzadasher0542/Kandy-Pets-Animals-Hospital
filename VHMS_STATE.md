@@ -2,10 +2,10 @@
 
 ## Migration Status
 
-- Current phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements implemented; production database migration applied; frontend deployed and smoke-verified
+- Current phase: Phase 12 Secure Tenant Owner Provisioning and Super Admin UI Optimization deployed and live-verified
 - Backup phase: skipped; code and SQL backups are already secured locally
 - Last completed phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements
-- Next pending step: Complete the remaining controlled-beta gates: independent recovery rehearsal, approved boarding rates, credential rotation, synthetic-data quarantine approval, and the owner/manager Settings positive-path smoke test.
+- Next pending step: Complete the remaining controlled-beta gates after the live Owner provisioning and tenant Settings smoke tests.
 
 ## Current Database Structure
 
@@ -48,6 +48,7 @@
 10. Phase 9: Performance Indexes. Add targeted indexes for clinic-scoped access and common operational queries.
 11. Phase 10: Auth Bootstrap and Super Admin Control Plane. Resolve the Supabase session before mounting React, eliminate duplicate startup session ownership, and enforce global configuration/tenant registry writes at the database boundary.
 12. Phase 11: Tenant Staff RBAC and Clinic Entitlements. Keep tenant staff writes clinic-scoped, move business identity and product entitlements into the Super Admin control plane, and gate tenant navigation from persisted clinic settings.
+13. Phase 12: Secure Tenant Owner Provisioning and Super Admin UI Optimization. Reduce panel-entitlement height with responsive grid layout and provision tenant Owner Auth/staff identities through an authenticated serverless function without replacing the Super Admin session.
 
 ## Change Log
 
@@ -99,7 +100,16 @@
 - Phase 11 post-deployment smoke passed by browser inspection: Super Admin loaded one clinic with Business Information, 3 feature flags, and 15/15 VHMS panels; the supplied cashier session loaded POS with `CLOUD SYNC ACTIVE`; and direct `/settings` access for cashier rendered POS without exposing Settings. The positive owner/manager Settings path remains untested because no such live test credentials were provided.
 - Phase 11 follow-up documentation commit `ffe5bbe` also deployed with Vercel status `Ready` at `https://kpah-hethw4wj3-asher-sajahan-s-projects.vercel.app/`; it changed documentation only.
 - Known hosting gap, not fixed in Phase 11: a hard browser reload of `/settings` returns Vercel `404: NOT_FOUND`; in-app navigation from `/` remains functional. The existing `vercel.json` contains security headers but no SPA route rewrite.
+- Phase 12 UI applied locally in `src/components/SuperAdminDashboard.tsx`: the tenant panel-entitlement list now uses `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` with compact cells, and each tenant card exposes a Super Admin-only Owner provisioning action.
+- Phase 12 provisioning scaffold added locally in `api/provision-owner.ts`: validates same-origin POST input, verifies the bearer token and active Super Admin row with the server-only Supabase service-role client, checks the clinic, calls `auth.admin.createUser`, inserts the linked `public.users` owner row, and deletes the Auth user if staff-row insertion fails.
+- Phase 12 owner modal added locally in `src/components/SuperAdminDashboard.tsx`: sends the current access token to `/api/provision-owner`, keeps the Super Admin session intact, enforces a 12-character minimum password in the UI, and clears the password state after completion or cancellation.
+- Phase 12 Settings-route guard fix applied in `src/App.tsx`: clinic panel entitlements no longer treat the separately authorized `settings` view as a disabled panel, preserving Owner/Manager Settings access.
+- Phase 12 Vercel configuration completed: `SUPABASE_SERVICE_ROLE_KEY` was added to project `kpah-aps` as a Production Secret environment variable; its value was not written to the repository or workspace.
+- Phase 12 source published to `main` through authenticated GitHub commits `6d65422`, `a2f2cb1`, `b8f630e`, and `b22c64e` for the Super Admin UI, provisioning endpoint, SPA rewrite, and Settings-route guard.
+- Phase 12 production deployment is `Ready` on Vercel at `https://kpah-5ofwx7997-asher-sajahan-s-projects.vercel.app/`, serving the production domain `https://kpah-aps.vercel.app/`.
+- Phase 12 live provisioning smoke passed on 2026-09-02: Super Admin created the active tenant Owner account `owner@kandypets.example` without losing the Super Admin session; no password was persisted in project documentation.
+- Phase 12 live Owner RBAC smoke passed: Owner sign-in showed `CLOUD SYNC ACTIVE`; Settings displayed `Access Control & Registry` and local Inventory/Staff surfaces, while global Business Identity and provider database/backup surfaces were absent. A hard reload at `/settings` returned the same authorized Owner Settings view.
 
 ## Next Action
 
-Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 11 revision. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, obtain explicit approval to remove or quarantine remaining synthetic QA rows, complete the owner/manager Settings positive-path smoke test, and add a deliberate SPA rewrite for hard-reloaded client routes. Keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
+Keep strict `clinic_id` filtering for all database queries and preserve the deployed Phase 12 revision. Before real clinic use, complete the independent backup recovery rehearsal, configure approved boarding rates, rotate any temporary/shared administrator credential, obtain explicit approval to remove or quarantine remaining synthetic QA rows, and keep the beta warnings from `GO_LIVE_PROGRESS.md` active.
