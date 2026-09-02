@@ -1641,7 +1641,9 @@ export async function upsertSystemConfig(config: SystemConfig): Promise<void> {
     idle_logout_minutes: config.idleLogoutMinutes,
     setup_mode_active: config.setupModeActive,
   };
-  const { error } = await supabase.from('system_config').upsert(withCurrentClinicId(payload));
+  // system_config is a global control-plane row. Its RLS policy, not the
+  // tenant write helper, decides whether the current identity may mutate it.
+  const { error } = await supabase.from('system_config').upsert(payload);
   if (error) throw error;
 }
 
