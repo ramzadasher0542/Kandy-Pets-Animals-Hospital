@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronUp, Home,
   LayoutGrid, LoaderCircle, MapPin, Phone, Plus, ReceiptText, RefreshCw,
-  Save, Scissors, ShieldCheck
+  Save, Scissors, ShieldCheck, UserPlus
 } from 'lucide-react';
 import { Clinic, ClinicSettings, DEFAULT_CLINIC_PANELS, User } from '../types';
 import {
   createClinic, fetchAllClinicSettings, fetchClinics, updateClinic, upsertClinicSettings
 } from '../lib/db';
 import { PANEL_VIEWS } from '../lib/requireAuth';
+import { supabase } from '../lib/supabase';
 import { showToast } from './Toast';
 
 interface SuperAdminDashboardProps { currentUser: User; }
@@ -37,6 +38,11 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
   const [expandedClinicId, setExpandedClinicId] = useState<string | null>(null);
   const [clinicDrafts, setClinicDrafts] = useState<Record<string, Pick<Clinic, 'name' | 'address' | 'phone'>>>({});
   const [newClinic, setNewClinic] = useState({ name: '', address: '', phone: '' });
+  const [ownerProvisionTarget, setOwnerProvisionTarget] = useState<Pick<Clinic, 'id' | 'name'> | null>(null);
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [ownerProvisionError, setOwnerProvisionError] = useState<string | null>(null);
+  const [isProvisioningOwner, setIsProvisioningOwner] = useState(false);
 
   const refresh = async () => {
     setIsLoading(true);
@@ -131,6 +137,49 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
     }
   };
 
+  const closeOwnerProvision = () => {
+    setOwnerProvisionTarget(null);
+    setOwnerEmail('');
+    setOwnerPassword('');
+    setOwnerProvisionError(null);
+  };
+
+  const handleProvisionOwner = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!ownerProvisionTarget) return;
+    setIsProvisioningOwner(true);
+    setOwnerProvisionError(null);
+    try {
+      if (!supabase) throw new Error('Cloud authentication is unavailable.');
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error('The Super Admin session has expired. Sign in again.');
+
+      const response = await fetch('/api/provision-owner', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          email: ownerEmail.trim(),
+          password: ownerPassword,
+          clinic_id: ownerProvisionTarget.id,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || 'Owner account could not be created.');
+
+      showToast(`Owner account created for ${ownerEmail.trim()}.`, 'success');
+      closeOwnerProvision();
+    } catch (err: any) {
+      setOwnerProvisionError(err?.message || 'Owner account could not be created.');
+    } finally {
+      setIsProvisioningOwner(false);
+    }
+  };
+
   if (!currentUser.isSuperadmin) return null;
 
   return (
@@ -194,22 +243,36 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
                const isExpanded = expandedClinicId === clinic.id;
                const clinicDraft = clinicDrafts[clinic.id] || { name: clinic.name, address: clinic.address || '', phone: clinic.phone || '' };
                return (
-                 <article key={clinic.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                   <button
-                     type="button"
-                     onClick={() => setExpandedClinicId(current => current === clinic.id ? null : clinic.id)}
-                     aria-expanded={isExpanded}
-                     className="w-full p-5 sm:p-6 flex items-start justify-between gap-4 text-left border-b border-slate-100 hover:bg-slate-50 transition-colors"
-                   >
-                     <span className="flex items-start gap-3 min-w-0">
-                       <span className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Building2 className="w-5 h-5" /></span>
-                       <span className="min-w-0"><span className="block text-lg font-black text-slate-900 truncate">{clinic.name}</span><span className="block mt-1 text-xs font-medium text-slate-500 truncate">{clinic.address || 'Address not configured'}{clinic.phone ? ` · ${clinic.phone}` : ''}</span></span>
-                     </span>
-                     <span className="shrink-0 flex items-center gap-2">
-                       <span className="hidden sm:inline rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">Tenant</span>
-                       {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                     </span>
-                   </button>
+                  <article key={clinic.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-stretch border-b border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedClinicId(current => current === clinic.id ? null : clinic.id)}
+                        aria-expanded={isExpanded}
+                        className="min-w-0 flex-1 p-5 sm:p-6 flex items-start justify-between gap-4 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="flex items-start gap-3 min-w-0">
+                          <span className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><Building2 className="w-5 h-5" /></span>
+                          <span className="min-w-0"><span className="block text-lg font-black text-slate-900 truncate">{clinic.name}</span><span className="block mt-1 text-xs font-medium text-slate-500 truncate">{clinic.address || 'Address not configured'}{clinic.phone ? ` · ${clinic.phone}` : ''}</span></span>
+                        </span>
+                        <span className="shrink-0 flex items-center gap-2">
+                          <span className="hidden sm:inline rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">Tenant</span>
+                          {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOwnerProvisionTarget({ id: clinic.id, name: clinic.name });
+                          setOwnerProvisionError(null);
+                        }}
+                        className="shrink-0 px-3 sm:px-4 border-l border-slate-100 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        aria-label={`Provision owner for ${clinic.name}`}
+                      >
+                        <UserPlus className="w-4 h-4 mx-auto mb-1" />
+                        <span className="hidden sm:block">Owner</span>
+                      </button>
+                    </div>
                    {isExpanded && (
                      <div className="p-5 sm:p-6 space-y-7">
                        <form onSubmit={event => void handleClinicInfoSave(clinic.id, event)} className="space-y-4">
@@ -251,17 +314,17 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
                            </div>
                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600">{clinicSettings.enabledPanels.length}/{PANEL_VIEWS.length} enabled</span>
                          </div>
-                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                           {PANEL_VIEWS.map(panel => {
-                             const enabled = clinicSettings.enabledPanels.includes(panel.id);
-                             return (
-                               <label key={panel.id} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-3 cursor-pointer transition-colors ${enabled ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
-                                 <span className="text-xs font-black text-slate-700">{panel.label}</span>
-                                 <input type="checkbox" data-testid={`entitlement-${panel.id}-${clinic.id}`} checked={enabled} disabled={isBusy} onChange={() => void handlePanelToggle(clinic.id, panel.id)} className="h-4 w-4 rounded accent-emerald-600" />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {PANEL_VIEWS.map(panel => {
+                              const enabled = clinicSettings.enabledPanels.includes(panel.id);
+                              return (
+                               <label key={panel.id} className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors ${enabled ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                                 <span className="truncate text-[11px] font-black text-slate-700">{panel.label}</span>
+                                 <input type="checkbox" data-testid={`entitlement-${panel.id}-${clinic.id}`} checked={enabled} disabled={isBusy} onChange={() => void handlePanelToggle(clinic.id, panel.id)} className="h-4 w-4 shrink-0 rounded accent-emerald-600" />
                                </label>
-                             );
-                           })}
-                         </div>
+                              );
+                            })}
+                          </div>
                        </section>
 
                        <div className="pt-1 border-t border-slate-100 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Changes are protected by the Super Admin database policy</div>
@@ -271,6 +334,32 @@ export default function SuperAdminDashboard({ currentUser }: SuperAdminDashboard
                );
              })}
           </section>
+         )}
+        {ownerProvisionTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
+            <form onSubmit={handleProvisionOwner} role="dialog" aria-modal="true" aria-labelledby="owner-provision-title" className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600">Tenant access</p>
+                  <h2 id="owner-provision-title" className="mt-1 text-xl font-black text-slate-950">Provision clinic owner</h2>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">Create an Auth login for {ownerProvisionTarget.name}. Your Super Admin session will remain active.</p>
+                </div>
+                <button type="button" onClick={closeOwnerProvision} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-700">Close</button>
+              </div>
+              <div className="mt-6 space-y-4">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Owner email<input required type="email" autoComplete="off" value={ownerEmail} onChange={event => setOwnerEmail(event.target.value)} placeholder="owner@clinic.example" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" /></label>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Temporary password<input required minLength={12} type="password" autoComplete="new-password" value={ownerPassword} onChange={event => setOwnerPassword(event.target.value)} placeholder="At least 12 characters" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" /></label>
+                {ownerProvisionError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700">{ownerProvisionError}</p>}
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={closeOwnerProvision} className="rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100">Cancel</button>
+                <button type="submit" disabled={isProvisioningOwner} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700 disabled:opacity-60">
+                  {isProvisioningOwner ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                  {isProvisioningOwner ? 'Creating...' : 'Create owner'}
+                </button>
+              </div>
+            </form>
+          </div>
         )}
       </div>
     </div>
