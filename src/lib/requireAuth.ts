@@ -128,7 +128,7 @@ export function authorizedRolesFor(action: AuthAction): string[] {
 // permission someone can be granted. So these are constants, not config —
 // otherwise an admin could edit the matrix to hand themselves vendor surfaces.
 
-export const ROOT_ROLES = ['admin', 'provider'] as const;
+export const ROOT_ROLES = ['provider'] as const;
 
 export type SettingsTab = 'profile' | 'pos' | 'inventory' | 'staff' | 'database' | 'rates';
 
@@ -197,6 +197,15 @@ export const PANEL_VIEWS: PanelDef[] = [
   { id: 'invoices',     label: 'Invoices' },
   { id: 'shift',        label: 'Shift & Drawer' },
 ];
+
+/** Default employee floor. Tenant owners may override this per employee. */
+export const DEFAULT_PANEL_PERMISSIONS: Record<string, string[]> = {
+  cashier: ['pos', 'appointments', 'pets', 'customers'],
+  veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
+  manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'boarding', 'grooming', 'shift'],
+  groomer: ['grooming'],
+  admin: ['dashboard', 'reports', 'pos', 'appointments', 'examinations', 'inventory', 'suppliers', 'boarding', 'grooming', 'shift'],
+};
 
 // ---------------------------------------------------------------------------
 // Audit
