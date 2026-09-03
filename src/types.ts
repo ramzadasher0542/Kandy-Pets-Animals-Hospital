@@ -9,7 +9,7 @@
 // never issuable from any UI — only the onboarding script (AUTH-7) may mint one.
 export type UserRole = 'provider' | 'admin' | 'veterinarian' | 'cashier' | 'manager' | 'owner' | 'dummy_admin' | 'groomer';
 
-export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; clinicId?: string | null; isSuperadmin?: boolean; clinicSettings?: ClinicSettings | null; }
+export interface User { id: string; name: string; username: string; role: UserRole; avatarColor: string; active?: boolean; clinicId?: string | null; isSuperadmin?: boolean; clinicSettings?: ClinicSettings | null; panelPermissions?: string[] | null; }
 
 export interface Clinic { id: string; name: string; address?: string | null; phone?: string | null; created_at?: string; }
 
