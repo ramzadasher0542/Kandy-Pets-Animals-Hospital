@@ -80,7 +80,7 @@ export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, Pane
 
 import { stampRecord } from './lib/recordMeta';
 import { recordFailedAttempt, isLockedOut, resetAttempts } from './lib/credentials';
-import { requireAuth, setPolicyOverrides, ROOT_ROLES, canViewSettingsTab } from './lib/requireAuth';
+import { requireAuth, setPolicyOverrides, ROOT_ROLES, canViewSettingsTab, DEFAULT_PANEL_PERMISSIONS } from './lib/requireAuth';
 
 import {
   Calculator, LayoutDashboard, Calendar, PawPrint, Users, Syringe,
@@ -159,6 +159,7 @@ import {
   fetchActiveShiftDetails,
    fetchUsers,
    upsertUser,
+   updateUserPanelPermissions,
    deleteUser,
    fetchSystemConfig,
    fetchStaffProfiles,
@@ -1329,7 +1330,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
     return false;
   };
 
-  const isViewPermitted = (viewName: string, user: any): boolean => {
+   const isViewPermitted = (viewName: string, user: any): boolean => {
     if (!user) return false;
     // Network entitlements are evaluated before role permissions and root-role
     // shortcuts. A tenant cannot bypass a Super Admin product decision by
@@ -1341,42 +1342,21 @@ function App({ initialSession, initialAuthError }: AppProps) {
     // Staff operations are deferred from the active beta release. Keep the
     // underlying records and handlers intact without exposing this view.
     if (viewName === 'staff') return false;
-    // Executive reporting and system configuration are never staff-floor
-    // surfaces, even if a persisted panel matrix was edited incorrectly.
-    if (viewName === 'reports' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
     if (viewName === 'settings') {
       return user.isSuperadmin === true || canViewSettingsTab(user.role, 'staff', false);
     }
-    if (viewName === 'shift' && ['cashier', 'veterinarian', 'groomer'].includes(user.role)) return false;
-    // Application roots can open every application panel. Provider-only
-    // settings surfaces are checked separately by SystemSettings.
+    // Clinic owners receive every panel enabled for their tenant. Employee
+    // access is an owner-managed per-user override below.
+    if (user.role === 'owner') return true;
+    // Provider-only settings surfaces are checked separately by SystemSettings.
     if (ROOT_ROLES.includes(user.role)) return true;
     if (user.role === 'dummy_admin') return viewName === 'settings';
     if (user.role === 'pet_parent') return viewName === 'portal';
     if (viewName === 'settings') return false;
-    const checkedView = viewName;
-    // NOTE: this literal is only a fallback — systemConfig.rolePermissions is
-    // always populated, so it normally wins. Both must stay in sync; a role
-    // missing from EITHER falls through to `|| []` (= zero views).
-    const defaultPermissions: Record<string, string[]> = {
-      cashier: ['pos', 'appointments', 'pets', 'customers'],
-      veterinarian: ['dashboard', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming'],
-      manager: ['dashboard', 'pos', 'appointments', 'examinations', 'inventory', 'boarding', 'grooming', 'shift'],
-      groomer: ['grooming'],
-      admin: ['dashboard', 'reports', 'pos', 'appointments', 'examinations', 'inventory', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-      owner: ['dashboard', 'reports', 'pos', 'appointments', 'inventory', 'invoices', 'reminders', 'portal', 'boarding', 'grooming', 'shift'],
-       provider: ['dashboard', 'reports', 'pos', 'appointments', 'pets', 'customers', 'vaccinations', 'examinations', 'laboratory', 'boarding', 'grooming', 'inventory', 'invoices', 'shift', 'reminders', 'portal']
-    };
-    // HOTFIX-1: the old `as 'cashier'|'veterinarian'|'admin'|'owner'` cast lied to
-    // TypeScript — it is why the missing 'manager' key compiled cleanly instead of
-    // erroring. Indexing a Record<string, string[]> keeps this honest.
-    const rolePerms: Record<string, string[]> = (systemConfig.rolePermissions as any) || defaultPermissions;
-    const permissions = rolePerms[user.role] || defaultPermissions[user.role] || [];
-    if (checkedView === 'portal') return true;
-    // Dashboard is an operational surface for veterinarians even when an older
-    // persisted permission matrix omitted it.
-    if (user.role === 'veterinarian' && checkedView === 'dashboard') return true;
-    return permissions.includes(checkedView);
+    const permissions = Array.isArray(user.panelPermissions)
+      ? user.panelPermissions
+      : DEFAULT_PANEL_PERMISSIONS[user.role] || [];
+    return permissions.includes(viewName);
   };
 
   const getDefaultViewForUser = (user: any): any => {
@@ -1544,8 +1524,8 @@ function App({ initialSession, initialAuthError }: AppProps) {
       case 'settings': {
          const safeSystemConfig = systemConfig;
         return (
-          <SystemSettings
-            config={safeSystemConfig}
+           <SystemSettings
+             config={safeSystemConfig}
              onChangeConfig={async (config) => {
                if (!currentUser?.isSuperadmin) {
                  showToast('Only the Super Admin can update global configuration.', 'error');
@@ -1558,7 +1538,12 @@ function App({ initialSession, initialAuthError }: AppProps) {
                setSystemConfig(merged);
             }}
              users={users}
-            onRefreshUsers={async () => { setUsers(await fetchUsers()); }}
+             clinicSettings={clinicSettings}
+             onSaveEmployeeAccess={async (userId, permissions) => {
+               await updateUserPanelPermissions(userId, permissions);
+               setUsers(await fetchUsers());
+             }}
+             onRefreshUsers={async () => { setUsers(await fetchUsers()); }}
             onAddUser={async (user) => {
                // Staff metadata is stored in Supabase. Passwords belong exclusively
                // to Supabase Auth and are never written to public.users.
