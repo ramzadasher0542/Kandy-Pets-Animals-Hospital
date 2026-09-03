@@ -11,8 +11,8 @@ import { Printer, Users, ShieldAlert, Save, Plus,
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase, purgeApplicationData } from '../lib/db';
 import { downloadJsonFile } from '../lib/download';
-import { ItemCategory, InventoryItem } from '../types';
-import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, ALL_PANEL_ROLES, PANEL_VIEWS } from '../lib/requireAuth';
+import { ItemCategory, InventoryItem, ClinicSettings } from '../types';
+import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, PANEL_VIEWS, DEFAULT_PANEL_PERMISSIONS } from '../lib/requireAuth';
 import { parseWholeRupees } from '../utils/currency';
 import { formatDisplayDate } from '../utils/time';
 const formatClinicISODate = formatDisplayDate;
@@ -77,6 +77,8 @@ interface SettingsProps {
   onRefreshUsers: () => Promise<void>;
   onAddUser: (user: any) => Promise<void>;
   onRemoveUser: (id: string) => Promise<void>;
+  clinicSettings?: ClinicSettings | null;
+  onSaveEmployeeAccess?: (userId: string, panelPermissions: string[] | null) => Promise<void>;
   inventory?: any[];
   invoices?: any[];
   currentUser: any;
@@ -90,7 +92,7 @@ interface SettingsProps {
 }
 
 export default function SystemSettings({
-  config, onChangeConfig, users, onAddUser, onRemoveUser, onUpdateInventory, onDeleteInventory, currentUser, onChangePassword,
+  config, onChangeConfig, users, onAddUser, onRemoveUser, clinicSettings, onSaveEmployeeAccess, onUpdateInventory, onDeleteInventory, currentUser, onChangePassword,
   autoOpenProviderPassword, onAutoOpenHandled
 }: SettingsProps) {
 
@@ -114,7 +116,8 @@ export default function SystemSettings({
   }, [currentUser, activeTab, isSuperAdmin]);
 
   // ---- AUTH-4: Super Admin access matrix -----------------------------------
-  // Tenant owners/managers never receive the global role or panel matrices.
+  // Tenant owners/managers never receive the global action matrix. Owners get
+  // a separate clinic-local employee panel editor below.
   const canEditMatrix = isSuperAdmin;
   const effectiveRolesFor = (action: AuthAction): string[] =>
     (localConfig.actionPolicies?.[action]) ?? ACTION_POLICIES[action].allowedRoles;
@@ -130,21 +133,33 @@ if (ROOT_ROLES.includes(role as any)) return; // full-access roles are never edi
     showToast(`${ACTION_POLICIES[action].description}: ${role} ${next.includes(role) ? 'granted' : 'revoked'}.`, 'success');
   };
 
-  // ---- PROVIDER-1: Panel (view) access matrix — provider ONLY -------------
-  const canEditPanelMatrix = isSuperAdmin;
-  const effectivePanelsFor = (role: string): string[] =>
-    ((localConfig.rolePermissions as any)?.[role]) ?? [];
+  const employeePanelIds = clinicSettings?.enabledPanels || PANEL_VIEWS.map(panel => panel.id);
+  const employeeUsers = users.filter(user => !user.isSuperadmin && user.role !== 'owner');
 
-  const togglePanel = (view: string, role: string) => {
-if (!canEditPanelMatrix) return; // guard 1: only full-access roles may edit
-if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are unremovable
-    const current = effectivePanelsFor(role);
-    const next = current.includes(view) ? current.filter(v => v !== view) : [...current, view];
-    const merged = { ...(localConfig.rolePermissions as any), [role]: next };
-    const updated = { ...localConfig, rolePermissions: merged } as SystemConfig;
-    setLocalConfig(updated);
-    onChangeConfig(updated); // persist immediately so isViewPermitted picks it up
-    showToast(`${role}: ${view} ${next.includes(view) ? 'granted' : 'revoked'}.`, 'success');
+  const effectiveEmployeePanels = (user: any): string[] =>
+    Array.isArray(user.panelPermissions)
+      ? user.panelPermissions
+      : DEFAULT_PANEL_PERMISSIONS[user.role] || [];
+
+  const saveEmployeeAccess = async (user: any, panelPermissions: string[] | null) => {
+    if (!onSaveEmployeeAccess || currentUser?.role !== 'owner') return;
+    setEmployeeAccessBusy(user.id);
+    try {
+      await onSaveEmployeeAccess(user.id, panelPermissions);
+      showToast(`${user.name}'s panel access was updated.`, 'success');
+    } catch (error: any) {
+      showToast(`Panel access update failed: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setEmployeeAccessBusy(null);
+    }
+  };
+
+  const toggleEmployeePanel = (user: any, panelId: string) => {
+    const current = effectiveEmployeePanels(user);
+    const next = current.includes(panelId)
+      ? current.filter(panel => panel !== panelId)
+      : [...current, panelId];
+    void saveEmployeeAccess(user, next);
   };
 
   // ---- AUTH-4: change password --------------------------------------------
@@ -152,6 +167,7 @@ if (ROOT_ROLES.includes(role as any)) return; // guard 2: full-access roles are 
   const [pwNew, setPwNew] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
+  const [employeeAccessBusy, setEmployeeAccessBusy] = useState<string | null>(null);
 
   const passwordStrength = (v: string, minLen: number = 8): { label: string; tone: string } => {
     if (v.length < minLen) return { label: `Too short — minimum ${minLen} characters`, tone: 'text-rose-600' };
@@ -701,52 +717,42 @@ const isProvider = ROOT_ROLES.includes(role as any);
                 </div>
               )}
 
-              {/* PROVIDER-1: Panel Access Matrix — provider ONLY. Controls which
-                  screens each role may open (writes systemConfig.rolePermissions,
-                  the same source isViewPermitted enforces). Provider is always-on
-                  and unremovable — guarded here in the UI and in togglePanel. */}
-              {canEditPanelMatrix && (
-                <div data-testid="panel-matrix" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm shrink-0 overflow-x-auto">
-                  <div className="mb-3">
-                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Layers className="w-4 h-4 text-indigo-500" /> Panel Access Matrix</h3>
-                    <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Which screens each role can open. Provider always has every panel.</p>
+              {currentUser?.role === 'owner' && onSaveEmployeeAccess && (
+                <section data-testid="employee-access" className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4 shrink-0">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><Layers className="w-4 h-4 text-indigo-500" /> Employee panel access</h3>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">Your clinic features are controlled by Super Admin. Choose which enabled screens each employee may open.</p>
                   </div>
-                  <table className="w-full text-left border-collapse min-w-[720px]">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-widest font-black text-[10px]">
-                        <th className="py-3 px-3">Panel</th>
-                        {ALL_PANEL_ROLES.map(r => <th key={r} className="py-3 px-3 text-center">{r}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {PANEL_VIEWS.map(panel => (
-                        <tr key={panel.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="py-3 px-3">
-                            <div className="text-xs font-black text-slate-800">{panel.label}</div>
-                            <div className="text-[10px] font-bold text-slate-400 font-mono">{panel.id}</div>
-                          </td>
-                          {ALL_PANEL_ROLES.map(role => {
-const isProvider = ROOT_ROLES.includes(role as any);
-                            const checked = isProvider || effectivePanelsFor(role).includes(panel.id);
-                            return (
-                              <td key={role} className="py-3 px-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  data-testid={`panel-${panel.id}-${role}`}
-                                  checked={checked}
-                                  disabled={isProvider}
-                                  onChange={() => togglePanel(panel.id, role)}
-                                  title={isProvider ? 'Provider always has every panel (root)' : undefined}
-                                  className={`w-4 h-4 rounded ${isProvider ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer accent-indigo-600'}`}
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                  {employeeUsers.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs font-bold text-slate-500">No employee accounts are available to configure.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {employeeUsers.map(user => {
+                        const panels = effectiveEmployeePanels(user);
+                        const isBusy = employeeAccessBusy === user.id;
+                        return (
+                          <div key={user.id} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-black text-slate-800">{user.name}</p>
+                                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{user.role} {user.panelPermissions ? '· custom access' : '· role defaults'}</p>
+                              </div>
+                              <button type="button" disabled={isBusy || !user.panelPermissions} onClick={() => void saveEmployeeAccess(user, null)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40">Reset role defaults</button>
+                            </div>
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {PANEL_VIEWS.filter(panel => employeePanelIds.includes(panel.id)).map(panel => (
+                                <label key={panel.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 cursor-pointer">
+                                  <input type="checkbox" data-testid={`employee-panel-${user.id}-${panel.id}`} checked={panels.includes(panel.id)} disabled={isBusy} onChange={() => toggleEmployeePanel(user, panel.id)} className="h-4 w-4 rounded accent-indigo-600" />
+                                  <span className="truncate text-[10px] font-black text-slate-700">{panel.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-12">
