@@ -382,7 +382,7 @@ export async function upsertAppointment(apt: Appointment): Promise<void> {
  */
 export async function fetchUsers(): Promise<User[]> {
   if (!supabase) throw cloudUnavailable();
-  const { data, error } = await supabase.from('users').select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id').eq('is_deleted', false);
+  const { data, error } = await supabase.from('users').select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id, clinic_id, is_superadmin, panel_permissions').eq('is_deleted', false);
   if (error) throw error;
   return (data || []).map((u: any) => ({
     id: u.id,
@@ -390,7 +390,10 @@ export async function fetchUsers(): Promise<User[]> {
     username: u.username,
     role: u.role,
     avatarColor: u.avatar_color || '',
-    active: u.active ?? true
+    active: u.active ?? true,
+    clinicId: u.clinic_id ?? null,
+    isSuperadmin: u.is_superadmin === true,
+    panelPermissions: Array.isArray(u.panel_permissions) ? u.panel_permissions : null,
   }));
 }
 
@@ -407,6 +410,17 @@ export async function upsertUser(user: User): Promise<void> {
     is_deleted: false
   };
   const { error } = await supabase.from('users').upsert(withCurrentClinicId(payload));
+  if (error) throw error;
+}
+
+/** Owner-only employee access changes are enforced by the database RPC. */
+export async function updateUserPanelPermissions(userId: string, panelPermissions: string[] | null): Promise<void> {
+  if (!userId) return;
+  if (!supabase) throw new Error('No internet connection');
+  const { error } = await supabase.rpc('set_staff_panel_permissions', {
+    p_user_id: userId,
+    p_panel_permissions: panelPermissions,
+  });
   if (error) throw error;
 }
 
