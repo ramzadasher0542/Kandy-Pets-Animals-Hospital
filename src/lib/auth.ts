@@ -85,7 +85,7 @@ export async function fetchStaffForAuthUser(authUserId: string | null | undefine
   if (!supabase || !authUserId) return null;
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id, clinic_id, is_superadmin')
+    .select('id, name, username, role, avatar_color, active, is_deleted, auth_user_id, clinic_id, is_superadmin, panel_permissions')
     .eq('auth_user_id', authUserId)
     .eq('active', true)
     .eq('is_deleted', false)
@@ -104,6 +104,7 @@ export async function fetchStaffForAuthUser(authUserId: string | null | undefine
     active: data.active ?? true,
     clinicId: data.clinic_id ?? null,
     isSuperadmin: data.is_superadmin === true,
+    panelPermissions: Array.isArray(data.panel_permissions) ? data.panel_permissions : null,
     clinicSettings,
   } as User;
 }
