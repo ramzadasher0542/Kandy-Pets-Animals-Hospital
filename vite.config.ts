@@ -26,8 +26,16 @@ export default defineConfig(() => {
       },
     },
     build: {
+      minify: 'esbuild' as const,
+      reportCompressedSize: false,
       rollupOptions: {
         maxParallelFileOps: 32,
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-ui': ['lucide-react', 'motion'],
+          },
+        },
       },
     },
     server: {

@@ -1,7 +1,6 @@
 /**
  * formatDisplayDate: formatted to YYYY-MM-DD
  * formatDisplayTime: formatted to HH:mm (24-Hour)
- * formatTelemetryTime: formatted to HH:mm:ss (24-Hour)
  */
 
 export function formatDisplayDate(date: Date | string): string {
@@ -45,14 +44,4 @@ export function formatDisplayTime(date: Date | string): string {
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
-}
-
-export function formatTelemetryTime(date: Date | string): string {
-  if (!date) return '';
-  const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return typeof date === 'string' ? date : '';
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
 }

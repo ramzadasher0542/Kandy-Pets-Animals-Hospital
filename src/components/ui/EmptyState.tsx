@@ -4,7 +4,6 @@
  */
 
 // Canonical EmptyState primitive — see DESIGN_SYSTEM.md.
-// Dumb wrapper only. No business logic. Not wired into any panel yet (UI-1).
 
 import React from 'react';
 

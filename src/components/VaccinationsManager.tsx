@@ -92,8 +92,7 @@ export default function VaccinationsManager({ clients, pets, records, inventory,
       return;
     }
     
-    // Bug #1 Fix: Stock deduction removed. POSRegister.tsx exclusively handles
-    // inventory deduction at the moment of financial checkout to prevent double-deduction.
+    // POS owns inventory deduction at financial checkout to prevent double-deduction.
     showToast(`${vaccine.name} administered & billed to POS.`, 'success');
   };
 

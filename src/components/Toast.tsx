@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
@@ -33,7 +33,6 @@ export default function ToastContainer() {
     };
     toastListeners.push(listener);
     
-    // Initial sync just in case
     listener(toasts);
 
     return () => {

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
 import {

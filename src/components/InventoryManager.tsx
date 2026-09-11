@@ -8,7 +8,7 @@ import EmptyState from './ui/EmptyState';
 import { Modal } from './ui/Modal';
 import {
   Plus, X, Edit2, Trash2, AlertTriangle,
-  Package, Activity, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle, Info, Settings2
+  Package, CheckCircle2, RefreshCw, Layers, DollarSign, TestTube, MinusCircle, Info, Settings2
 } from 'lucide-react';
 import { InventoryItem, ItemCategory, InventoryBatch, Supplier, InventoryCategory } from '../types';
 import { fetchInventory, fetchInventoryBatches, upsertInventoryBatch, fetchSuppliers, upsertSupplier, fetchInventoryCategories, upsertInventoryCategory, deleteInventoryCategory } from '../lib/db';

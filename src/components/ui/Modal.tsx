@@ -6,7 +6,6 @@
 // Canonical Modal shell primitive — see DESIGN_SYSTEM.md.
 // Pattern matched against the existing modal convention in BoardingManager.tsx /
 // GroomingManager.tsx (fixed inset-0 overlay + createPortal to document.body).
-// Dumb wrapper only. No business logic. Not wired into any panel yet (UI-1).
 
 import React from 'react';
 import { createPortal } from 'react-dom';

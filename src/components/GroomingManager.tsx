@@ -132,7 +132,6 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    // e.preventDefault(); // Moved to onTouchStart to avoid React passive event warning
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -152,7 +151,6 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    // e.preventDefault();
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;

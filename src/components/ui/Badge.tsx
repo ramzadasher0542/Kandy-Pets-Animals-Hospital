@@ -8,7 +8,6 @@
 //   indigo=primary/admin/owner  emerald=success/paid/active/healthy
 //   amber=warning/pending/expiring/urgent  rose=danger/emergency/expired/void/overdue
 //   sky=informational/cashier/boarding  slate=neutral/inactive/draft
-// Dumb wrapper only. No business logic. Not wired into any panel yet (UI-1).
 
 import React from 'react';
 

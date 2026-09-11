@@ -100,8 +100,8 @@ export default function AppointmentsManager({
   const [petName, setPetName] = useState('');
   const [petType, setPetType] = useState<PetClassification>('Canine');
   const [breed, setBreed] = useState('');
-  const [weight, setWeight] = useState<number | ''>(''); // PHASE 1 NATIVE
-  const [sex, setSex] = useState('Unknown'); // PHASE 1 NATIVE
+  const [weight, setWeight] = useState<number | ''>('');
+  const [sex, setSex] = useState('Unknown');
   const [fastingStartTime, setFastingStartTime] = useState('');
   const [rabiesProof, setRabiesProof] = useState(false);
   const [dhlpProof, setDhlpProof] = useState(false);
@@ -1371,7 +1371,6 @@ export default function AppointmentsManager({
                         </div>
                       </div>
 
-                      {/* PHASE 1: Native Weight and Sex Inputs */}
                       <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
                         <div>
                           <label className="font-bold text-slate-500 block text-[10px] uppercase tracking-widest mb-1.5">Weight (kg)</label>

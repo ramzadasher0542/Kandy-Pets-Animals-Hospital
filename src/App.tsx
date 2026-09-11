@@ -10,6 +10,14 @@ import type { Session } from '@supabase/supabase-js';
 interface PanelErrorBoundaryProps { children: ReactNode; onNavigate?: (view: string) => void; }
 interface PanelErrorBoundaryState { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null; showDetails: boolean; }
 
+function PanelLoading() {
+  return (
+    <div className="flex min-h-48 items-center justify-center text-xs font-bold uppercase tracking-widest text-slate-400">
+      Loading panel...
+    </div>
+  );
+}
+
 // @ts-ignore — React 19 class component type narrowing workaround
 export class ClinicErrorBoundary extends Component<PanelErrorBoundaryProps, PanelErrorBoundaryState> {
   public state: PanelErrorBoundaryState = { hasError: false, error: null, errorInfo: null, showDetails: false };
@@ -96,27 +104,29 @@ import {
   Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, InvoiceSourceRef
 } from './types';
 
-import DashboardAnalytics from './components/DashboardAnalytics';
-import ReportsManager from './components/ReportsManager';
-import POSRegister from './components/POSRegister';
-import AppointmentsManager from './components/AppointmentsManager';
-import NotificationsModal from './components/NotificationsModal';
 import { Modal } from './components/ui/Modal';
-import MedicalRecordsManager from './components/MedicalRecordsManager';
-import InventoryManager from './components/InventoryManager';
-import PatientPortal from './components/PatientPortal';
-import InvoicesManager from './components/InvoicesManager';
-import SystemSettings, { SystemConfig } from './components/SystemSettings';
+import type { SystemConfig } from './components/SystemSettings';
 import ToastContainer, { showToast } from './components/Toast';
-import CustomersManager from './components/CustomersManager';
-import VaccinationsManager from './components/VaccinationsManager';
-import LaboratoryManager from './components/LaboratoryManager';
-import BoardingManager from './components/BoardingManager';
-import GroomingManager from './components/GroomingManager';
-import ShiftManager from './components/ShiftManager';
-import StaffManager from './components/StaffManager';
-import SuppliersManager from './components/SuppliersManager';
-import SuperAdminLayout from './components/SuperAdminLayout';
+
+const DashboardAnalytics = React.lazy(() => import('./components/DashboardAnalytics'));
+const ReportsManager = React.lazy(() => import('./components/ReportsManager'));
+const POSRegister = React.lazy(() => import('./components/POSRegister'));
+const AppointmentsManager = React.lazy(() => import('./components/AppointmentsManager'));
+const NotificationsModal = React.lazy(() => import('./components/NotificationsModal'));
+const MedicalRecordsManager = React.lazy(() => import('./components/MedicalRecordsManager'));
+const InventoryManager = React.lazy(() => import('./components/InventoryManager'));
+const PatientPortal = React.lazy(() => import('./components/PatientPortal'));
+const InvoicesManager = React.lazy(() => import('./components/InvoicesManager'));
+const SystemSettings = React.lazy(() => import('./components/SystemSettings'));
+const CustomersManager = React.lazy(() => import('./components/CustomersManager'));
+const VaccinationsManager = React.lazy(() => import('./components/VaccinationsManager'));
+const LaboratoryManager = React.lazy(() => import('./components/LaboratoryManager'));
+const BoardingManager = React.lazy(() => import('./components/BoardingManager'));
+const GroomingManager = React.lazy(() => import('./components/GroomingManager'));
+const ShiftManager = React.lazy(() => import('./components/ShiftManager'));
+const StaffManager = React.lazy(() => import('./components/StaffManager'));
+const SuppliersManager = React.lazy(() => import('./components/SuppliersManager'));
+const SuperAdminLayout = React.lazy(() => import('./components/SuperAdminLayout'));
 
 import { 
   fetchAppointments,
@@ -168,8 +178,7 @@ import {
     upsertStaffProfile,
   upsertTimeEntry,
   upsertScheduleEntry,
-  deleteScheduleEntry,
-   insertDeletionAudit,
+    insertDeletionAudit,
      setCurrentClinicId
   } from './lib/db';
 import { SYNC_ENABLED, supabase, requireSupabase, signInWithPassword, signOut, onAuthStateChange } from './lib/supabase';
@@ -933,8 +942,6 @@ function App({ initialSession, initialAuthError }: AppProps) {
       });
     }
   }, []);
-  // Removed unused handleUpdateInventory
-
   const handleUpdateInventoryItem = useCallback(async (item: InventoryItem) => {
     try {
       if (import.meta.env.DEV) console.log('[App] handleUpdateInventoryItem called for:', item.name, 'stock:', item.stock, 'id:', item.id);
@@ -1513,9 +1520,8 @@ function App({ initialSession, initialAuthError }: AppProps) {
       case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
       case 'invoices': return <InvoicesManager invoices={invoices} onVoidInvoice={handleVoidInvoice} systemConfig={systemConfig} />;
         case 'shift': return <ShiftManager invoices={invoices} currentUser={currentUser as User} activeShift={activeShift} setActiveShift={async (s) => { setActiveShift(s); }} />;
-      case 'dashboard':
-        // FIX 8: Pass activeShift and onNavigate props
-         return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} showFinancials={currentUser?.role !== 'veterinarian'} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
+       case 'dashboard':
+          return <DashboardAnalytics invoices={invoices} appointments={appointments} records={records} inventory={inventory} clinicQueue={clinicQueue} scheduleEntries={scheduleEntries} timeEntries={timeEntries} staffProfiles={staffProfiles} showFinancials={currentUser?.role !== 'veterinarian'} onNavigate={(tab) => { setActiveView(tab); setHistoryStack([tab]); }} />;
       case 'reports':
           return <ReportsManager />;
       case 'staff': 
@@ -1592,8 +1598,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
       }
       case 'pets': return <PatientPortal clients={clients} pets={pets} records={records} appointments={appointments} clinicQueue={clinicQueue} onBookAppointment={handleAddAppointment} systemConfig={systemConfig} viewPayload={viewPayload} onAddRecord={handleAddRecord} onGoToCustomers={(phone) => { setViewPayload({ selectedPhone: phone }); setActiveView('customers'); setHistoryStack(prev => [...prev, 'customers']); }} onGoToAppointments={(client, pet) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onUpdatePet={handleUpdatePet} onUpdateRecordsBulk={handleBulkUpdateRecords} />;
       case 'vaccinations': return <VaccinationsManager clients={clients} pets={pets} clinicQueue={clinicQueue} records={records} inventory={inventory} onUpdateRecord={handleUpdateRecord} onUpdateStock={handleUpdateStock} />;
-      // FIX 8: Pass appointments prop to Lab
-      case 'laboratory': return <LaboratoryManager clients={clients} pets={pets} records={records} inventory={inventory as any} appointments={appointments} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} />;
+       case 'laboratory': return <LaboratoryManager clients={clients} pets={pets} records={records} inventory={inventory as any} appointments={appointments} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onAddRecord={handleAddRecord} />;
        case 'customers': return <CustomersManager currentUser={currentUser} clients={clients} pets={pets} records={records} invoices={invoices} appointments={appointments} clinicQueue={clinicQueue} onGoToPOS={(client) => { setViewPayload({ client }); setActiveView('pos'); setHistoryStack(prev => [...prev, 'pos']); }} onGoToAppointments={(client, pet?) => { setViewPayload({ client, pet }); setActiveView('appointments'); setHistoryStack(prev => [...prev, 'appointments']); }} onGoToRecords={(patientId) => { setActiveView('examinations'); setHistoryStack(prev => [...prev, 'examinations']); }} onUpdateCustomer={handleUpdateCustomer} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} onAddRecord={handleAddRecord} onUpdateRecordsBulk={handleBulkUpdateRecords} onDeleteClient={handleDeleteClient} onDeletePet={handleDeletePet} />;
       default: return null;
     }
@@ -1643,19 +1648,21 @@ function App({ initialSession, initialAuthError }: AppProps) {
 
   if (routePath === '/superadmin' && currentUser?.isSuperadmin) {
     return (
-      <SuperAdminLayout
-        currentUser={currentUser}
-        onSignOut={async () => {
-          authRequestRef.current += 1;
-          flushSync(() => {
+      <React.Suspense fallback={<PanelLoading />}>
+        <SuperAdminLayout
+          currentUser={currentUser}
+          onSignOut={async () => {
+            authRequestRef.current += 1;
+            flushSync(() => {
+              setCurrentUser(null);
+              setCurrentClinicId(null);
+            });
+            await signOut();
             setCurrentUser(null);
-            setCurrentClinicId(null);
-          });
-          await signOut();
-          setCurrentUser(null);
-          navigateRoute('/');
-        }}
-      />
+            navigateRoute('/');
+          }}
+        />
+      </React.Suspense>
     );
   }
 
@@ -1902,8 +1909,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
                   {historyStack.length > 1 && (
                     <button
                       onClick={() => {
-                        // FIX 10: Renamed to avoid variable shadowing with setter callback
-                        const prevView = historyStack[historyStack.length - 2];
+                         const prevView = historyStack[historyStack.length - 2];
                         setHistoryStack(s => s.slice(0, -1));
                         setActiveView(prevView);
                       }}
@@ -1930,10 +1936,12 @@ function App({ initialSession, initialAuthError }: AppProps) {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 w-full min-h-0 overflow-y-auto">
-                <ClinicErrorBoundary key={activeView} onNavigate={(view) => { setActiveView(view); setHistoryStack([view]); }}>
-                  {renderCanvas()}
-                </ClinicErrorBoundary>
+               <div className="flex-1 w-full min-h-0 overflow-y-auto">
+                 <ClinicErrorBoundary key={activeView} onNavigate={(view) => { setActiveView(view); setHistoryStack([view]); }}>
+                   <React.Suspense fallback={<PanelLoading />}>
+                     {renderCanvas()}
+                   </React.Suspense>
+                 </ClinicErrorBoundary>
               </div>
             </main>
           </div>
@@ -1945,16 +1953,18 @@ function App({ initialSession, initialAuthError }: AppProps) {
           title="Notifications & Alerts"
           size="lg"
         >
-          <NotificationsModal
-            notifications={notifications}
-            alerts={alerts}
-            onDismissAlert={handleDismissAlert}
-            onSendNotification={(id) => {
-              // TODO: wire to real SMS/email provider.
-              if (import.meta.env.DEV) console.log(`Simulated sending notification ${id}`);
-              showToast('Notification dispatched to queue.', 'success');
-            }}
-          />
+          <React.Suspense fallback={null}>
+            <NotificationsModal
+              notifications={notifications}
+              alerts={alerts}
+              onDismissAlert={handleDismissAlert}
+              onSendNotification={(id) => {
+                // TODO: wire to real SMS/email provider.
+                if (import.meta.env.DEV) console.log(`Simulated sending notification ${id}`);
+                showToast('Notification dispatched to queue.', 'success');
+              }}
+            />
+          </React.Suspense>
         </Modal>
       </div>
     </>

@@ -80,8 +80,7 @@ export default function PatientPortal({
   const displayPets = useMemo(() => {
     const petMap = new Map<string, any>();
 
-    // MISSION 3 FIX: Map from global pets array to guarantee 100% visibility of all registered pets
-    // instead of only pets with existing medical records.
+    // Include registered pets even when they have no medical records yet.
     pets.forEach(p => {
       const owner = clients.find(c => c.client_id === p.clientId);
       
@@ -107,7 +106,6 @@ export default function PatientPortal({
 
     if (showQueueOnly) {
       activeList = activeList.filter(p => {
-        // FIXED: Only pets actively in the clinicQueue are "In Clinic"
         return (clinicQueue || []).some(q => q.petId === p.patientId);
       });
     }
@@ -147,7 +145,6 @@ export default function PatientPortal({
     setShowEditPetModal(true);
   };
 
-  // PHASE 3: BULK SYNC RACE-CONDITION ARMOR
   const handleSavePetEdits = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activePet) return;
