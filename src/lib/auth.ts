@@ -42,16 +42,16 @@ export async function fetchStaffUsers(): Promise<User[]> {
 }
 
 export async function upsertStaffUser(user: User, currentUser: User): Promise<void> {
-  if (!currentUser?.isSuperadmin && !['owner', 'manager'].includes(currentUser?.role || '')) {
-    throw new Error('Unauthorized: Only a clinic owner or manager can modify staff records.');
+  if (!currentUser?.isSuperadmin && currentUser?.role !== 'owner') {
+    throw new Error('Unauthorized: Only a clinic owner can modify staff records.');
   }
   if (!user || !user.id) return;
   await upsertUser(user);
 }
 
 export async function deleteStaffUser(userId: string, currentUser: User): Promise<void> {
-  if (!currentUser?.isSuperadmin && !['owner', 'manager'].includes(currentUser?.role || '')) {
-    throw new Error('Unauthorized: Only a clinic owner or manager can delete staff records.');
+  if (!currentUser?.isSuperadmin && currentUser?.role !== 'owner') {
+    throw new Error('Unauthorized: Only a clinic owner can delete staff records.');
   }
   if (!userId) return;
   await dbDeleteUser(userId);
