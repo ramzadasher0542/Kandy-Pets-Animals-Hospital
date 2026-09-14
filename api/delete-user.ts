@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { exceedsBodyLimit, isRateLimited } from './request-guard';
 
 type ApiRequest = {
   method?: string;
@@ -32,6 +33,14 @@ function respond(res: ApiResponse, status: number, body: unknown): void {
 export default async function deleteUser(req: ApiRequest, res: ApiResponse): Promise<void> {
   if (req.method !== 'POST') {
     respond(res, 405, { message: 'Only POST is supported.' });
+    return;
+  }
+  if (exceedsBodyLimit(req)) {
+    respond(res, 413, { message: 'Request body is too large.' });
+    return;
+  }
+  if (isRateLimited(req, 'delete-user')) {
+    respond(res, 429, { message: 'Too many account-deletion attempts. Try again later.' });
     return;
   }
 

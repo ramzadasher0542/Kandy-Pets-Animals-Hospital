@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { exceedsBodyLimit, isRateLimited } from './request-guard';
 
 type ApiRequest = {
   method?: string;
@@ -34,6 +35,14 @@ function respond(res: ApiResponse, status: number, body: unknown): void {
 export default async function provisionOwner(req: ApiRequest, res: ApiResponse): Promise<void> {
   if (req.method !== 'POST') {
     respond(res, 405, { message: 'Only POST is supported.' });
+    return;
+  }
+  if (exceedsBodyLimit(req)) {
+    respond(res, 413, { message: 'Request body is too large.' });
+    return;
+  }
+  if (isRateLimited(req, 'provision-owner')) {
+    respond(res, 429, { message: 'Too many owner-provisioning attempts. Try again later.' });
     return;
   }
 
@@ -78,7 +87,7 @@ export default async function provisionOwner(req: ApiRequest, res: ApiResponse):
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const clinicId = typeof body.clinic_id === 'string' ? body.clinic_id.trim() : '';
-  if (!EMAIL_PATTERN.test(email) || password.length < 12 || !UUID_PATTERN.test(clinicId)) {
+  if (!EMAIL_PATTERN.test(email) || email.length > 320 || password.length < 12 || password.length > 128 || !UUID_PATTERN.test(clinicId)) {
     respond(res, 400, { message: 'Provide a valid email, a password of at least 12 characters, and a valid clinic ID.' });
     return;
   }
@@ -159,4 +168,3 @@ export default async function provisionOwner(req: ApiRequest, res: ApiResponse):
 
   respond(res, 201, { email, clinic_id: clinicId, role: 'owner' });
 }
-
