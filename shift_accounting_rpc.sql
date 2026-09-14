@@ -19,9 +19,8 @@
 --    appointment change. A newly-voided PAID invoice REQUIRES a valid shiftId (fails
 --    rather than silently skipping the reversal). Returns the restocked map so the
 --    client updates inventory UI only after success.
--- 5) uniq_shifts_single_open -> smallest DB protection against concurrent open shifts:
---    a partial unique index allowing at most one row with isOpen = true. Live data was
---    inspected first (exactly 1 open shift), so this creates cleanly without touching data.
+-- 5) uniq_shifts_single_open -> per-clinic protection against concurrent open shifts:
+--    a partial unique index allowing at most one open shift per clinic.
 --
 -- All functions are SECURITY INVOKER and rely on the existing shifts/invoices/appointments
 -- RLS (UPDATE/SELECT already granted to anon/authenticated). No RLS change, no PUBLIC grant,
@@ -294,9 +293,11 @@ END;
 $$;
 
 -- 5) ---------------------------------------------------------------------------
--- Smallest safe protection against concurrent open shifts: at most one isOpen=true row.
+-- Smallest safe protection against concurrent open shifts: at most one isOpen=true row
+-- per clinic. The migration that installs this index also rejects open legacy rows
+-- without a clinic assignment.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_shifts_single_open
-  ON public.shifts ("isOpen")
+  ON public.shifts (clinic_id)
   WHERE "isOpen" = true;
 
 -- Grants (Step 31 security): NEVER PUBLIC and NEVER anon. The anon key ships in
