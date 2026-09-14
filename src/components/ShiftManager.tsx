@@ -6,11 +6,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from './ui/Modal';
 import { Lock, FileText, User, Printer, Plus, DollarSign, Banknote, CreditCard, Building2 } from 'lucide-react';
-import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift, Shift } from '../types';
+import { Invoice, ShiftReconciliation, User as StaffUser, ActiveShift } from '../types';
 import { showToast } from './Toast';
-import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile, fetchPaidInvoicesForShift, fetchActiveShiftState, exportFullDatabase } from '../lib/db';
+import { fetchActiveShiftDetails, addCashAdjustment, closeShiftAndReconcile, fetchPaidInvoicesForShift, fetchActiveShiftState, openShiftAuth, exportFullDatabase } from '../lib/db';
 import { downloadJsonFile } from '../lib/download';
-import { supabase } from '../lib/supabase';
 import { Badge } from './ui/Badge';
 import PageShell from './ui/PageShell';
 import { requireAuth } from '../lib/requireAuth';
@@ -171,31 +170,6 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
     const floatAmount = parseWholeRupees(openingFloatInput);
     const openingFloatCents = Math.round(floatAmount * 100);
 
-    const newShift: Shift = {
-      id: crypto.randomUUID(),
-      openedBy: currentUser.username,
-      startTime: new Date().toISOString(),
-      openingFloatCents,
-      cashCollectedCents: 0,
-      cardCollectedCents: 0,
-      bankTransferCollectedCents: 0,
-      expectedCashCents: openingFloatCents,
-      actualCashCents: undefined,
-      discrepancyCents: undefined,
-      notes: '',
-      isOpen: true,
-      opening_float: floatAmount,
-      actual_cash: null,
-      discrepancy_reason: '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      is_deleted: false,
-    };
-
-    // Persist the shift to Supabase so any device can find the open shift.
-    // Use insert (not openShift()) so the id we built stays consistent with
-    // setActiveShift and the shiftId stamped onto invoices.
-    if (!supabase) { showToast('No internet connection. Cannot open shift.', 'error'); return; }
     // Confirm cloud shift state before changing register state. If the cloud state
     // cannot be confirmed (unavailable != "no open shift"), BLOCK rather than risk a
     // duplicate open.
@@ -208,20 +182,23 @@ export default function ShiftManager({ invoices, currentUser, activeShift, setAc
       showToast('A shift is already open. Close it before opening a new one.', 'error');
       return;
     }
-    const { error } = await supabase.from('shifts').insert(newShift);
-    if (error) {
+    const shiftId = crypto.randomUUID();
+    const startTime = new Date().toISOString();
+    try {
+      await openShiftAuth(openingFloatCents, shiftId);
+    } catch (error: any) {
       // The single-open-shift unique index rejects a concurrent duplicate open.
-      const msg = /duplicate|unique|uniq_shifts_single_open/i.test(error.message || '')
+      const msg = /duplicate|unique|uniq_shifts_single_open|OPEN_SHIFT_ALREADY_EXISTS/i.test(error?.message || '')
         ? 'A shift was just opened on another device. Not opening a duplicate.'
-        : `Failed to open shift: ${error.message}`;
+        : `Failed to open shift: ${error?.message || 'the cloud request failed'}`;
       showToast(msg, 'error');
       return;
     }
 
     const activeShiftState: ActiveShift = {
-      id: newShift.id,
-      openedAt: newShift.startTime,
-      openedBy: newShift.openedBy,
+      id: shiftId,
+      openedAt: startTime,
+      openedBy: currentUser.username,
       openedByName: currentUser.name,
       openingFloat: floatAmount
     };

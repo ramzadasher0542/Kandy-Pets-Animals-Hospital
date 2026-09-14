@@ -9,8 +9,9 @@ import {
   Home, Activity, Info, CheckCircle2, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
 } from 'lucide-react';
 import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem, ActiveShift, User } from '../types';
+import { BoardingPricingProfile } from '../types';
 import { showToast } from './Toast';
-import { commitBoardingCashLedger, fetchBoardingRecords, upsertBoardingRecord } from '../lib/db';
+import { fetchBoardingRecords, recordBoardingCharge, settleBoardingAccount, startBoardingAdmission, updateBoardingCare } from '../lib/db';
 import PageShell from './ui/PageShell';
 import { sortQueueByUrgency } from '../lib/queueUtils';
 import { formatRupees, parseWholeRupees } from '../utils/currency';
@@ -28,13 +29,37 @@ interface BoardingProps {
   activeShift?: ActiveShift | null;
   currentUser?: User | null;
   onChangeConfig?: (config: any) => Promise<void>;
+  onSaveBoardingPricing?: (profile: BoardingPricingProfile) => Promise<void>;
 }
 
 const KENNEL_SPACES = Array.from({ length: 10 }, (_, i) => `Kennel ${i + 1}`);
 const CONDO_SPACES = ['Cat Condo A', 'Cat Condo B', 'Cat Condo C'];
 const ALL_SPACES = [...KENNEL_SPACES, ...CONDO_SPACES];
 
-export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue, activeShift, currentUser, onChangeConfig }: BoardingProps) {
+const DEFAULT_BOARDING_PRICING: BoardingPricingProfile = {
+  enabled: true,
+  billing_unit: 'night',
+  cat_no_food_cents: 0,
+  cat_with_food_cents: 0,
+  dog_no_food_cents: 0,
+  dog_with_food_cents: 0,
+  cat_litter_cents: 0,
+  dog_litter_cents: 0,
+  milk_cup_cents: 0,
+  default_deposit_cents: 0,
+  doctor_round_cents: 0,
+  cleaning_cents_per_day: 0,
+  late_checkout_cents: 0,
+  allow_food_charge: true,
+  allow_litter_charge: true,
+  allow_medical_boarding: true,
+  allow_doctor_rounds: true,
+  allow_cleaning_fee: true,
+  allow_medication_charge: true,
+  allow_late_checkout_fee: false,
+};
+
+export default function BoardingManager({ systemConfig, clients, pets = [], records, clinicQueue = [], inventory = [], onUpdateStock, onUpdateRecord, onDischargeToQueue, activeShift, currentUser, onChangeConfig, onSaveBoardingPricing }: BoardingProps) {
   
   // Intake Form State
   const [selectedCage, setSelectedCage] = useState<string | null>(null);
@@ -45,40 +70,31 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [hospitalProvidesLitter, setHospitalProvidesLitter] = useState<boolean>(false);
   const [medicalBoarding, setMedicalBoarding] = useState<boolean>(false);
   const [estimatedStayDays, setEstimatedStayDays] = useState<number>(1);
-  const [doctorFeeRupees, setDoctorFeeRupees] = useState<number>(0);
-  const [cleaningFeeRupees, setCleaningFeeRupees] = useState<number>(0);
-
-  const depositCents = systemConfig?.defaultDepositCents ?? 1500000;
-  const [rateDraft, setRateDraft] = useState({
-    catNofoodCents: 0,
-    catWithfoodCents: 0,
-    dogNofoodCents: 0,
-    dogWithfoodCents: 0,
-    catLitterCents: 0,
-    dogLitterCents: 0,
-    milkCupCents: 0,
-  });
-  const [depositDraft, setDepositDraft] = useState(depositCents);
+  const legacyRates = systemConfig?.boardingRates || {};
+  const configuredPricing: BoardingPricingProfile = systemConfig?.boardingPricing || {
+    ...DEFAULT_BOARDING_PRICING,
+    cat_no_food_cents: legacyRates.catNofoodCents || 0,
+    cat_with_food_cents: legacyRates.catWithfoodCents || 0,
+    dog_no_food_cents: legacyRates.dogNofoodCents || 0,
+    dog_with_food_cents: legacyRates.dogWithfoodCents || 0,
+    cat_litter_cents: legacyRates.catLitterCents || 0,
+    dog_litter_cents: legacyRates.dogLitterCents || 0,
+    milk_cup_cents: legacyRates.milkCupCents || 0,
+    default_deposit_cents: systemConfig?.defaultDepositCents || 1500000,
+  };
+  const depositCents = configuredPricing.default_deposit_cents;
+  const [pricingDraft, setPricingDraft] = useState<BoardingPricingProfile>(configuredPricing);
   const [isSavingRates, setIsSavingRates] = useState(false);
 
   React.useEffect(() => {
-    setRateDraft({
-      catNofoodCents: systemConfig?.boardingRates?.catNofoodCents ?? 0,
-      catWithfoodCents: systemConfig?.boardingRates?.catWithfoodCents ?? 0,
-      dogNofoodCents: systemConfig?.boardingRates?.dogNofoodCents ?? 0,
-      dogWithfoodCents: systemConfig?.boardingRates?.dogWithfoodCents ?? 0,
-      catLitterCents: systemConfig?.boardingRates?.catLitterCents ?? 0,
-      dogLitterCents: systemConfig?.boardingRates?.dogLitterCents ?? 0,
-      milkCupCents: systemConfig?.boardingRates?.milkCupCents ?? 0,
-    });
-    setDepositDraft(systemConfig?.defaultDepositCents ?? 1500000);
+    setPricingDraft(configuredPricing);
   }, [systemConfig]);
 
   const saveBoardingRates = async () => {
-    if (!onChangeConfig) return;
+    if (!onSaveBoardingPricing) return;
     setIsSavingRates(true);
     try {
-      await onChangeConfig({ ...systemConfig, boardingRates: rateDraft, defaultDepositCents: depositDraft });
+      await onSaveBoardingPricing(pricingDraft);
       showToast('Boarding rates saved.', 'success');
     } catch (error: any) {
       showToast(`Boarding rates failed: ${error?.message || 'Unknown error'}`, 'error');
@@ -98,20 +114,19 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     fetchBoardingRecords().then(setBoardingRecords).catch((e) => { if (import.meta.env.DEV) console.error(e); });
   }, []);
 
-  const calculateDailyRate = (pet: Pet | undefined, food: 'without_food' | 'with_food', litter: boolean) => {
-    if (!pet || !systemConfig?.boardingRates) return 0;
-    const rates = systemConfig.boardingRates;
+  const calculateDailyRate = (pet: Pet | undefined, food: 'without_food' | 'with_food', litter: boolean, profile = configuredPricing) => {
+    if (!pet || !profile) return 0;
     const safeRate = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
     let cost = 0;
     const isCat = pet.petType?.toLowerCase() === 'cat' || pet.petType?.toLowerCase() === 'feline';
     const isDog = pet.petType?.toLowerCase() === 'dog' || pet.petType?.toLowerCase() === 'canine';
 
     if (isCat) {
-      cost = safeRate(food === 'with_food' ? rates.catWithfoodCents : rates.catNofoodCents);
-      if (litter) cost += safeRate(rates.catLitterCents);
+      cost = safeRate(food === 'with_food' ? profile.cat_with_food_cents : profile.cat_no_food_cents);
+      if (litter) cost += safeRate(profile.cat_litter_cents);
     } else if (isDog) {
-      cost = safeRate(food === 'with_food' ? rates.dogWithfoodCents : rates.dogNofoodCents);
-      if (litter) cost += safeRate(rates.dogLitterCents);
+      cost = safeRate(food === 'with_food' ? profile.dog_with_food_cents : profile.dog_no_food_cents);
+      if (litter) cost += safeRate(profile.dog_litter_cents);
     }
     return cost;
   };
@@ -149,54 +164,46 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [medItemId, setMedItemId] = useState<string>('');
   const [medQty, setMedQty] = useState<number>(1);
 
-  // Sum of all billing charges EXCEPT the deposit and any settlement top-up (in cents)
-  const computeCharges = (b: BoardingRecord) =>
-    (b.billingItems || [])
-      .filter(i => i.itemId !== 'admission_deposit' && i.itemId !== 'additional_charges')
-      .reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
+  // Active stays show a transparent estimate; final totals come from the
+  // settlement RPC using the server's actual checkout date and price snapshot.
+  const computeCharges = (b: BoardingRecord) => {
+    if (b.status === 'discharged') return Number(b.totalChargesCents || 0);
+    const profile = b.pricingSnapshot || configuredPricing;
+    const pet = pets.find(item => item.id === b.petId);
+    const checkIn = new Date(`${b.checkInDate}T00:00:00Z`).getTime();
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    const nights = Number.isFinite(checkIn) ? Math.max(1, Math.ceil((todayUtc - checkIn) / 86_400_000)) : 1;
+    const base = calculateDailyRate(pet, b.foodType, b.hospitalProvidesLitter || false, profile) * nights;
+    const cleaning = b.medicalBoarding && profile.allow_cleaning_fee
+      ? profile.cleaning_cents_per_day * nights
+      : 0;
+    const todayDate = new Date(todayUtc).toISOString().split('T')[0];
+    const lateCheckout = profile.allow_late_checkout_fee
+      && b.expectedCheckOut
+      && todayDate > b.expectedCheckOut
+      ? profile.late_checkout_cents
+      : 0;
+    const events = (b.billingItems || [])
+      .filter(i => !['admission_deposit', 'additional_charges', 'settlement_refund'].includes(i.itemId))
+      .reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+    return base + cleaning + lateCheckout + events;
+  };
 
   const countDoctorRounds = (b: BoardingRecord) =>
     (b.billingItems || []).filter(i => i.itemId === 'doctor_round').length;
 
-  const persistBoarding = async (updated: BoardingRecord) => {
-    await upsertBoardingRecord(updated);
-    setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
-  };
-
-  // IDs are derived from the boarding UUID so a lost response/retry cannot
-  // create a second deposit, settlement invoice, or refund movement.
-  const derivedId = (id: string, marker: 'a1' | 'a2' | 'a3') => `${id.slice(0, -2)}${marker}`;
-
-  const makeAdjustment = (
-    id: string,
-    type: 'IN' | 'OUT',
-    amountCents: number,
-    category: string,
-    reason: string,
-  ) => {
-    if (!activeShift || !currentUser) throw new Error('OPEN_SHIFT_REQUIRED');
-    return {
-      id,
-      type,
-      amount: amountCents / 100,
-      category,
-      reason,
-      date: new Date().toISOString(),
-      createdBy: currentUser.name,
-      shiftId: activeShift.id,
-    } as const;
-  };
-
   const handleLogDoctorRound = async (cage: string) => {
     const occupant = activeBoardingMap.get(cage);
     if (!occupant) return;
-    const b = occupant.boarding;
-    const fee = b.doctorFeePerVisitCents ?? 0;
-    const item = { itemId: 'doctor_round', name: 'Doctor Round Fee', price: fee, quantity: 1, category: 'service' as const };
-    const nextItems = [...(b.billingItems || []), item];
-    const updated: BoardingRecord = { ...b, billingItems: nextItems, totalChargesCents: computeCharges({ ...b, billingItems: nextItems }) };
-    await persistBoarding(updated);
-    showToast(`Doctor round logged (Rs. ${formatRupees(fee / 100)}).`, 'success');
+    try {
+      const updated = await recordBoardingCharge(occupant.boarding.id, 'doctor_round', 1);
+      setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+      const fee = updated.billingItems?.at(-1)?.price || 0;
+      showToast(`Doctor round logged (Rs. ${formatRupees(Number(fee) / 100)}).`, 'success');
+    } catch (error: any) {
+      showToast(`Doctor round failed: ${error?.message || error}`, 'error');
+    }
   };
 
   const openMedModal = (cage: string) => {
@@ -213,20 +220,13 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     if (medQty <= 0) { showToast('Quantity must be positive.', 'error'); return; }
     const item = inventory.find(i => i.id === medItemId);
     if (!item) { showToast('Medication item not found in inventory.', 'error'); return; }
-    if (!onUpdateStock) { showToast('Stock handler unavailable.', 'error'); return; }
-
     try {
-      await onUpdateStock(medItemId, -medQty);
+      const updated = await recordBoardingCharge(occupant.boarding.id, 'medication', medQty, medItemId);
+      setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
     } catch (err: any) {
       showToast(`Stock update failed: ${err?.message || err}`, 'error');
       return;
     }
-
-    const billingItem = { itemId: item.id, name: item.name, price: Math.round(item.price * 100), quantity: medQty, category: item.category };
-    const b = occupant.boarding;
-    const nextItems = [...(b.billingItems || []), billingItem];
-    const updated: BoardingRecord = { ...b, billingItems: nextItems, totalChargesCents: computeCharges({ ...b, billingItems: nextItems }) };
-    await persistBoarding(updated);
     showToast('Medication logged. Stock updated.', 'success');
     setMedModalCage(null);
   };
@@ -258,8 +258,8 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
         mealsPerDay: feedingMealsPerDay,
       }
     };
-    await upsertBoardingRecord(updated);
-    setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+    const persisted = await updateBoardingCare(updated.id, updated.feedingPlan);
+    setBoardingRecords(prev => prev.map(b => b.id === persisted.id ? persisted : b));
     showToast(`Feeding plan set: ${item.name} — ${feedingQtyPerMeal}/meal × ${feedingMealsPerDay}/day.`, 'success');
     setFeedingModalCage(null);
   };
@@ -269,34 +269,13 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     if (!occupant) return;
     const plan = occupant.boarding.feedingPlan;
     if (!plan) { showToast('No feeding plan set', 'error'); return; }
-    if (!onUpdateStock) { showToast('Stock handler unavailable.', 'error'); return; }
-
-    const invItem = inventory.find(i => i.id === plan.inventoryItemId);
-    const unitPrice = invItem ? Math.round(invItem.price * 100) : (systemConfig?.boardingRates?.milkCupCents ?? 10000);
-
     try {
-      await onUpdateStock(plan.inventoryItemId, -plan.quantityPerMeal);
+      const updated = await recordBoardingCharge(occupant.boarding.id, 'food', plan.quantityPerMeal, plan.inventoryItemId);
+      setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
     } catch (err: any) {
       showToast(`Stock update failed: ${err?.message || err}`, 'error');
       return;
     }
-
-    const billingItem = {
-      itemId: plan.inventoryItemId,
-      name: plan.itemName + ' (feeding)',
-      price: unitPrice,
-      quantity: plan.quantityPerMeal,
-      category: 'food' as const,
-    };
-
-    const nextItems = [...(occupant.boarding.billingItems || []), billingItem];
-    const updated: BoardingRecord = {
-      ...occupant.boarding,
-      billingItems: nextItems,
-      totalChargesCents: computeCharges({ ...occupant.boarding, billingItems: nextItems }),
-    };
-    await upsertBoardingRecord(updated);
-    setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
     showToast('Feeding logged. Stock updated.', 'success');
   };
 
@@ -306,95 +285,22 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     if (!occupant || !occupant.boarding) return;
     const b = occupant.boarding;
 
-    const charges = computeCharges(b);
-    const deposit = b.depositAmountCents ?? 0;
-    const balance = deposit - charges; // positive = refund owed, negative = owner owes more
-
-    if ((charges > 0 || balance !== 0) && (!activeShift || !currentUser)) {
+    if (!activeShift || !currentUser) {
       showToast('Open a shift before settling a boarding account.', 'error');
       return;
     }
 
     setIsSettling(true);
-    let nextItems = b.billingItems || [];
-    let toastMsg: string;
-    let settlementAdjustment;
-    if (balance < 0) {
-      nextItems = [...nextItems, { itemId: 'additional_charges', name: 'Additional Charges Beyond Deposit', price: Math.abs(balance), quantity: 1 }];
-      toastMsg = `Discharged. Additional cash recorded: Rs. ${formatRupees(Math.abs(balance) / 100)}.`;
-      settlementAdjustment = makeAdjustment(
-        derivedId(b.id, 'a2'),
-        'IN',
-        Math.abs(balance),
-        'Boarding Additional Charge',
-        `Additional boarding charge for ${occupant.pet?.name || b.petId} (${b.id.slice(0, 8)})`,
-      );
-    } else if (balance > 0) {
-      nextItems = [...nextItems, { itemId: 'settlement_refund', name: 'Boarding Deposit Refund', price: 0, quantity: 1 }];
-      toastMsg = `Discharged. Refund: Rs. ${formatRupees(balance / 100)}`;
-      settlementAdjustment = makeAdjustment(
-        derivedId(b.id, 'a2'),
-        'OUT',
-        balance,
-        'Boarding Deposit Refund',
-        `Refund for boarding deposit for ${occupant.pet?.name || b.petId} (${b.id.slice(0, 8)})`,
-      );
-    } else {
-      toastMsg = 'Discharged. Settled exactly — no balance.';
-    }
-
-    const updated: BoardingRecord = {
-      ...b,
-      billingItems: nextItems,
-      totalChargesCents: charges,
-      status: 'discharged',
-      billed: charges <= 0 ? false : true,
-    };
-
-    const billableItems = (nextItems || []).filter(item =>
-      item.itemId !== 'admission_deposit' &&
-      item.itemId !== 'additional_charges' &&
-      item.itemId !== 'settlement_refund' &&
-      Number(item.price) > 0,
-    );
-    const invoice = charges > 0 && activeShift && currentUser ? {
-      id: b.id,
-      patientId: b.petId,
-      petName: occupant.pet?.name || 'Boarding Patient',
-      ownerName: occupant.ownerName || 'Unknown Owner',
-      ownerPhone: occupant.pet ? clients.find(c => c.client_id === occupant.pet?.clientId)?.primary_phone || '0000000000' : '0000000000',
-      date: new Date().toISOString(),
-      items: (billableItems.length > 0 ? billableItems : [{ itemId: 'boarding_charge', name: 'Boarding Charges', price: charges, quantity: 1, category: 'service' }]).map(item => {
-        const inventoryItem = inventory.find(i => i.id === item.itemId);
-        const unitPrice = Number(item.price) / 100;
-        return {
-          itemId: item.itemId,
-          sku: inventoryItem?.sku || item.itemId,
-          name: item.name,
-          category: inventoryItem?.category || item.category || 'service',
-          quantity: item.quantity || 1,
-          unitPrice,
-          totalPrice: unitPrice * (item.quantity || 1),
-          sourceRefs: [{ type: 'boarding' as const, id: b.id }],
-        };
-      }),
-      subtotal: charges / 100,
-      tax: 0,
-      discount: 0,
-      sales_total: charges / 100,
-      cogs: 0,
-      profit: charges / 100,
-      paymentMethod: 'deposit' as const,
-      paymentStatus: 'paid' as const,
-      depositHeld: deposit / 100,
-      createdBy: currentUser.name,
-      shiftId: activeShift.id,
-      notes: 'Boarding charges settled against the refundable admission deposit.',
-    } : undefined;
-
     try {
-      await commitBoardingCashLedger(updated, invoice, settlementAdjustment);
-      setBoardingRecords(prev => prev.map(r => r.id === updated.id ? updated : r));
+      const result = await settleBoardingAccount(b.id, activeShift.id);
+      setBoardingRecords(prev => prev.map(r => r.id === result.boarding.id ? result.boarding : r));
+      const balance = Number(result.balance_cents || 0);
+      const toastMsg = balance < 0
+        ? `Discharged. Additional cash recorded: Rs. ${formatRupees(Math.abs(balance) / 100)}.`
+        : balance > 0
+          ? `Discharged. Refund: Rs. ${formatRupees(balance / 100)}`
+          : 'Discharged. Settled exactly — no balance.';
+      showToast(toastMsg, 'success');
     } catch (err: any) {
       const message = err?.message === 'OPEN_SHIFT_REQUIRED' ? 'Open a shift before settling a boarding account.' : `Boarding settlement failed: ${err?.message || err}`;
       showToast(message, 'error');
@@ -402,7 +308,6 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       return;
     }
 
-    showToast(toastMsg, 'success');
     setSelectedCage(null);
     setDischargeModalCage(null);
     setIsSettling(false);
@@ -436,9 +341,31 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     setIsSaving(true);
 
     // Snapshot today's cage rate for this pet/food/litter configuration
-    const cageFeePerDayCents = calculateDailyRate(patient, foodType, hospitalProvidesLitter);
+    if (!configuredPricing.enabled) {
+      showToast('Boarding is disabled for this clinic.', 'error');
+      setIsSaving(false);
+      return;
+    }
+    if (foodType === 'with_food' && !configuredPricing.allow_food_charge) {
+      showToast('Clinic-provided food is disabled in boarding pricing.', 'error');
+      setIsSaving(false);
+      return;
+    }
+    if (hospitalProvidesLitter && !configuredPricing.allow_litter_charge) {
+      showToast('Hospital-provided litter is disabled in boarding pricing.', 'error');
+      setIsSaving(false);
+      return;
+    }
+    if (medicalBoarding && !configuredPricing.allow_medical_boarding) {
+      showToast('Medical boarding is disabled for this clinic.', 'error');
+      setIsSaving(false);
+      return;
+    }
+
+    const cageFeePerDayCents = calculateDailyRate(patient, foodType, hospitalProvidesLitter, configuredPricing);
     if (cageFeePerDayCents <= 0) {
       showToast('Configure a positive boarding rate for this patient type before admission.', 'error');
+      setIsSaving(false);
       return;
     }
 
@@ -477,28 +404,18 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
       depositAmountCents: depositCents,
       totalChargesCents: 0,
       cageFeePerDayCents,
-      cleaningFeePerDayCents: medicalBoarding ? Math.round((cleaningFeeRupees || 0) * 100) : 0,
-      doctorFeePerVisitCents: medicalBoarding ? Math.round((doctorFeeRupees || 0) * 100) : 0,
+      cleaningFeePerDayCents: medicalBoarding && configuredPricing.allow_cleaning_fee ? configuredPricing.cleaning_cents_per_day : 0,
+      doctorFeePerVisitCents: medicalBoarding && configuredPricing.allow_doctor_rounds ? configuredPricing.doctor_round_cents : 0,
     };
 
     try {
-      await commitBoardingCashLedger(
-        newBoardingInfo,
-        undefined,
-        makeAdjustment(
-          derivedId(newBoardingInfo.id, 'a1'),
-          'IN',
-          depositCents,
-          'Boarding Deposit',
-          `Refundable boarding deposit for ${patient.name} (${newBoardingInfo.id.slice(0, 8)})`,
-        ),
-      );
+      const persisted = await startBoardingAdmission(newBoardingInfo, activeShift.id);
+      setBoardingRecords(prev => [...prev, persisted]);
     } catch (err: any) {
       showToast(`Boarding admission failed: ${err?.message || err}`, 'error');
       setIsSaving(false);
       return;
     }
-    setBoardingRecords(prev => [...prev, newBoardingInfo]);
     showToast(`Patient booked into ${selectedCage}.`, 'success');
 
     // Reset
@@ -511,8 +428,6 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     setMedicalBoarding(false);
     setHospitalProvidesLitter(false);
     setEstimatedStayDays(1);
-    setDoctorFeeRupees(0);
-    setCleaningFeeRupees(0);
     setIsSaving(false);
   };
 
@@ -641,7 +556,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                         <div className="font-black text-white text-lg tracking-tight truncate drop-shadow-sm">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate opacity-90">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-rose-200 truncate mt-0.5">Owner: {occupant.ownerName || 'Unknown'}</div>
-                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {formatRupees(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100)}/day</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mt-2 border border-white/10 shadow-sm w-max">Rs. {formatRupees(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false, occupant.boarding.pricingSnapshot || configuredPricing) / 100)}/{(occupant.boarding.pricingSnapshot || configuredPricing).billing_unit}</div>
                         {occupant.boarding.feedingPlan && (
                           <div data-testid={`feeding-plan-${cage}`} className="text-[10px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-xl inline-block mt-1 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
                         )}
@@ -691,7 +606,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                         <div className="font-black text-white text-xl tracking-tight truncate drop-shadow-md">{occupant.pet?.name || 'Unknown Pet'}</div>
                         <div className="text-xs font-bold text-rose-100 truncate mb-1 opacity-90 drop-shadow-sm">{occupant.pet?.breed || 'Unknown Breed'}</div>
                         <div className="text-[10px] font-bold text-white/80 bg-black/20 px-2 py-0.5 rounded-full inline-block mb-1 border border-white/10 w-max mt-1">Owner: {occupant.ownerName}</div>
-                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mb-3 border border-white/10 w-max">Rs. {formatRupees(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false) / 100)}/day</div>
+                        <div className="text-[10px] font-black text-white bg-black/20 px-2 py-1 rounded-2xl inline-block mb-3 border border-white/10 w-max">Rs. {formatRupees(calculateDailyRate(occupant.pet, occupant.boarding.foodType, occupant.boarding.hospitalProvidesLitter || false, occupant.boarding.pricingSnapshot || configuredPricing) / 100)}/{(occupant.boarding.pricingSnapshot || configuredPricing).billing_unit}</div>
                         {occupant.boarding.feedingPlan && (
                           <div data-testid={`feeding-plan-${cage}`} className="text-[10px] font-bold text-rose-50 bg-black/20 px-2 py-1 rounded-xl inline-block mb-2 border border-white/10 w-max">🍽 {occupant.boarding.feedingPlan.itemName} — {occupant.boarding.feedingPlan.quantityPerMeal}/meal × {occupant.boarding.feedingPlan.mealsPerDay}/day</div>
                         )}
@@ -727,33 +642,59 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
         <details open className="shrink-0 border-b border-slate-200 bg-slate-50">
           <summary className="cursor-pointer px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600">Boarding rates &amp; admission deposit</summary>
           <div className="px-5 pb-4 space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {([
-                ['catNofoodCents', 'Cat / no food'],
-                ['catWithfoodCents', 'Cat / with food'],
-                ['dogNofoodCents', 'Dog / no food'],
-                ['dogWithfoodCents', 'Dog / with food'],
-                ['catLitterCents', 'Cat litter extra'],
-                ['dogLitterCents', 'Dog litter extra'],
-                ['milkCupCents', 'Milk cup extra'],
-              ] as const).map(([key, label]) => (
+             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+               {([
+                 ['cat_no_food_cents', 'Cat / owner food'],
+                 ['cat_with_food_cents', 'Cat / clinic food'],
+                 ['dog_no_food_cents', 'Dog / owner food'],
+                 ['dog_with_food_cents', 'Dog / clinic food'],
+                 ['cat_litter_cents', 'Cat litter extra'],
+                 ['dog_litter_cents', 'Dog litter extra'],
+                  ['milk_cup_cents', 'Milk cup reference'],
+                  ['doctor_round_cents', 'Doctor round'],
+                  ['cleaning_cents_per_day', 'Medical cleaning / day'],
+                  ['late_checkout_cents', 'Late pickup fee'],
+                ] as const).map(([key, label]) => (
                 <label key={key} className="text-[10px] font-black uppercase tracking-widest text-slate-500">
                   {label}
                   <div className="relative mt-1">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">{systemConfig?.currencySymbol || 'Rs. '}</span>
-                    <input type="number" min="0" step="1" value={Math.round((rateDraft[key] || 0) / 100)} onChange={e => setRateDraft(prev => ({ ...prev, [key]: Math.round(parseWholeRupees(e.target.value) * 100) }))} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                     <input type="number" min="0" step="1" value={Math.round((pricingDraft[key] || 0) / 100)} onChange={e => setPricingDraft(prev => ({ ...prev, [key]: Math.round(parseWholeRupees(e.target.value) * 100) }))} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
                   </div>
                 </label>
               ))}
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Admission deposit
                 <div className="relative mt-1">
                   <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">{systemConfig?.currencySymbol || 'Rs. '}</span>
-                  <input data-testid="boarding-deposit-input" type="number" min="0" step="1" value={Math.round(depositDraft / 100)} onChange={e => setDepositDraft(Math.round(parseWholeRupees(e.target.value) * 100))} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                </div>
-              </label>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px] font-medium text-slate-500">Rates are stored with the clinic configuration and applied to new admissions.</p>
+                   <input data-testid="boarding-deposit-input" type="number" min="0" step="1" value={Math.round(pricingDraft.default_deposit_cents / 100)} onChange={e => setPricingDraft(prev => ({ ...prev, default_deposit_cents: Math.round(parseWholeRupees(e.target.value) * 100) }))} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-2 text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                 </div>
+               </label>
+               <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Billing basis
+                 <select value={pricingDraft.billing_unit} onChange={e => setPricingDraft(prev => ({ ...prev, billing_unit: e.target.value === 'day' ? 'day' : 'night' }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold text-slate-800">
+                   <option value="night">Per night</option>
+                   <option value="day">Per day</option>
+                 </select>
+               </label>
+             </div>
+             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 rounded-xl border border-slate-200 bg-white p-3">
+               {([
+                 ['allow_food_charge', 'Allow clinic food'],
+                 ['allow_litter_charge', 'Allow litter charge'],
+                 ['allow_medical_boarding', 'Allow medical boarding'],
+                 ['allow_doctor_rounds', 'Allow doctor rounds'],
+                 ['allow_cleaning_fee', 'Charge medical cleaning'],
+                 ['allow_medication_charge', 'Charge medication'],
+                 ['allow_late_checkout_fee', 'Charge late pickup'],
+                 ['enabled', 'Boarding enabled'],
+               ] as const).map(([key, label]) => (
+                 <label key={key} className="flex items-center gap-2 rounded-lg px-2 py-2 text-[10px] font-black uppercase tracking-wide text-slate-600 hover:bg-slate-50">
+                   <input type="checkbox" checked={Boolean(pricingDraft[key])} onChange={e => setPricingDraft(prev => ({ ...prev, [key]: e.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
+                   {label}
+                 </label>
+               ))}
+             </div>
+             <div className="flex items-center justify-between gap-3">
+               <p className="text-[10px] font-medium text-slate-500">Clinic owners/managers control these rates and toggles. New admissions keep a pricing snapshot.</p>
               <button type="button" onClick={() => void saveBoardingRates()} disabled={isSavingRates} className="rounded-lg bg-indigo-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-indigo-700 disabled:opacity-50">{isSavingRates ? 'Saving...' : 'Save rates'}</button>
             </div>
           </div>
@@ -826,9 +767,9 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                     <button type="button" onClick={() => setFoodType('without_food')} className={`flex-1 py-2 text-xs font-bold transition-colors ${foodType === 'without_food' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
                       Without Food
                     </button>
-                    <button type="button" onClick={() => setFoodType('with_food')} className={`flex-1 py-2 text-xs font-bold transition-colors ${foodType === 'with_food' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
-                      With Food
-                    </button>
+                     <button type="button" disabled={!configuredPricing.allow_food_charge} onClick={() => setFoodType('with_food')} className={`flex-1 py-2 text-xs font-bold transition-colors ${foodType === 'with_food' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'} disabled:cursor-not-allowed disabled:opacity-40`}>
+                       With Food
+                     </button>
                   </div>
                   {foodType === 'with_food' && (
                     <select
@@ -852,9 +793,9 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                     <button type="button" onClick={() => setMedicalBoarding(false)} className={`flex-1 py-2 text-xs font-bold transition-colors ${!medicalBoarding ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
                       Standard
                     </button>
-                    <button type="button" onClick={() => setMedicalBoarding(true)} className={`flex-1 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1 ${medicalBoarding ? 'bg-rose-600 text-white' : 'bg-white text-rose-600 hover:bg-rose-50'}`}>
-                      <Activity className="w-3 h-3" /> Medical
-                    </button>
+                     <button type="button" disabled={!configuredPricing.allow_medical_boarding} onClick={() => setMedicalBoarding(true)} className={`flex-1 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1 ${medicalBoarding ? 'bg-rose-600 text-white' : 'bg-white text-rose-600 hover:bg-rose-50'} disabled:cursor-not-allowed disabled:opacity-40`}>
+                       <Activity className="w-3 h-3" /> Medical
+                     </button>
                   </div>
                 </div>
               </div>
@@ -865,36 +806,26 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                   <button type="button" onClick={() => setHospitalProvidesLitter(false)} className={`flex-1 py-2 text-xs font-bold transition-colors ${!hospitalProvidesLitter ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
                     Owner Brings
                   </button>
-                  <button type="button" onClick={() => setHospitalProvidesLitter(true)} className={`flex-1 py-2 text-xs font-bold transition-colors ${hospitalProvidesLitter ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
-                    Hospital Provides
-                  </button>
+                   <button type="button" disabled={!configuredPricing.allow_litter_charge} onClick={() => setHospitalProvidesLitter(true)} className={`flex-1 py-2 text-xs font-bold transition-colors ${hospitalProvidesLitter ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'} disabled:cursor-not-allowed disabled:opacity-40`}>
+                     Hospital Provides
+                   </button>
                 </div>
               </div>
 
-              {medicalBoarding && (
-                <div data-testid="admission-fees" className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest block">Doctor Fee per Round (Rs.)</label>
-                    <input
-                      data-testid="doctor-fee-input"
-                      type="number" step="1" inputMode="numeric" min={0}
-                      value={doctorFeeRupees || ''}
-                      onChange={e => setDoctorFeeRupees(parseWholeRupees(e.target.value))}
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-rose-600 uppercase tracking-widest block">Cleaning Fee per Day (Rs.)</label>
-                    <input
-                      data-testid="cleaning-fee-input"
-                      type="number" step="1" inputMode="numeric" min={0}
-                      value={cleaningFeeRupees || ''}
-                      onChange={e => setCleaningFeeRupees(parseWholeRupees(e.target.value))}
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
-                    />
-                  </div>
-                </div>
-              )}
+               {medicalBoarding && (
+                 <div data-testid="admission-fees" className="grid grid-cols-2 gap-6">
+                   <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                     <p className="text-[10px] font-black uppercase tracking-widest text-rose-700">Doctor rounds</p>
+                     <p className="mt-1 text-lg font-black text-rose-900">{systemConfig?.currencySymbol || 'Rs. '}{formatRupees(configuredPricing.doctor_round_cents / 100)} each</p>
+                     <p className="mt-1 text-[10px] font-bold text-rose-700">Set by clinic pricing. Staff cannot override it during admission.</p>
+                   </div>
+                   <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                     <p className="text-[10px] font-black uppercase tracking-widest text-rose-700">Medical cleaning</p>
+                     <p className="mt-1 text-lg font-black text-rose-900">{systemConfig?.currencySymbol || 'Rs. '}{formatRupees(configuredPricing.cleaning_cents_per_day / 100)} / {configuredPricing.billing_unit}</p>
+                     <p className="mt-1 text-[10px] font-bold text-rose-700">Calculated by the server at discharge.</p>
+                   </div>
+                 </div>
+               )}
 
               <div data-testid="deposit-display" className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
                 <p className="text-sm font-black text-emerald-800">Cash deposit to collect: Rs. {formatRupees(depositCents / 100)} <span className="font-bold text-emerald-600">(standard admission deposit)</span></p>

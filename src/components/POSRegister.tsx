@@ -38,7 +38,6 @@ interface POSProps {
   currentUser?: UserType;
   invoices?: Invoice[];
   onUpdateStock?: (itemId: string, qtyDelta: number, expectedStock?: number) => Promise<void>;
-  onAddInvoice?: (invoice: any) => Promise<void>;
   onVoidInvoice?: (id: string) => Promise<void>;
   systemConfig?: any;
   onTriggerInventorySync?: () => Promise<void>;
@@ -65,7 +64,6 @@ export default function POSRegister({
   patientRecords = [],
   clients = [],
   clinicQueue = [],
-  onAddInvoice, 
   onUpdateStock,
   onAtomicCheckout,
   activeShiftId,

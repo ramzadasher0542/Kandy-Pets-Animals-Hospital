@@ -261,44 +261,54 @@ export default function GroomingManager({ clients, pets, records, inventory, cli
   const [signatureModal, setSignatureModal] = useState<string | null>(null);
 
   const handlePrintConsent = (log: GroomingLog) => {
+    const appendText = (parent: HTMLElement, tag: string, value: string, style?: string) => {
+      const element = document.createElement(tag);
+      element.textContent = value;
+      if (style) element.setAttribute('style', style);
+      parent.appendChild(element);
+      return element;
+    };
     const printDiv = document.createElement('div');
     printDiv.id = 'print-consent';
-    printDiv.innerHTML = `
-      <style>
-        @media print {
-          body * { visibility: hidden; }
-          #print-consent, #print-consent * { visibility: visible; }
-          #print-consent { position: absolute; left: 0; top: 0; width: 100%; padding: 40px; }
-        }
-      </style>
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h2>${systemConfig?.hospitalName || 'KANDY PETS ANIMAL HOSPITAL'}</h2>
-        <p>${systemConfig?.hospitalAddress || '123 Vet Street, Kandy'}</p>
-        <h1 style="margin-top: 20px;">GROOMING CONSENT FORM</h1>
-      </div>
-      <div style="margin-bottom: 20px;">
-        <p><strong>Date:</strong> ${log.date}</p>
-        <p><strong>Owner Name:</strong> ${log.consentOwnerName || '_________________________'}</p>
-        <p><strong>Pet ID:</strong> ${log.petId}</p>
-      </div>
-      <h3>Grooming Instructions</h3>
-      <ul style="list-style: none; padding: 0;">
-        <li style="margin-bottom: 10px;">${log.groomingInstructions?.bathe ? '☑' : '☐'} Bathe</li>
-        <li style="margin-bottom: 10px;">${log.groomingInstructions?.fullShave ? '☑' : '☐'} Full Shave</li>
-        <li style="margin-bottom: 10px;">${log.groomingInstructions?.trimOnly ? '☑' : '☐'} Trim Only</li>
-        <li style="margin-bottom: 10px;">${log.groomingInstructions?.nailClip ? '☑' : '☐'} Nail Clip</li>
-        <li style="margin-bottom: 10px;">${log.groomingInstructions?.earClean ? '☑' : '☐'} Ear Clean</li>
-        <li style="margin-bottom: 10px;">${log.groomingInstructions?.deShed ? '☑' : '☐'} De-shed</li>
-      </ul>
-      <div style="margin-bottom: 40px;">
-        <p><strong>Special Instructions:</strong></p>
-        <p>${log.groomingInstructions?.customNotes || 'None'}</p>
-      </div>
-      <div style="display: flex; justify-content: space-between; margin-top: 50px;">
-        <p>Owner Signature: ___________________________  Date: ______</p>
-        <p>Staff Signature: ___________________________</p>
-      </div>
-    `;
+    const style = document.createElement('style');
+    style.textContent = '@media print { body * { visibility: hidden; } #print-consent, #print-consent * { visibility: visible; } #print-consent { position: absolute; left: 0; top: 0; width: 100%; padding: 40px; } }';
+    printDiv.appendChild(style);
+
+    const header = appendText(printDiv, 'div', '', 'text-align: center; margin-bottom: 30px;');
+    appendText(header, 'h2', systemConfig?.hospitalName || 'KANDY PETS ANIMAL HOSPITAL');
+    appendText(header, 'p', systemConfig?.hospitalAddress || '123 Vet Street, Kandy');
+    appendText(header, 'h1', 'GROOMING CONSENT FORM', 'margin-top: 20px;');
+
+    const details = appendText(printDiv, 'div', '', 'margin-bottom: 20px;');
+    const appendLabel = (label: string, value: unknown) => {
+      const line = appendText(details, 'p', '');
+      appendText(line, 'strong', `${label}:`);
+      line.appendChild(document.createTextNode(` ${String(value ?? '')}`));
+    };
+    appendLabel('Date', log.date);
+    appendLabel('Owner Name', log.consentOwnerName || '_________________________');
+    appendLabel('Pet ID', log.petId);
+
+    appendText(printDiv, 'h3', 'Grooming Instructions');
+    const list = appendText(printDiv, 'ul', '', 'list-style: none; padding: 0;');
+    const instructions: Array<[string, boolean | undefined]> = [
+      ['Bathe', log.groomingInstructions?.bathe],
+      ['Full Shave', log.groomingInstructions?.fullShave],
+      ['Trim Only', log.groomingInstructions?.trimOnly],
+      ['Nail Clip', log.groomingInstructions?.nailClip],
+      ['Ear Clean', log.groomingInstructions?.earClean],
+      ['De-shed', log.groomingInstructions?.deShed],
+    ];
+    instructions.forEach(([label, selected]) => appendText(list, 'li', `${selected ? '[x]' : '[ ]'} ${label}`, 'margin-bottom: 10px;'));
+
+    const notes = appendText(printDiv, 'div', '', 'margin-bottom: 40px;');
+    appendText(notes, 'p', 'Special Instructions:');
+    appendText(notes, 'p', log.groomingInstructions?.customNotes || 'None');
+
+    const signatures = appendText(printDiv, 'div', '', 'display: flex; justify-content: space-between; margin-top: 50px;');
+    appendText(signatures, 'p', 'Owner Signature: ___________________________  Date: ______');
+    appendText(signatures, 'p', 'Staff Signature: ___________________________');
+
     document.body.appendChild(printDiv);
     window.onafterprint = () => {
       printDiv.remove();

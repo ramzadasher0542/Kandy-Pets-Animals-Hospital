@@ -11,7 +11,7 @@ import { Printer, Users, ShieldAlert, Save, Plus,
 import { showToast } from './Toast';
 import { fetchInventory, exportFullDatabase, restoreFullDatabase, purgeApplicationData } from '../lib/db';
 import { downloadJsonFile } from '../lib/download';
-import { ItemCategory, InventoryItem, ClinicSettings } from '../types';
+import { ItemCategory, InventoryItem, ClinicSettings, BoardingPricingProfile } from '../types';
 import { requireAuth, ACTION_POLICIES, ALL_ACTION_ROLES, AuthAction, ROOT_ROLES, canViewSettingsTab, SettingsTab, isProviderOnlyAction, PANEL_VIEWS, DEFAULT_PANEL_PERMISSIONS } from '../lib/requireAuth';
 import { parseWholeRupees } from '../utils/currency';
 import { formatDisplayDate } from '../utils/time';
@@ -65,6 +65,7 @@ export interface SystemConfig {
     dogLitterCents: number;
     milkCupCents: number;
   };
+  boardingPricing?: BoardingPricingProfile | null;
   defaultDepositCents?: number;
   idleLogoutMinutes?: number;
   setupModeActive?: boolean;
@@ -390,7 +391,8 @@ if (ROOT_ROLES.includes(role as any)) return; // full-access roles are never edi
       setIsRestoringAll(true);
       try {
         const summary = await restoreFullDatabase(text);
-        showToast(`Backup merged: ${summary.rowsProcessed} rows across ${summary.tablesProcessed} tables.`, 'success');
+         const skipped = summary.tablesSkipped.length ? ` Skipped protected tables: ${summary.tablesSkipped.join(', ')}.` : '';
+         showToast(`Backup merged: ${summary.rowsProcessed} rows across ${summary.tablesProcessed} tables.${skipped}`, 'success');
         setTimeout(() => window.location.reload(), 1500);
       } catch (error) {
         if (import.meta.env.DEV) console.error(error);
@@ -516,7 +518,6 @@ if (ROOT_ROLES.includes(role as any)) return; // full-access roles are never edi
     { id: 'inventory', label: 'Inventory & Stock', icon: Layers },
     { id: 'staff', label: 'Staff & Security', icon: Users },
     { id: 'database', label: 'Data & Operations', icon: Database, danger: true },
-    { id: 'rates', label: 'Billing & Rates', icon: Banknote }
   ];
 
   // Global configuration and recovery surfaces stay out of the tenant nav.
