@@ -1,5 +1,8 @@
 -- Step 39 - authoritative checkout and durable post-checkout effects
 --
+-- SUPERSEDED: apply 20260914_remediation_checkout_effects.sql instead of this
+-- migration as a standalone release. It is retained for historical replay only.
+--
 -- The browser may propose an invoice, but it must not choose catalog prices,
 -- tax, cost, payment totals, shift ownership, or staff identity. This migration
 -- keeps the existing RPC signature for the deployed client while moving those
@@ -9,6 +12,7 @@ begin;
 
 create table if not exists public.checkout_effects (
   invoice_id uuid primary key,
+  clinic_id uuid not null references public.clinics(id),
   client_id text,
   client_value_delta numeric not null default 0,
   appointment_id text,
@@ -56,6 +60,7 @@ declare
   v_patient_id text;
   v_created_by text;
   v_role text;
+  v_clinic_id uuid;
   v_payment_method text;
   v_line jsonb;
   v_payment jsonb;
@@ -104,6 +109,11 @@ begin
   v_role := public.current_staff_role();
   if v_role not in ('cashier', 'owner', 'manager', 'admin', 'provider') then
     raise exception 'ROLE_NOT_ALLOWED: checkout';
+  end if;
+  v_clinic_id := public.current_clinic_id();
+  if v_clinic_id is null
+     or nullif(p_invoice->>'clinic_id', '')::uuid is distinct from v_clinic_id then
+    raise exception 'CLINIC_SCOPE_MISMATCH';
   end if;
 
   begin
@@ -333,9 +343,10 @@ begin
 
   v_patient_id := nullif(v_full->>'patientId', '');
   insert into public.checkout_effects (
-    invoice_id, client_id, client_value_delta, appointment_id, source_refs
+    invoice_id, clinic_id, client_id, client_value_delta, appointment_id, source_refs
   )
   select v_invoice_id,
+         v_clinic_id,
          case when v_patient_id is null or v_patient_id = 'RETAIL' then null
               else (select "clientId"::text from public.pets where id::text = v_patient_id limit 1)
          end,

@@ -40,9 +40,9 @@ begin
 end
 $$;
 
--- Keep the sensitive panel-permission column writable only through the
--- owner-only RPC below. Staff metadata remains writable through the existing
--- tenant policy and only through the non-sensitive columns listed here.
+-- Keep the sensitive panel-permission and identity columns writable only through
+-- the owner-only remediation RPC. The follow-up migration installs that RPC and
+-- removes these broad grants before this chain is used for a release.
 revoke insert, update on public.users from authenticated;
 grant insert (id, name, username, role, avatar_color, active, is_deleted, auth_user_id, clinic_id)
   on public.users to authenticated;

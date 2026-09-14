@@ -54,6 +54,10 @@ declare
   v_appointment_id uuid;
   v_item jsonb;
   v_item_id uuid;
+  v_quantity numeric;
+  v_category text;
+  v_expected_stock jsonb := '{}'::jsonb;
+  v_supplied_stock jsonb := '{}'::jsonb;
 begin
   if auth.uid() is null or not public.is_staff() then
     raise exception 'STAFF_AUTH_REQUIRED';
@@ -112,23 +116,73 @@ begin
     end if;
   end if;
 
-  if nullif(p_invoice->>'patientId', '') is not null and p_invoice->>'patientId' <> 'RETAIL'
-     and exists (select 1 from public.pets where id::text = p_invoice->>'patientId' and clinic_id <> v_clinic_id) then
-    raise exception 'CLINIC_SCOPE_MISMATCH';
+  if nullif(p_invoice->>'patientId', '') is not null and p_invoice->>'patientId' <> 'RETAIL' then
+    if exists (select 1 from public.pets where id::text = p_invoice->>'patientId' and clinic_id <> v_clinic_id)
+       or not exists (select 1 from public.pets where id::text = p_invoice->>'patientId' and clinic_id = v_clinic_id) then
+      raise exception 'CLINIC_SCOPE_MISMATCH';
+    end if;
   end if;
+
+  -- Derive the stock set from the invoice lines, not from the second client
+  -- payload. Both sets must match exactly so an attacker cannot omit or replace
+  -- a decrement while keeping a different catalog item in the invoice JSON.
+  for v_item in select value from jsonb_array_elements(p_invoice->'items') loop
+    begin
+      v_item_id := (nullif(v_item->>'itemId', ''))::uuid;
+      v_quantity := nullif(v_item->>'quantity', '')::numeric;
+    exception when others then
+      raise exception 'INVALID_INVOICE_LINE';
+    end;
+    if v_item_id is null or v_quantity is null or v_quantity <= 0 or v_quantity <> trunc(v_quantity) then
+      raise exception 'INVALID_INVOICE_LINE';
+    end if;
+    select category
+      into v_category
+    from public.inventory
+    where id = v_item_id
+      and clinic_id = v_clinic_id
+      and coalesce(is_deleted, false) = false
+    for update;
+    if not found then
+      raise exception 'CLINIC_SCOPE_MISMATCH';
+    end if;
+    if coalesce(v_category, '') not in ('service', 'lab_service') then
+      v_expected_stock := jsonb_set(
+        v_expected_stock,
+        array[v_item_id::text],
+        to_jsonb(coalesce((v_expected_stock->>v_item_id::text)::numeric, 0) + v_quantity),
+        true
+      );
+    end if;
+  end loop;
 
   for v_item in select value from jsonb_array_elements(p_stock_items) loop
     begin
       v_item_id := (nullif(v_item->>'item_id', ''))::uuid;
+      v_quantity := nullif(v_item->>'qty', '')::numeric;
     exception when others then
       raise exception 'INVALID_STOCK_ITEM_ID';
     end;
-    if v_item_id is null or not exists (
-      select 1 from public.inventory where id = v_item_id and clinic_id = v_clinic_id
-    ) then
+    if v_item_id is null or v_quantity is null or v_quantity <= 0 or v_quantity <> trunc(v_quantity)
+       or not exists (
+         select 1 from public.inventory
+         where id = v_item_id
+           and clinic_id = v_clinic_id
+           and coalesce(is_deleted, false) = false
+       ) then
       raise exception 'CLINIC_SCOPE_MISMATCH';
     end if;
+    v_supplied_stock := jsonb_set(
+      v_supplied_stock,
+      array[v_item_id::text],
+      to_jsonb(coalesce((v_supplied_stock->>v_item_id::text)::numeric, 0) + v_quantity),
+      true
+    );
   end loop;
+
+  if v_expected_stock <> v_supplied_stock then
+    raise exception 'STOCK_ITEMS_MISMATCH';
+  end if;
 
   return public.commit_checkout_invoice_and_stock_impl(
     jsonb_set(p_invoice, '{clinic_id}', to_jsonb(v_clinic_id::text), true),
