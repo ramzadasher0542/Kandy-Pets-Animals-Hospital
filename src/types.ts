@@ -173,7 +173,33 @@ export interface Vaccination { id: string; petId: string; itemId: string; name: 
 export interface LabResult { id: string; petId: string; testName: string; requestDate: string; resultDate?: string; status: 'pending' | 'completed' | 'urgent'; value?: string; referenceRange?: string; notes?: string; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 export interface InpatientLog { id: string; date: string; time: string; temperature?: string; treatment: string; route?: 'IV' | 'IM' | 'SC' | 'Oral' | 'Suppository'; frequency?: 'TDS' | 'BD' | 'Noct' | 'Mane' | 'SOS' | 'Stat' | 'custom'; frequencyCustom?: string; remarks?: string; vetId: string; }
 export interface GroomingLog { id: string; petId: string; date: string; services: string[]; totalBilled: number; status: 'pending' | 'completed'; billingItems?: any[]; billed?: boolean; created_at?: string; updated_at?: string; is_deleted?: boolean; groomingInstructions?: { bathe: boolean; fullShave: boolean; trimOnly: boolean; nailClip: boolean; earClean: boolean; deShed: boolean; customNotes?: string; }; consentSignature?: string; consentTimestamp?: string; consentOwnerName?: string; }
-export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; hospitalProvidesLitter?: boolean; billingItems?: any[]; billed?: boolean; feedingPlan?: { inventoryItemId: string; itemName: string; quantityPerMeal: number; mealsPerDay: number; }; estimatedStayDays?: number; depositAmountCents?: number; totalChargesCents?: number; cageFeePerDayCents?: number; cleaningFeePerDayCents?: number; doctorFeePerVisitCents?: number; created_at?: string; updated_at?: string; is_deleted?: boolean; }
+export interface BoardingPricingProfile {
+  clinic_id?: string;
+  enabled: boolean;
+  billing_unit: 'night' | 'day';
+  cat_no_food_cents: number;
+  cat_with_food_cents: number;
+  dog_no_food_cents: number;
+  dog_with_food_cents: number;
+  cat_litter_cents: number;
+  dog_litter_cents: number;
+  milk_cup_cents: number;
+  default_deposit_cents: number;
+  doctor_round_cents: number;
+  cleaning_cents_per_day: number;
+  late_checkout_cents: number;
+  allow_food_charge: boolean;
+  allow_litter_charge: boolean;
+  allow_medical_boarding: boolean;
+  allow_doctor_rounds: boolean;
+  allow_cleaning_fee: boolean;
+  allow_medication_charge: boolean;
+  allow_late_checkout_fee: boolean;
+  pricing_version?: number;
+  updated_at?: string;
+}
+
+export interface BoardingRecord { id: string; petId: string; cageNumber: string; checkInDate: string; expectedCheckOut: string; status: 'active' | 'discharged'; foodType: 'without_food' | 'with_food'; medicalBoarding: boolean; depositPaid: boolean; hospitalProvidesLitter?: boolean; billingItems?: any[]; billed?: boolean; feedingPlan?: { inventoryItemId: string; itemName: string; quantityPerMeal: number; mealsPerDay: number; }; estimatedStayDays?: number; depositAmountCents?: number; totalChargesCents?: number; cageFeePerDayCents?: number; cleaningFeePerDayCents?: number; doctorFeePerVisitCents?: number; pricingSnapshot?: BoardingPricingProfile; checkedOutAt?: string; created_at?: string; updated_at?: string; is_deleted?: boolean; }
 
 // ============================================================================
 // PHASE 1: ENTERPRISE EHR MATRIX

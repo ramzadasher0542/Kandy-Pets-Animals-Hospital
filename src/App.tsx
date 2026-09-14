@@ -101,7 +101,7 @@ import {
   InventoryItem, Appointment, MedicalRecord, ClientNotification,
   SystemAlert, Invoice, AppointmentStatus,
   ActiveShift, ClinicQueueItem, User, ClinicSettings, DEFAULT_CLINIC_PANELS,
-  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry, InvoiceSourceRef
+  Vaccination, GroomingLog, LabResult, BoardingRecord, StaffProfile, TimeEntry, ScheduleEntry
 } from './types';
 
 import { Modal } from './components/ui/Modal';
@@ -142,23 +142,17 @@ import {
   fetchPets,
   fetchClients,
   fetchBoardingRecords,
-  fetchVaccinations,
-  fetchGroomingLogs,
-  fetchLabResults,
   upsertClient,
   upsertInventoryItem,
   upsertAppointment, 
   upsertMedicalRecord,
   deleteMedicalRecord, 
-  upsertInvoice,
+   updateInvoiceCustomerDetails,
   commitCheckoutInvoiceAndStock,
   processCheckoutEffects,
   processPendingCheckoutEffects,
   upsertAlert,
-  upsertVaccination,
-  upsertGroomingLog,
-  upsertLabResult,
-  upsertBoardingRecord,
+   saveBoardingPricingProfile,
   upsertClinicQueueItem,
   removeFromClinicQueue,
   atomicStockDecrement,
@@ -1028,7 +1022,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
       // the UI never claims a history row was updated when its cloud write failed.
       const aptResults = await Promise.allSettled(aptUpdates.map(u => upsertAppointment(u)));
       const recResults = await Promise.allSettled(recUpdates.map(u => upsertMedicalRecord(u)));
-      const invResults = await Promise.allSettled(invUpdates.map(u => upsertInvoice(u)));
+      const invResults = await Promise.allSettled(invUpdates.map(u => updateInvoiceCustomerDetails(u.id, u.ownerName, u.ownerPhone)));
 
       const aptDone = aptUpdates.filter((_, i) => aptResults[i]?.status === 'fulfilled');
       const recDone = recUpdates.filter((_, i) => recResults[i]?.status === 'fulfilled');
@@ -1148,24 +1142,6 @@ function App({ initialSession, initialAuthError }: AppProps) {
     }
   }, [currentUser]);
 
-  // AUDIT FIX: Removed redundant double-write of appointment completion.
-  // upsertInvoice in db.ts already marks the appointment as 'completed'.
-  // Added try-catch for error resilience.
-  // MISSION 2: Uses fetchTodaysInvoices instead of full fetchInvoices
-  const handleAddInvoice = useCallback(async (invoice: any) => {
-    try {
-      await upsertInvoice(invoice);
-      setInvoices(prev => [invoice, ...prev]);
-
-      if (invoice.appointmentId) {
-        await closeVisit(invoice.appointmentId);
-      }
-    } catch (error: any) {
-      if (import.meta.env.DEV) console.error('[CeylonPets] Invoice creation failed:', error);
-      showToast(`Checkout failed: ${error.message}`, 'error');
-    }
-  }, [closeVisit]);
-
   // FIXED: No longer mutates React state directly — creates a new object
   // MISSION 2 FIX: Read from DB directly instead of stale state (old invoices aren't in state)
   const handleVoidInvoice = useCallback(async (id: any) => {
@@ -1203,51 +1179,8 @@ function App({ initialSession, initialAuthError }: AppProps) {
           return [voided, ...prev];
         });
 
-        // MISSION 3: Decrement Client Lifetime Value once, only when THIS call
-        // actually voided a previously-paid invoice (RPC reversed flag; false on an
-        // idempotent repeat).
-        if (voidResult.reversed && target.patientId && target.patientId !== 'RETAIL') {
-          const pet = pets.find(p => p.id === target.patientId);
-          if (pet) {
-            const client = clients.find(c => c.client_id === pet.clientId);
-            if (client) {
-              const updatedClient = {
-                ...client,
-                lifetime_value: Math.max(0, (client.lifetime_value || 0) - target.sales_total),
-                updated_at: new Date().toISOString()
-              };
-              await handleUpdateClient(updatedClient);
-            }
-          }
-        }
-
-        // A voided sale must release the exact clinical source rows that were
-        // marked billed during checkout so they can be rebilled after correction.
-        const sourceRefs = (target.items || []).flatMap(item => item.sourceRefs || []) as InvoiceSourceRef[];
-        let sourceUnbillingFailed = false;
-        const uniqueRefs = new Map<string, InvoiceSourceRef>();
-        sourceRefs.forEach(ref => uniqueRefs.set(`${ref.type}-${ref.id}`, ref));
-        for (const ref of uniqueRefs.values()) {
-          try {
-            if (ref.type === 'vaccination') {
-              const record = (await fetchVaccinations()).find(row => row.id === ref.id);
-              if (record?.billed) await upsertVaccination({ ...record, billed: false, updated_at: new Date().toISOString() });
-            } else if (ref.type === 'grooming') {
-              const record = (await fetchGroomingLogs()).find(row => row.id === ref.id);
-              if (record?.billed) await upsertGroomingLog({ ...record, billed: false, updated_at: new Date().toISOString() });
-            } else if (ref.type === 'lab') {
-              const record = (await fetchLabResults()).find(row => row.id === ref.id);
-              if (record?.billed) await upsertLabResult({ ...record, billed: false, updated_at: new Date().toISOString() });
-            } else if (ref.type === 'boarding') {
-              const record = (await fetchBoardingRecords()).find(row => row.id === ref.id);
-              if (record?.billed) await upsertBoardingRecord({ ...record, billed: false, updated_at: new Date().toISOString() });
-            }
-          } catch (error) {
-            sourceUnbillingFailed = true;
-            if (import.meta.env.DEV) console.error('[CeylonPets] Failed to release billed source row:', error);
-          }
-        }
-        if (sourceUnbillingFailed) showToast('Invoice voided, but one or more linked clinical rows could not be released for rebilling.', 'warning');
+        // Customer lifetime value and clinical source billing are reversed by the
+        // same server transaction as the invoice void. No browser repair writes.
       }
     } catch (error: any) {
       showToast(`Failed: ${error.message}`, 'error');
@@ -1504,7 +1437,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
             clients={clients}
             clinicQueue={clinicQueue}
             currentUser={currentUser} invoices={invoices} onUpdateStock={handleUpdateStock}
-            onAddInvoice={handleAddInvoice} onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
+             onVoidInvoice={handleVoidInvoice} systemConfig={safeSystemConfig}
              onTriggerInventorySync={async () => { }}
             activeShift={activeShift} activeShiftId={activeShift?.id} incomingClient={viewPayload?.client ? { phone: viewPayload.client.primary_phone || '', name: viewPayload.client.full_name || '', id: viewPayload.client.client_id || '' } : null}
             onUpdateRecord={handleUpdateRecord}
@@ -1514,7 +1447,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
         );
       }
        case 'appointments': return <AppointmentsManager appointments={appointments} records={records} clinicQueue={clinicQueue} users={users} onAddAppointment={handleAddAppointment} onUpdateStatus={handleUpdateAppointmentStatus} onAddRecord={handleAddRecord} onUpdateAppointment={handleUpdateAppointment} onUpdateClient={handleUpdateClient} onUpdatePet={handleUpdatePet} preFilledClient={viewPayload?.client} preFilledPet={viewPayload?.pet} onGenerateConsent={(clientName, petName) => setConsentPayload({ clientName, petName })} />;
-       case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} activeShift={activeShift} currentUser={currentUser} onChangeConfig={async (config) => { await saveSystemConfig(config, currentUser as User); setSystemConfig(config); }} />;
+        case 'boarding': return <BoardingManager systemConfig={systemConfig} clients={clients} pets={pets} records={records} clinicQueue={clinicQueue} inventory={inventory} onUpdateStock={handleUpdateStock} onUpdateRecord={handleUpdateRecord} activeShift={activeShift} currentUser={currentUser} onChangeConfig={async (config) => { await saveSystemConfig(config, currentUser as User); setSystemConfig(config); }} onSaveBoardingPricing={async (profile) => { const saved = await saveBoardingPricingProfile(profile); setSystemConfig(prev => ({ ...prev, boardingPricing: saved })); }} />;
        case 'grooming': return <GroomingManager clients={clients} pets={pets} records={records} inventory={inventory} clinicQueue={clinicQueue} onUpdateRecord={handleUpdateRecord} onUpdateInventory={handleUpdateInventoryItem} systemConfig={systemConfig} />;
       case 'inventory': return <InventoryManager inventory={inventory} onAddProduct={handleAddProduct} onUpdateStock={handleUpdateStock} onUpdatePrice={handleUpdatePrice} onUpdateInventory={handleUpdateInventoryItem} onDeleteInventory={handleDeleteInventoryItem} systemConfig={systemConfig} />;
       case 'suppliers': return <SuppliersManager currentUser={currentUser} />;
