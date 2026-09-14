@@ -5,7 +5,8 @@
 --   * anon has NO access to any table;
 --   * an authenticated JWT whose sub is NOT linked to an active staff row is
 --     treated as a non-staff outsider (sees zero rows, cannot write);
---   * a linked MANAGER may read/write operational data and manage staff;
+--   * a linked MANAGER may read/write permitted operational data but may NOT
+--     manage staff (staff management is owner-only);
 --   * a linked CASHIER may operate but may NOT manage staff (role-scoped);
 --   * the staff PIN column is not readable by any staff (column-locked);
 --   * no role has DELETE.
@@ -54,12 +55,12 @@ BEGIN
   -- C) manager (linked)
   EXECUTE 'set local role authenticated';
   perform set_config('request.jwt.claims','{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}',true);
-  BEGIN INSERT INTO public.invoices(id,"patientId") VALUES (gen_random_uuid(),'KPAH_TEST_C'); allowed:=true; RAISE EXCEPTION 'UNDO';
-  EXCEPTION WHEN insufficient_privilege THEN allowed:=false; WHEN others THEN allowed:=(SQLERRM='UNDO'); IF NOT allowed THEN RAISE; END IF; END;
-  res:=res||'C1 manager INSERT invoices: '||CASE WHEN allowed THEN 'ALLOWED' ELSE 'DENIED(BAD)' END||E'\n';
+   BEGIN INSERT INTO public.invoices(id,"patientId") VALUES (gen_random_uuid(),'KPAH_TEST_C'); allowed:=true; RAISE EXCEPTION 'UNDO';
+   EXCEPTION WHEN insufficient_privilege THEN allowed:=false; WHEN others THEN allowed:=(SQLERRM='UNDO'); IF NOT allowed THEN RAISE; END IF; END;
+   res:=res||'C1 manager INSERT invoices: '||CASE WHEN allowed THEN 'ALLOWED(BAD)' ELSE 'DENIED(server-checkout-only)' END||E'\n';
   BEGIN INSERT INTO public.users(id,name,username,role,active) VALUES (gen_random_uuid(),'x','kpah_test_c_new','veterinarian',true); allowed:=true; RAISE EXCEPTION 'UNDO';
   EXCEPTION WHEN insufficient_privilege THEN allowed:=false; WHEN others THEN allowed:=(SQLERRM='UNDO'); IF NOT allowed THEN RAISE; END IF; END;
-  res:=res||'C2 manager INSERT users: '||CASE WHEN allowed THEN 'ALLOWED' ELSE 'DENIED(BAD)' END||E'\n';
+   res:=res||'C2 manager INSERT users: '||CASE WHEN allowed THEN 'ALLOWED(BAD)' ELSE 'DENIED(owner-only)' END||E'\n';
   BEGIN PERFORM pin FROM public.users LIMIT 1; res:=res||'C3 manager SELECT users.pin: ALLOWED(BAD)'||E'\n';
   EXCEPTION WHEN insufficient_privilege THEN res:=res||'C3 manager SELECT users.pin: DENIED(column-locked)'||E'\n'; END;
   BEGIN PERFORM id,name,role FROM public.users LIMIT 1; res:=res||'C4 manager SELECT users(non-pin): ALLOWED'||E'\n';
@@ -71,7 +72,7 @@ BEGIN
   perform set_config('request.jwt.claims','{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}',true);
   BEGIN INSERT INTO public.invoices(id,"patientId") VALUES (gen_random_uuid(),'KPAH_TEST_D'); allowed:=true; RAISE EXCEPTION 'UNDO';
   EXCEPTION WHEN insufficient_privilege THEN allowed:=false; WHEN others THEN allowed:=(SQLERRM='UNDO'); IF NOT allowed THEN RAISE; END IF; END;
-  res:=res||'D1 cashier INSERT invoices: '||CASE WHEN allowed THEN 'ALLOWED' ELSE 'DENIED(BAD)' END||E'\n';
+   res:=res||'D1 cashier INSERT invoices: '||CASE WHEN allowed THEN 'ALLOWED(BAD)' ELSE 'DENIED(server-checkout-only)' END||E'\n';
   BEGIN INSERT INTO public.users(id,name,username,role,active) VALUES (gen_random_uuid(),'x','kpah_test_d_new','veterinarian',true); allowed:=true; RAISE EXCEPTION 'UNDO';
   EXCEPTION WHEN insufficient_privilege THEN allowed:=false; WHEN others THEN allowed:=(SQLERRM='UNDO'); IF NOT allowed THEN RAISE; END IF; END;
   res:=res||'D2 cashier INSERT users: '||CASE WHEN allowed THEN 'ALLOWED(BAD)' ELSE 'DENIED(role-locked)' END||E'\n';

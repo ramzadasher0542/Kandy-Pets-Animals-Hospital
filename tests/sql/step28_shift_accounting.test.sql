@@ -52,15 +52,29 @@ BEGIN
   RAISE EXCEPTION 'STEP28_TESTS_PASSED';
 END $$;
 
--- Block 2: the single-open-shift unique index rejects a concurrent duplicate open.
--- (Requires one open shift to already exist; rolls back regardless.)
+-- Block 2: the per-clinic unique index rejects a duplicate in one clinic while
+-- allowing another clinic to open its own shift.
 DO $$
+DECLARE
+  clinic_a uuid;
+  clinic_b uuid;
 BEGIN
+  INSERT INTO public.clinics (name) VALUES ('STEP28_OPEN_SHIFT_A_' || gen_random_uuid()) RETURNING id INTO clinic_a;
+  INSERT INTO public.clinics (name) VALUES ('STEP28_OPEN_SHIFT_B_' || gen_random_uuid()) RETURNING id INTO clinic_b;
+
+  INSERT INTO public.shifts (id, clinic_id, "openedBy", "startTime", "openingFloatCents", "isOpen", opening_float)
+  VALUES (gen_random_uuid(), clinic_a, 'TEST', 'TEST', 0, true, 0);
+
   BEGIN
-    INSERT INTO public.shifts (id,"openedBy","startTime","openingFloatCents","isOpen","opening_float")
-    VALUES (gen_random_uuid(),'TEST','TEST',0,true,0);
+    INSERT INTO public.shifts (id, clinic_id, "openedBy", "startTime", "openingFloatCents", "isOpen", opening_float)
+    VALUES (gen_random_uuid(), clinic_a, 'TEST', 'TEST', 0, true, 0);
     RAISE EXCEPTION 'DUPLICATE_OPEN_NOT_REJECTED';
   EXCEPTION WHEN unique_violation THEN
-    RAISE EXCEPTION 'DUPLICATE_OPEN_REJECTED_OK';
+    NULL;
   END;
+
+  INSERT INTO public.shifts (id, clinic_id, "openedBy", "startTime", "openingFloatCents", "isOpen", opening_float)
+  VALUES (gen_random_uuid(), clinic_b, 'TEST', 'TEST', 0, true, 0);
+
+  RAISE EXCEPTION 'STEP28_PER_CLINIC_OPEN_SHIFT_PASSED';
 END $$;

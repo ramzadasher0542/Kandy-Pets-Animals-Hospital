@@ -51,6 +51,25 @@ begin
   if not has_function_privilege('authenticated', 'public.set_staff_panel_permissions(uuid,jsonb)', 'EXECUTE') then
     raise exception 'FAIL: authenticated role cannot call owner panel permission RPC';
   end if;
+  if to_regprocedure('public.manage_staff_user(uuid,text,text,text,text,boolean,boolean)') is null
+     or to_regprocedure('public.delete_staff_user(uuid)') is null then
+    raise exception 'FAIL: owner staff-management RPCs are missing';
+  end if;
+  if to_regprocedure('public.write_auth_audit(text,text,boolean,boolean,text)') is null
+     or to_regprocedure('public.write_deletion_audit(text,text,text,boolean,text,boolean)') is null then
+    raise exception 'FAIL: server audit RPCs are missing';
+  end if;
+  if has_table_privilege('authenticated', 'public.auth_audit', 'INSERT')
+     or has_table_privilege('authenticated', 'public.deletion_audit', 'INSERT') then
+    raise exception 'FAIL: authenticated retains direct audit INSERT privilege';
+  end if;
+  if has_column_privilege('authenticated', 'public.users', 'role', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.users', 'active', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.users', 'is_deleted', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.users', 'auth_user_id', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.users', 'clinic_id', 'UPDATE') then
+    raise exception 'FAIL: authenticated retains direct sensitive users UPDATE privilege';
+  end if;
 
   begin
     insert into public.clinics (name) values (v_marker || '_A') returning id into v_clinic_a;
