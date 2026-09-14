@@ -2,19 +2,19 @@
 
 ## Migration Status
 
-- Current phase: Phase 13 Tenant User Visibility and Secure Account Deletion deployed and live-verified
-- Backup phase: skipped; code and SQL backups are already secured locally
+- Current phase: Remediation freeze; P0 safety and source/live reconciliation in progress
+- Backup phase: not complete for this remediation; independent export/restore evidence is still required
 - Last completed phase: Phase 11 Tenant Staff RBAC and Clinic Entitlements
-- Next pending step: Complete the remaining controlled-beta gates after the live tenant roster and deletion smoke tests.
+- Next pending step: Complete the P0 backup, migration-drift, and two-clinic verification gates before applying remediation migrations.
 
 ## Current Database Structure
 
 - Supabase project: Kandy-Pets-Animals-Hospital
 - Scope: `public` application schema
 - Tables: 29
-- Columns: 485 total, including 447 original columns, 27 new nullable `clinic_id` columns, 5 `public.clinics` columns, `public.users.is_superadmin`, and 5 `public.clinic_settings` columns
-- Constraints: 73 total, including 29 primary keys, 36 foreign keys, 6 checks, and 2 unique constraints
-- RLS policies: 109 total in the last catalogued production snapshot; the 2026-09-02 control-plane migration replaced all policies on `system_config`, `clinics`, and `users` with explicit read and Super Admin-only write boundaries
+- Columns: 486 in the 2026-09-14 live catalog, including 447 original columns, 27 `clinic_id` columns, `public.clinics` columns, `public.users.is_superadmin`, `public.users.panel_permissions`, and `public.clinic_settings` columns
+- Constraints: 73 total in the prior catalogued snapshot, including 29 primary keys, 36 foreign keys, 6 checks, and 2 unique constraints; re-count is pending in the remediation snapshot
+- RLS policies: 85 in the 2026-09-14 live catalog; the previous state record of 109 policies is retained as historical drift evidence
 - RLS status: enabled on all 29 public tables; force RLS is disabled on all 29
 - Clinic isolation: authenticated access to tenant-owned application data is intersected with `clinic_id = public.current_clinic_id() OR public.is_current_user_superadmin()`; the control-plane tables use dedicated Super Admin write policies and clinic-or-Super-Admin read policies
 - Security helpers: `public.current_clinic_id()` and `public.is_current_user_superadmin()` exist as stable security-definer functions with execute granted to `authenticated`
@@ -29,6 +29,7 @@
 - Existing data backfill: one `Kandy Pets Animals Hospital` clinic was inserted; three users were assigned to it; `ramzadasher0542@gmail.com` was marked as the single active superadmin and intentionally remains clinic-less
 - Recovery reset function: `public.purge_application_data_auth()` is `SECURITY DEFINER`, executable by `authenticated` users only, provider-only, and deletes only rows with the assigned clinic_id; `public.users` and `public.clinics` rows are preserved.
 - Recovery reset grants: `authenticated` can select `public.users(clinic_id, is_superadmin)` and `public.clinics`; production `/superadmin` auth hydration was verified after these grants.
+- Remediation live drift: `checkout_effects`, `process_checkout_effects_auth`, and `process_pending_checkout_effects_auth` are absent; `uniq_shifts_single_open` is globally scoped; authenticated users retain direct sensitive `public.users` column writes. No remediation migration has been applied.
 
 ## Public Tables
 
@@ -118,6 +119,7 @@
 - Phase 13 release published directly to the authenticated GitHub `main` branch in `src/components/SuperAdminDashboard.tsx`, `api/delete-user.ts`, and `VHMS_STATE.md`; all three remote file contents were compared byte-for-byte with the local release files.
 - Phase 13 production smoke passed on 2026-09-02 at `https://kpah-aps.vercel.app/superadmin`: the Kandy clinic roster loaded five clinic-scoped users with name, username, role, active status, and Auth-link status; a disposable Owner account was created, appeared after roster refresh, required the confirmation dialog, was deleted through the server endpoint, and disappeared from the roster while the Super Admin session remained active. Existing accounts were not deleted.
 - Phase 13 endpoint boundary smoke passed: an unauthenticated POST to `/api/delete-user` returned HTTP 401 with `A valid Super Admin session is required.`; source verification confirms the `is_superadmin` target guard returns HTTP 403 and the endpoint validates both `user_id` and `clinic_id` before calling `auth.admin.deleteUser`.
+- Remediation planning and source changes began on 2026-09-14. Added canonical identity, checkout-effects, per-clinic shift, staff-boundary, audit-boundary, and two-clinic harness files locally; none are live-applied or release-complete. Grooming print escaping, CSP configuration, PostgREST search escaping/limits, and API request guards are source-only changes awaiting focused verification.
 
 ## Next Action
 
