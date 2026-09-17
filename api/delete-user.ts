@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { exceedsBodyLimit, isRateLimited } from './request-guard';
+import { exceedsBodyLimit, isRateLimited } from './request-guard.js';
 
 type ApiRequest = {
   method?: string;
