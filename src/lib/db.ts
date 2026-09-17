@@ -922,7 +922,9 @@ export async function addCashAdjustment(adj: {
 }): Promise<void> {
   if (!adj || !adj.id) return;
   if (!supabase) throw new Error('No internet connection');
-  const { error } = await supabase.from('cash_adjustments').insert(withCurrentClinicId(adj));
+  const { error } = await supabase.rpc('add_cash_adjustment_auth', {
+    p_adjustment: withCurrentClinicId(adj),
+  });
   if (error) throw error;
 }
 
