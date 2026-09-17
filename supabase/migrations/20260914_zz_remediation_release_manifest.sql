@@ -1,6 +1,14 @@
 -- Remediation P1.2/P7: fail closed when the target database is not the
 -- schema required by the checked-in VHMS release.
 
+-- The shift accounting primitive is service-role-only. Revoke the implicit
+-- PUBLIC execute grant explicitly because revoking only from anon/authenticated
+-- does not close the anonymous execution path.
+revoke execute on function public.apply_shift_revenue(uuid, integer, integer, integer)
+  from public, anon, authenticated;
+grant execute on function public.apply_shift_revenue(uuid, integer, integer, integer)
+  to service_role;
+
 do $$
 declare
   v_index_def text;
@@ -29,7 +37,12 @@ begin
       or to_regprocedure('public.settle_boarding_account_auth(uuid,uuid)') is null
       or to_regprocedure('public.open_shift_auth(uuid,integer)') is null
       or to_regprocedure('public.restore_shift_auth(jsonb)') is null
-      or to_regprocedure('public.void_invoice_and_reverse_revenue_auth(uuid)') is null then
+      or to_regprocedure('public.add_cash_adjustment_auth(jsonb)') is null
+      or to_regprocedure('public.void_invoice_and_reverse_revenue_auth(uuid)') is null
+      or to_regprocedure('public.set_boarding_billed_auth(uuid,boolean)') is null
+      or to_regprocedure('public.assert_boarding_cage_available()') is null
+      or to_regprocedure('public.attach_boarding_invoice_source_ref()') is null
+      or to_regprocedure('public.process_boarding_settlement_effect()') is null then
     raise exception 'RELEASE_SCHEMA_MISSING: required RPC signature is absent';
   end if;
 
@@ -44,6 +57,18 @@ begin
       and p.proconfig @> array['search_path=public']::text[]
   ) then
     raise exception 'RELEASE_SCHEMA_INVALID: current_clinic_id security attributes are incorrect';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc p
+    where p.oid = to_regprocedure('public.commit_checkout_invoice_and_stock_impl(jsonb,jsonb)')
+      and pg_get_functiondef(p.oid) like '%CATALOG_ITEM_NOT_FOUND%'
+      and pg_get_functiondef(p.oid) like '%v_canonical_items%'
+      and pg_get_functiondef(p.oid) like '%v_created_by%'
+      and pg_get_functiondef(p.oid) like '%CLINIC_SCOPE_MISMATCH%'
+  ) then
+    raise exception 'RELEASE_SCHEMA_INVALID: checkout implementation is not server-authoritative';
   end if;
 
   if exists (
@@ -69,6 +94,7 @@ begin
          'settle_boarding_account_auth',
          'open_shift_auth',
          'restore_shift_auth',
+         'add_cash_adjustment_auth',
          'void_invoice_and_reverse_revenue_auth'
       )
       and (not p.prosecdef or not (p.proconfig @> array['search_path=public']::text[]))
@@ -86,14 +112,55 @@ begin
     raise exception 'RELEASE_SCHEMA_INVALID: checkout_effects.clinic_id must be NOT NULL';
   end if;
 
-  if not exists (
-    select 1 from pg_indexes
-    where schemaname = 'public'
-      and indexname = 'uniq_shifts_single_open'
-      and indexdef ilike '%(clinic_id)%'
+   if not exists (
+     select 1 from pg_indexes
+     where schemaname = 'public'
+       and indexname = 'uniq_shifts_single_open'
+       and indexdef ilike '%(clinic_id)%'
   ) then
-    raise exception 'RELEASE_SCHEMA_INVALID: open-shift uniqueness is not clinic-scoped';
-  end if;
+     raise exception 'RELEASE_SCHEMA_INVALID: open-shift uniqueness is not clinic-scoped';
+   end if;
+
+   if not exists (
+     select 1 from pg_indexes
+     where schemaname = 'public'
+       and indexname = 'uniq_active_boarding_cage_per_clinic'
+       and indexdef ilike '%(clinic_id, "cageNumber")%'
+       and indexdef ilike '%status = ''active''%'
+   ) then
+     raise exception 'RELEASE_SCHEMA_INVALID: active boarding cage uniqueness is absent';
+   end if;
+
+   if not exists (
+     select 1
+     from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+     join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relname = 'boarding_records'
+       and t.tgname = 'assert_boarding_cage_available_before_write'
+       and not t.tgisinternal
+   ) or not exists (
+     select 1
+     from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+     join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relname = 'invoices'
+       and t.tgname = 'attach_boarding_invoice_source_ref_before_insert'
+       and not t.tgisinternal
+   ) or not exists (
+     select 1
+     from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+     join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relname = 'invoices'
+       and t.tgname = 'zz_process_boarding_settlement_effect_after_insert'
+       and not t.tgisinternal
+   ) then
+     raise exception 'RELEASE_SCHEMA_INVALID: boarding integrity triggers are absent';
+   end if;
 
   if not exists (
     select 1 from pg_class c
@@ -117,10 +184,16 @@ begin
       or has_table_privilege('authenticated', 'public.deletion_audit', 'INSERT')
       or has_table_privilege('authenticated', 'public.invoices', 'INSERT')
       or has_table_privilege('authenticated', 'public.invoices', 'UPDATE')
-      or has_table_privilege('authenticated', 'public.invoices', 'DELETE')
-      or has_table_privilege('authenticated', 'public.boarding_records', 'UPDATE')
-      or has_table_privilege('authenticated', 'public.boarding_charge_events', 'INSERT')
-      or has_table_privilege('authenticated', 'public.shifts', 'INSERT')
+       or has_table_privilege('authenticated', 'public.invoices', 'DELETE')
+       or has_table_privilege('authenticated', 'public.boarding_records', 'UPDATE')
+       or has_table_privilege('authenticated', 'public.boarding_charge_events', 'INSERT')
+       or has_table_privilege('authenticated', 'public.cash_adjustments', 'INSERT')
+       or has_table_privilege('authenticated', 'public.cash_adjustments', 'UPDATE')
+       or has_table_privilege('authenticated', 'public.cash_adjustments', 'DELETE')
+       or has_table_privilege('authenticated', 'public.shift_reconciliations', 'INSERT')
+       or has_table_privilege('authenticated', 'public.shift_reconciliations', 'UPDATE')
+       or has_table_privilege('authenticated', 'public.shift_reconciliations', 'DELETE')
+       or has_table_privilege('authenticated', 'public.shifts', 'INSERT')
       or has_table_privilege('authenticated', 'public.shifts', 'UPDATE')
       or has_table_privilege('authenticated', 'public.shifts', 'DELETE') then
      raise exception 'RELEASE_PRIVILEGE_INVALID: authenticated retains a direct privileged write';
@@ -136,15 +209,27 @@ begin
      or not has_function_privilege('authenticated', 'public.save_boarding_pricing_profile_auth(jsonb)', 'EXECUTE')
      or not has_function_privilege('authenticated', 'public.start_boarding_admission_auth(jsonb,uuid)', 'EXECUTE')
       or not has_function_privilege('authenticated', 'public.record_boarding_charge_auth(uuid,uuid,text,numeric,uuid)', 'EXECUTE')
-      or not has_function_privilege('authenticated', 'public.settle_boarding_account_auth(uuid,uuid)', 'EXECUTE')
-        or not has_function_privilege('authenticated', 'public.open_shift_auth(uuid,integer)', 'EXECUTE')
-        or not has_function_privilege('authenticated', 'public.restore_shift_auth(jsonb)', 'EXECUTE')
-        or not has_function_privilege('authenticated', 'public.void_invoice_and_reverse_revenue_auth(uuid)', 'EXECUTE') then
+       or not has_function_privilege('authenticated', 'public.settle_boarding_account_auth(uuid,uuid)', 'EXECUTE')
+          or not has_function_privilege('authenticated', 'public.open_shift_auth(uuid,integer)', 'EXECUTE')
+          or not has_function_privilege('authenticated', 'public.restore_shift_auth(jsonb)', 'EXECUTE')
+          or not has_function_privilege('authenticated', 'public.add_cash_adjustment_auth(jsonb)', 'EXECUTE')
+          or not has_function_privilege('authenticated', 'public.set_boarding_billed_auth(uuid,boolean)', 'EXECUTE')
+          or not has_function_privilege('authenticated', 'public.void_invoice_and_reverse_revenue_auth(uuid)', 'EXECUTE') then
     raise exception 'RELEASE_PRIVILEGE_INVALID: required authenticated RPC grant is absent';
   end if;
 
   if has_function_privilege('authenticated', 'public.commit_boarding_cash_ledger_auth(jsonb,jsonb,jsonb)', 'EXECUTE') then
     raise exception 'RELEASE_PRIVILEGE_INVALID: legacy client-authored boarding ledger remains executable';
+  end if;
+
+  if has_function_privilege('anon', 'public.apply_shift_revenue(uuid,integer,integer,integer)', 'EXECUTE')
+      or has_function_privilege('authenticated', 'public.apply_shift_revenue(uuid,integer,integer,integer)', 'EXECUTE') then
+    raise exception 'RELEASE_PRIVILEGE_INVALID: shift accounting primitive remains browser-executable';
+  end if;
+
+  if has_function_privilege('anon', 'public.commit_checkout_invoice_and_stock_impl(jsonb,jsonb)', 'EXECUTE')
+      or has_function_privilege('authenticated', 'public.commit_checkout_invoice_and_stock_impl(jsonb,jsonb)', 'EXECUTE') then
+    raise exception 'RELEASE_PRIVILEGE_INVALID: checkout implementation remains browser-executable';
   end if;
 
   select indexdef into v_index_def
