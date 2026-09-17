@@ -14,12 +14,16 @@ for (const file of [
   'supabase/migrations/20260902_superadmin_control_plane.sql',
    'supabase/migrations/20260914_boarding_pricing_authority.sql',
    'supabase/migrations/20260914_remediation_shift_authority.sql',
-   'supabase/migrations/20260914_remediation_invoice_void_effects.sql',
+    'supabase/migrations/20260914_remediation_invoice_void_effects.sql',
+    'supabase/migrations/20260918_boarding_tender_and_milk_cup.sql',
+    'supabase/migrations/20260918_zz_boarding_tender_release_manifest.sql',
    'supabase/migrations/20260914_zz_remediation_release_manifest.sql',
   'tests/sql/step33_superadmin_control_plane.test.sql',
    'tests/sql/boarding_pricing_authority.test.sql',
    'tests/sql/remediation_shift_authority.test.sql',
-   'tests/sql/remediation_invoice_void_effects.test.sql',
+    'tests/sql/remediation_invoice_void_effects.test.sql',
+    'tests/sql/remediation_boarding_tender_milk.test.sql',
+    'tests/sql/remediation_privilege_boundary.test.sql',
   'tests/sql/remediation_baseline_preflight.sql',
    'tests/sql/remediation_release_manifest.test.sql',
    'api/request-guard.ts',
@@ -79,6 +83,21 @@ if (!/void_invoice_and_reverse_revenue_auth/.test(voidEffectsSql)
   || !/sources_released/.test(voidEffectsSql)) {
   failures.push('invoice void customer/source effects are not server-owned');
 }
+const boardingTenderSql = read('supabase/migrations/20260918_boarding_tender_and_milk_cup.sql');
+if (!/start_boarding_admission_impl/.test(boardingTenderSql)
+  || !/jsonb_build_object\('status', 'active'\)/.test(boardingTenderSql)
+  || !/p_tender_method/.test(boardingTenderSql)
+  || !/REFUND_TENDER_MUST_BE_CASH/.test(boardingTenderSql)
+  || !/milk_cup/.test(boardingTenderSql)
+  || !/ROLE_NOT_ALLOWED: boarding settlement/.test(boardingTenderSql)) {
+  failures.push('boarding tender, milk-cup, or server-owned status guard is incomplete');
+}
+const boardingTenderManifest = read('supabase/migrations/20260918_zz_boarding_tender_release_manifest.sql');
+if (!/settle_boarding_account_auth\(uuid,uuid,text\)/.test(boardingTenderManifest)
+  || !/boarding_charge_events_event_type_check/.test(boardingTenderManifest)
+  || !/REFUND_TENDER_MUST_BE_CASH/.test(boardingTenderManifest)) {
+  failures.push('boarding tender release manifest is incomplete');
+}
 const dbSource = read('src/lib/db.ts');
 if (/commitBoardingCashLedger/.test(dbSource)) {
   failures.push('legacy browser-authored boarding settlement caller remains in db.ts');
@@ -94,6 +113,9 @@ if (/\.from\('shifts'\)\.insert/.test(dbSource)) {
 }
 if (!/BOOT_ROW_LIMIT/.test(dbSource) || !/assertBootRowLimit/.test(dbSource)) {
   failures.push('boot hydration does not have a fail-closed row bound');
+}
+if (!/p_tender_method: tenderMethod/.test(dbSource) || !/eventType: 'doctor_round' \| 'food' \| 'medication' \| 'milk_cup'/.test(dbSource)) {
+  failures.push('boarding settlement tender or milk-cup client contract is incomplete');
 }
 const groomingSource = read('src/components/GroomingManager.tsx');
 if (/innerHTML/.test(groomingSource)) {
