@@ -26,7 +26,7 @@ jobs:
           grep -qi '^strict-transport-security:' /tmp/headers.txt
           grep -qi '^x-frame-options:.*DENY' /tmp/headers.txt
           grep -qi '^x-content-type-options:.*nosniff' /tmp/headers.txt
-          grep -qi 'CEYLON PETS ANIMAL HOSPITAL' /tmp/body.html
+          grep -qi '<title>Ceylon Pets (APS)</title>' /tmp/body.html
 
       - name: Check unauthenticated API guards
         shell: bash
