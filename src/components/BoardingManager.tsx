@@ -8,7 +8,7 @@ import { Modal } from './ui/Modal';
 import {
   Home, Activity, Info, CheckCircle2, AlertTriangle, Lock, Utensils, Stethoscope, Pill, Receipt
 } from 'lucide-react';
-import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem, ActiveShift, User } from '../types';
+import { MedicalRecord, BoardingRecord, Pet, Client, ClinicQueueItem, InventoryItem, ActiveShift, User, BoardingSettlementTender } from '../types';
 import { BoardingPricingProfile } from '../types';
 import { showToast } from './Toast';
 import { fetchBoardingRecords, recordBoardingCharge, settleBoardingAccount, startBoardingAdmission, updateBoardingCare } from '../lib/db';
@@ -107,6 +107,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
   const [showDepositGuard, setShowDepositGuard] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
+  const [settlementTender, setSettlementTender] = useState<BoardingSettlementTender>('cash');
 
   const [boardingRecords, setBoardingRecords] = useState<BoardingRecord[]>([]);
 
@@ -206,6 +207,19 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
     }
   };
 
+  const handleLogMilkCup = async (cage: string) => {
+    const occupant = activeBoardingMap.get(cage);
+    if (!occupant) return;
+    try {
+      const updated = await recordBoardingCharge(occupant.boarding.id, 'milk_cup', 1);
+      setBoardingRecords(prev => prev.map(b => b.id === updated.id ? updated : b));
+      const fee = updated.billingItems?.at(-1)?.price || 0;
+      showToast(`Milk cup logged (Rs. ${formatRupees(Number(fee) / 100)}).`, 'success');
+    } catch (error: any) {
+      showToast(`Milk cup failed: ${error?.message || error}`, 'error');
+    }
+  };
+
   const openMedModal = (cage: string) => {
     setMedItemId('');
     setMedQty(1);
@@ -292,11 +306,12 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
 
     setIsSettling(true);
     try {
-      const result = await settleBoardingAccount(b.id, activeShift.id);
+      const result = await settleBoardingAccount(b.id, activeShift.id, settlementTender);
       setBoardingRecords(prev => prev.map(r => r.id === result.boarding.id ? result.boarding : r));
       const balance = Number(result.balance_cents || 0);
+      const tenderLabel = settlementTender === 'bank_transfer' ? 'bank transfer' : settlementTender;
       const toastMsg = balance < 0
-        ? `Discharged. Additional cash recorded: Rs. ${formatRupees(Math.abs(balance) / 100)}.`
+        ? `Discharged. Additional ${tenderLabel} recorded: Rs. ${formatRupees(Math.abs(balance) / 100)}.`
         : balance > 0
           ? `Discharged. Refund: Rs. ${formatRupees(balance / 100)}`
           : 'Discharged. Settled exactly — no balance.';
@@ -310,6 +325,7 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
 
     setSelectedCage(null);
     setDischargeModalCage(null);
+    setSettlementTender('cash');
     setIsSettling(false);
   };
 
@@ -510,6 +526,9 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
           )}
           {isAdmission && (
             <button data-testid={`log-med-btn-${cage}`} onClick={(e) => { e.stopPropagation(); openMedModal(cage); }} className={btnClass}><Pill className="w-3 h-3" />Med</button>
+          )}
+          {(b.pricingSnapshot || configuredPricing).milk_cup_cents > 0 && (
+            <button data-testid={`milk-cup-btn-${cage}`} onClick={(e) => { e.stopPropagation(); handleLogMilkCup(cage); }} className={btnClass}><Utensils className="w-3 h-3" />Milk cup</button>
           )}
         </div>
         <button data-testid={`discharge-settle-btn-${cage}`} onClick={(e) => { e.stopPropagation(); setDischargeModalCage(cage); }} className="w-full py-2 bg-white text-rose-700 hover:bg-rose-50 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer border border-white/60 hover:shadow-lg flex items-center justify-center gap-1"><Receipt className="w-3 h-3" />Discharge &amp; Settle</button>
@@ -973,6 +992,20 @@ export default function BoardingManager({ systemConfig, clients, pets = [], reco
                 <div className="flex justify-between"><span className="font-black text-rose-600">Collect additional</span><span data-testid="settle-balance" className="font-mono font-black text-rose-600">Rs. {formatRupees(Math.abs(balance) / 100)}</span></div>
               )}
             </div>
+            <label className="block text-left space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Settlement tender</span>
+              <select
+                data-testid="settlement-tender-select"
+                value={settlementTender}
+                onChange={e => setSettlementTender(e.target.value as BoardingSettlementTender)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800"
+              >
+                <option value="cash">Cash</option>
+                <option value="card" disabled={balance > 0}>Card {balance > 0 ? '(refunds are cash-only)' : ''}</option>
+                <option value="bank_transfer" disabled={balance > 0}>Bank transfer {balance > 0 ? '(refunds are cash-only)' : ''}</option>
+              </select>
+              <span className="block text-[10px] font-bold text-slate-500">The server recalculates the total. Non-cash tender is accepted only for additional charges, never for refunds.</span>
+            </label>
           </div>
         </Modal>
         );
