@@ -1002,7 +1002,7 @@ export async function startBoardingAdmission(boarding: BoardingRecord, shiftId: 
 
 export async function recordBoardingCharge(
   boardingId: string,
-  eventType: 'doctor_round' | 'food' | 'medication',
+  eventType: 'doctor_round' | 'food' | 'medication' | 'milk_cup',
   quantity: number,
   inventoryItemId?: string,
 ): Promise<BoardingRecord> {
@@ -1041,15 +1041,20 @@ export async function setBoardingBilled(boardingId: string, billed: boolean): Pr
   return data as BoardingRecord;
 }
 
-export async function settleBoardingAccount(boardingId: string, shiftId: string): Promise<{ boarding: BoardingRecord; total_charges_cents: number; deposit_cents: number; balance_cents: number }> {
+export async function settleBoardingAccount(
+  boardingId: string,
+  shiftId: string,
+  tenderMethod: 'cash' | 'card' | 'bank_transfer',
+): Promise<{ boarding: BoardingRecord; total_charges_cents: number; deposit_cents: number; balance_cents: number; payment_method?: string; tender_method?: string }> {
   if (!boardingId) throw new Error('INVALID_BOARDING_ID');
   if (!supabase) throw new Error('No internet connection');
   const { data, error } = await supabase.rpc('settle_boarding_account_auth', {
     p_boarding_id: boardingId,
     p_shift_id: shiftId,
+    p_tender_method: tenderMethod,
   });
   if (error) throw error;
-  return data as { boarding: BoardingRecord; total_charges_cents: number; deposit_cents: number; balance_cents: number };
+  return data as { boarding: BoardingRecord; total_charges_cents: number; deposit_cents: number; balance_cents: number; payment_method?: string; tender_method?: string };
 }
 
 export async function openShift(_openedBy: string, openingFloatCents: number): Promise<string | null> {
