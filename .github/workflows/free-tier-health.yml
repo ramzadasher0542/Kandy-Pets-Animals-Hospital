@@ -1,0 +1,44 @@
+name: Free-tier production health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  public-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://kpah-aps.vercel.app
+    steps:
+      - name: Check public page and security headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --max-time 30 \
+            --dump-header /tmp/headers.txt --output /tmp/body.html "$BASE_URL/"
+          test -s /tmp/body.html
+          grep -qi '^content-security-policy:' /tmp/headers.txt
+          grep -qi '^strict-transport-security:' /tmp/headers.txt
+          grep -qi '^x-frame-options:.*DENY' /tmp/headers.txt
+          grep -qi '^x-content-type-options:.*nosniff' /tmp/headers.txt
+          grep -qi 'CEYLON PETS ANIMAL HOSPITAL' /tmp/body.html
+
+      - name: Check unauthenticated API guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          for endpoint in provision-owner delete-user; do
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --location --max-time 30 "$BASE_URL/api/$endpoint")"
+            test "$status" = "405"
+
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --location --max-time 30 --request POST \
+              --header 'content-type: application/json' --data '{}' "$BASE_URL/api/$endpoint")"
+            test "$status" = "401"
+          done
