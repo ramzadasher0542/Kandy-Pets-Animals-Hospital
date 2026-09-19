@@ -1,5 +1,6 @@
--- Tenantize the six tables introduced by 20260812_cloud_staff_audit_tables
--- before the 20260828 clinic-index migration and the 20260903 RLS boundary.
+-- Tenantize every pre-existing clinic-scoped table before the 20260828
+-- clinic-index migration and the 20260903 RLS boundary. The later migrations
+-- add the remaining checkout, boarding-pricing, and clinic-settings tables.
 
 begin;
 
@@ -8,7 +9,12 @@ declare
   table_name text;
 begin
   foreach table_name in array array[
-    'staff_profiles', 'time_entries', 'schedule_entries', 'payslips',
+    'appointments', 'boarding_records', 'cash_adjustments', 'clients',
+    'clinic_queue', 'grooming_logs', 'inventory', 'inventory_batches',
+    'inventory_categories', 'invoices', 'lab_results', 'medical_records',
+    'notifications', 'pets', 'shift_reconciliations', 'shifts',
+    'staff_profiles', 'suppliers', 'system_alerts', 'system_config',
+    'time_entries', 'users', 'vaccinations', 'schedule_entries', 'payslips',
     'deletion_audit', 'auth_audit'
   ] loop
     execute format(
