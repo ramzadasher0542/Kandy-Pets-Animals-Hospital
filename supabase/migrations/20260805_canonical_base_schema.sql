@@ -463,6 +463,7 @@ CREATE TABLE public.users (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL DEFAULT ''::text,
   username text NOT NULL DEFAULT ''::text,
+  pin text,
   role text NOT NULL DEFAULT 'cashier'::text,
   avatar_color text DEFAULT ''::text,
   active boolean DEFAULT true,
@@ -1059,8 +1060,16 @@ begin
 
   delete from public.vaccinations;
 
-  return wiped;
+  return 'wiped';
 
 end;
 
 $$;
+
+-- Supabase's verified server path retains full base privileges while public and
+-- authenticated access is closed by the remediation chain. The pin column is
+-- intentionally present for compatibility but is excluded from authenticated
+-- column grants by 20260808_free_auth_rls.
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
