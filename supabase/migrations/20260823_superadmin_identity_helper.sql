@@ -1,7 +1,7 @@
--- The tenant-entitlement migration sorts before the historical
--- 20260902_superadmin_control_plane migration, but its policies already call
--- is_current_user_superadmin(). Install the prerequisite helper first; the
--- historical control-plane migration replaces it with the same reviewed body.
+-- The clinic-settings migration sorts before the historical superadmin
+-- control-plane migration but already calls is_current_user_superadmin().
+-- Install the prerequisite helper before clinic_settings; the historical
+-- control-plane migration replaces it with the same reviewed body.
 
 begin;
 
