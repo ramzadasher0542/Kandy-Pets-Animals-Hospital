@@ -1311,6 +1311,24 @@ function App({ initialSession, initialAuthError }: AppProps) {
     return 'portal';
   };
 
+  // A hard-loaded settings URL must win over the last session view. If the
+  // signed-in role cannot access settings, fail closed back to the app root.
+  useEffect(() => {
+    if (!currentUser || currentUser.isSuperadmin || routePath !== '/settings') return;
+    const targetView = isViewPermitted('settings', currentUser)
+      ? 'settings'
+      : getDefaultViewForUser(currentUser);
+    if (activeView !== targetView) {
+      rememberActiveView(targetView);
+      setActiveView(targetView);
+      setHistoryStack([targetView]);
+    }
+    if (targetView !== 'settings' && window.location.pathname === '/settings') {
+      window.history.replaceState({}, '', '/');
+      setRoutePath('/');
+    }
+  }, [currentUser, routePath, activeView, clinicSettings, systemConfig]);
+
   const registerFailure = (username: string) => {
     recordFailedAttempt(username);
     setLoginError(true);
@@ -1740,7 +1758,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
                   if (!isViewPermitted(permissionKey, currentUser)) return null;
                   const isSelected = activeView === item.id;
                   return (
-                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { rememberActiveView(item.id); setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+                    <button key={item.id} data-testid={`nav-${item.id}`} onClick={() => { navigateRoute('/'); rememberActiveView(item.id); setActiveView(item.id); setViewPayload(null); setHistoryStack([item.id]); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
                       <Icon className={`w-5 h-5 ${isSelected ? 'text-indigo-600' : 'text-slate-500'}`} />{item.label}
                     </button>
                   );
@@ -1762,7 +1780,7 @@ function App({ initialSession, initialAuthError }: AppProps) {
                 {isViewPermitted('settings', currentUser) && (
                   <button
                     data-testid="nav-settings"
-                    onClick={() => { setActiveView('settings'); setHistoryStack(['settings']); }}
+                    onClick={() => { navigateRoute('/settings'); setActiveView('settings'); setHistoryStack(['settings']); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
                         ? 'bg-indigo-50 text-indigo-700'
                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
