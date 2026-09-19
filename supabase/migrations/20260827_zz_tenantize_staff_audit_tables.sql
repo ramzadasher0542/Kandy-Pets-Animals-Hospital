@@ -1,6 +1,5 @@
--- Tenantize the six tables introduced by 20260812_cloud_staff_audit_tables.
--- This migration must sort before 20260903_tenant_permissions_and_rls because
--- that migration intentionally builds tenant policies on clinic_id.
+-- Tenantize the six tables introduced by 20260812_cloud_staff_audit_tables
+-- before the 20260828 clinic-index migration and the 20260903 RLS boundary.
 
 begin;
 
